@@ -1,0 +1,83 @@
+# Configuration files with sensitive information
+config.py
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+temp_*.csv
+temp_*.xlsx
+temp_*.json
+
+# Screenshots and debug files
+screenshot_*.png
+debug_*.html
+
+# CSV/Excel exports (크롤링 결과물)
+*.csv
+*.xlsx
+!*_template.csv
+!*_example.csv
+
+# ChromeDriver
+chromedriver
+chromedriver.exe
+geckodriver
+geckodriver.exe
+
+# Selenium session files
+.selenium/
+
+# Crawling data backups
+backup/
+archives/
+
+# Test files
+test_*.py
+*_test.py
