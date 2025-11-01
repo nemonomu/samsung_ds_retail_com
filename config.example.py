@@ -20,12 +20,3 @@ FILE_SERVER_CONFIG = {
     'password': 'your_password',
     'upload_path': '/path/to/uploads'
 }
-
-# Email Configuration (SMTP)
-EMAIL_CONFIG = {
-    'smtp_server': 'smtp.gmail.com',
-    'smtp_port': 587,
-    'sender_email': 'your_email@gmail.com',
-    'sender_password': 'your_app_password',
-    'receiver_email': 'receiver_email@gmail.com'
-}

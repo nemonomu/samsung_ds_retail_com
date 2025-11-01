@@ -20,7 +20,7 @@ import os
 import traceback
 
 # Import configuration
-from config import DB_CONFIG, FILE_SERVER_CONFIG, EMAIL_CONFIG
+from config import DB_CONFIG, FILE_SERVER_CONFIG
 
 # 로깅 설정
 logging.basicConfig(
@@ -43,15 +43,6 @@ class MediaMarktInfiniteScraper:
         self.start_time = datetime.now()
         self.saved_cookies = []
 
-        # 이메일 설정 (config.py에서 가져옴, 환경변수로 오버라이드 가능)
-        self.email_config = {
-            'smtp_server': os.environ.get('SMTP_SERVER', EMAIL_CONFIG.get('smtp_server', 'smtp.gmail.com')),
-            'smtp_port': int(os.environ.get('SMTP_PORT', EMAIL_CONFIG.get('smtp_port', 587))),
-            'sender_email': os.environ.get('SMTP_EMAIL', EMAIL_CONFIG.get('sender_email', '')),
-            'sender_password': os.environ.get('SMTP_PASSWORD', EMAIL_CONFIG.get('sender_password', '')),
-            'receiver_email': os.environ.get('ALERT_EMAIL', EMAIL_CONFIG.get('receiver_email', ''))
-        }
-        
         # DB 연결 설정
         self.setup_db_connection()
         
