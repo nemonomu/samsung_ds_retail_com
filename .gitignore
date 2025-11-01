@@ -55,6 +55,9 @@ temp_*.csv
 temp_*.xlsx
 temp_*.json
 
+# Cookies and session files
+*_cookies.json
+
 # Screenshots and debug files
 screenshot_*.png
 debug_*.html

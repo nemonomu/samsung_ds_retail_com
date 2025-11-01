@@ -19,6 +19,8 @@ import logging
 import os
 import traceback
 
+# Import configuration
+from config import DB_CONFIG, FILE_SERVER_CONFIG, EMAIL_CONFIG
 
 # 로깅 설정
 logging.basicConfig(
@@ -31,24 +33,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# DB 설정
-DB_CONFIG = {
-    'user': 'admin',
-    'password': 'samsungcrawl1!',
-    'host': 'samsung-ssd-crawl-db.csnixzmkuppn.ap-northeast-2.rds.amazonaws.com',
-    'port': 3306,
-    'database': 'ssd_crawl_db'
-}
-
-# 파일서버 설정
-FILE_SERVER_CONFIG = {
-    'host': '3.36.101.24',
-    'port': 22,
-    'username': 'ftpuser',
-    'password': 'samsung0701!',
-    'upload_path': '/home/ftpuser/uploads'
-}
-
 class MediaMarktInfiniteScraper:
     def __init__(self):
         self.driver = None
@@ -58,14 +42,14 @@ class MediaMarktInfiniteScraper:
         self.crawl_count = 0
         self.start_time = datetime.now()
         self.saved_cookies = []
-        
-        # 이메일 설정 (Windows 환경변수 또는 직접 설정)
+
+        # 이메일 설정 (config.py에서 가져옴, 환경변수로 오버라이드 가능)
         self.email_config = {
-            'smtp_server': os.environ.get('SMTP_SERVER', 'smtp.gmail.com'),
-            'smtp_port': int(os.environ.get('SMTP_PORT', '587')),
-            'sender_email': os.environ.get('SMTP_EMAIL', 'unsan010@gmail.com'),
-            'sender_password': os.environ.get('SMTP_PASSWORD', 'wxzj osxb ommz pkts'),
-            'receiver_email': os.environ.get('ALERT_EMAIL', 'unsan010@gmail.com')
+            'smtp_server': os.environ.get('SMTP_SERVER', EMAIL_CONFIG.get('smtp_server', 'smtp.gmail.com')),
+            'smtp_port': int(os.environ.get('SMTP_PORT', EMAIL_CONFIG.get('smtp_port', 587))),
+            'sender_email': os.environ.get('SMTP_EMAIL', EMAIL_CONFIG.get('sender_email', '')),
+            'sender_password': os.environ.get('SMTP_PASSWORD', EMAIL_CONFIG.get('sender_password', '')),
+            'receiver_email': os.environ.get('ALERT_EMAIL', EMAIL_CONFIG.get('receiver_email', ''))
         }
         
         # DB 연결 설정
