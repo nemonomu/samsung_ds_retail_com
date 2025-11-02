@@ -690,10 +690,10 @@ class BestBuyScraper:
             except FileNotFoundError:
                 logger.info(f"새 ZIP 파일 생성: {zip_filename}")
 
-            # ZIP에 파일 추가
+            # ZIP에 파일 추가 (temp_ 제거된 파일명으로 저장)
             with zipfile.ZipFile(local_zip_path, 'a' if zip_exists else 'w', zipfile.ZIP_DEFLATED) as zipf:
-                zipf.write(local_file_path, os.path.basename(local_file_path))
-                logger.info(f"ZIP에 추가: {os.path.basename(local_file_path)}")
+                zipf.write(local_file_path, remote_filename)
+                logger.info(f"ZIP에 추가: {remote_filename}")
 
             # ZIP 업로드
             sftp.put(local_zip_path, remote_zip_path)
