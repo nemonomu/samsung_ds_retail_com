@@ -404,27 +404,50 @@ class AmazonScraper:
             return False
     
     def is_page_blocked(self):
-        """페이지 차단 감지"""
+        """페이지 차단 감지 - 정상 제품 페이지 요소가 있으면 차단으로 간주하지 않음"""
         try:
             page_title = self.driver.title.lower()
             page_source = self.driver.page_source.lower()
             current_url = self.driver.current_url.lower()
-            
+
+            # 먼저 정상 제품 페이지 요소 확인 (차단 페이지 오판 방지)
+            normal_page_indicators = [
+                (By.ID, "productTitle"),
+                (By.CLASS_NAME, "a-price-whole"),
+                (By.ID, "landingImage"),
+                (By.ID, "availability"),
+                (By.ID, "centerCol")
+            ]
+
+            normal_elements_found = 0
+            for by, value in normal_page_indicators:
+                try:
+                    element = self.driver.find_element(by, value)
+                    if element and element.is_displayed():
+                        normal_elements_found += 1
+                except:
+                    continue
+
+            # 정상 페이지 요소가 2개 이상 있으면 정상 페이지로 판단
+            if normal_elements_found >= 2:
+                logger.info(f"✅ 정상 제품 페이지 확인됨 (요소 {normal_elements_found}개 발견)")
+                return False
+
+            # 정상 페이지 요소가 없을 때만 차단 페이지 텍스트 확인
             # 일본 아마존 차단 페이지 특징
             japanese_block_indicators = [
                 'ご迷惑をおかけしています',  # "ご迷惑をおかけしています"
-                'ショッピングを続ける',      # "ショッピングを続ける"
                 'お客様のリクエストの処理中にエラーが発生しました',
                 'しばらくしてから',
                 'amazon.co.jpホームへ'
             ]
-            
+
             # 일본어 차단 페이지 확인
             for indicator in japanese_block_indicators:
                 if indicator in page_source:
                     logger.warning(f"🚫 일본 아마존 차단 페이지 감지: '{indicator}'")
                     return True
-            
+
             # 기존 영어 차단 징후들
             serious_blocked_indicators = {
                 'title': [
@@ -448,12 +471,12 @@ class AmazonScraper:
                 if pattern in page_title:
                     logger.warning(f"🚫 차단 감지 (제목): '{pattern}' in '{page_title}'")
                     return True
-            
+
             # Continue shopping이 있으면 차단 페이지로 간주
             if 'continue shopping' in page_source or 'ショッピングを続ける' in page_source:
                 logger.warning("🚫 Continue shopping 페이지 감지")
                 return True
-            
+
             # 본문 확인
             for pattern in serious_blocked_indicators['content']:
                 if pattern in page_source:
@@ -774,13 +797,27 @@ class AmazonScraper:
                     return result if result > 0 else None
                     
             elif country_code == 'jp':
-                # 일본: ¥1,234 형식
+                # 일본: ¥1,234 형식 - 쉼표 포함 문자열로 반환
                 price_text = re.sub(r'[¥￥\s]', '', price_text)
-                price_text = price_text.replace(',', '')
-                match = re.search(r'(\d+)', price_text)
-                if match:
-                    result = float(match.group(1))
-                    return result if result > 0 else None
+                # 쉼표가 이미 있으면 그대로 사용
+                if ',' in price_text:
+                    # 쉼표가 올바른 위치에 있는지 확인
+                    match = re.search(r'([\d,]+)', price_text)
+                    if match:
+                        price_with_comma = match.group(1)
+                        # 검증을 위해 쉼표 제거 후 숫자로 변환
+                        price_num = float(price_with_comma.replace(',', ''))
+                        if price_num > 0:
+                            return price_with_comma  # 쉼표 포함 문자열 반환
+                else:
+                    # 쉼표가 없으면 추가
+                    match = re.search(r'(\d+)', price_text)
+                    if match:
+                        price_num = int(match.group(1))
+                        if price_num > 0:
+                            # 천단위마다 쉼표 추가
+                            return f"{price_num:,}"  # 쉼표 포함 문자열 반환
+                return None
                     
             elif country_code == 'in':
                 # 인도: ₹1,234.56 형식
