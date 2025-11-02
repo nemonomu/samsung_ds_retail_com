@@ -637,7 +637,7 @@ class AmazonIndiaScraper:
         # JavaScript로 루피 가격 찾기 (centerCol 내부만 검색)
         logger.info("\n💡 JavaScript로 centerCol 내부 루피 가격 검색...")
         try:
-            js_result = self.driver.execute_script("""
+            js_result = self.driver.execute_script(r"""
                 const centerCol = document.getElementById('centerCol');
                 if (!centerCol) {
                     return [];

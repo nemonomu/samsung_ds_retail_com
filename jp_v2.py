@@ -705,7 +705,7 @@ class AmazonScraper:
         # JavaScript로 메인 영역에서만 가격 찾기
         logger.debug("JavaScript로 메인 영역 가격 검색...")
         try:
-            js_result = self.driver.execute_script("""
+            js_result = self.driver.execute_script(r"""
                 // 메인 제품 영역만 검색
                 const mainAreas = [
                     '#dp-container',

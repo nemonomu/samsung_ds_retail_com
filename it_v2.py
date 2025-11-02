@@ -323,7 +323,7 @@ class AmazonITScraper:
             
             # 2. centerCol 외부의 요소는 제외
             try:
-                center_col = self.driver.execute_script("""
+                center_col = self.driver.execute_script(r"""
                     return arguments[0].closest('#centerCol');
                 """, element)
                 if not center_col:
@@ -334,7 +334,7 @@ class AmazonITScraper:
             
             # 3. XPath로 요소 위치 확인
             try:
-                element_xpath = self.driver.execute_script("""
+                element_xpath = self.driver.execute_script(r"""
                     function getXPath(element) {
                         var xpath = '';
                         for (; element && element.nodeType == 1; element = element.parentNode) {
@@ -411,7 +411,7 @@ class AmazonITScraper:
             
             # 5. 특정 ID나 클래스를 가진 상위 요소 확인
             try:
-                excluded_containers = self.driver.execute_script("""
+                excluded_containers = self.driver.execute_script(r"""
                     var element = arguments[0];
                     var excludedIds = ['dp-sims-desktop', 'similarities-desktop', 'desktop-dp-sims', 
                                       'recommendations', 'also-bought', 'also-viewed', 'bundleV2'];
