@@ -1038,16 +1038,16 @@ class AmazonUKScraper:
         logger.info(f"성공률: {success_rate:.1f}%")
 
         if with_price > 0:
-            price_df = df[df['retailprice'].notna()].copy()
+            try:
+                price_df = df[df['retailprice'].notna()].copy()
+                price_df['price_numeric'] = price_df['retailprice'].astype(str).str.replace(',', '').astype(float)
 
-            non_zero_price_df = price_df[price_df['retailprice'] > 0]
-
-            if not non_zero_price_df.empty:
-                logger.info(f"\n💰 가격 통계 (0 제외):")
-                logger.info(f"   평균가: {non_zero_price_df['retailprice'].mean():.2f}")
-                logger.info(f"   최저가: {non_zero_price_df['retailprice'].min():.2f}")
-                logger.info(f"   최고가: {non_zero_price_df['retailprice'].max():.2f}")
-                logger.info(f"   중간값: {non_zero_price_df['retailprice'].median():.2f}")
+                logger.info(f"\n💰 가격 통계:")
+                logger.info(f"   평균가: {price_df['price_numeric'].mean():.2f}")
+                logger.info(f"   최저가: {price_df['price_numeric'].min():.2f}")
+                logger.info(f"   최고가: {price_df['price_numeric'].max():.2f}")
+            except Exception as e:
+                logger.warning(f"가격 통계 계산 오류: {e}")
 
             # 브랜드별 성공률
             brand_stats = df.groupby('brand').agg({
