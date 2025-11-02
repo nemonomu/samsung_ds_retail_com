@@ -1,14 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-Amazon Italy 가격 추출 시스템 V2 (타임존 분리 버전)
-핵심 개선사항:
-1. 현지시간(이탈리아)과 한국시간 분리 저장
-2. 날짜별 디렉토리 구조 및 ZIP 압축
-3. 새 데이터베이스 사용 (samsung_ds_retail_com)
-
-핵심 로직:
-1. ships_from과 sold_by 둘 다 비어있으면 가격 0
-2. 하나라도 있으면 기존 가격 추출 로직 사용
+Amazon 이탈리아 가격 추출 시스템 V2 (타임존 분리 버전)
+원본 it.py 기반 - DB/타임존/파일서버 설정만 V2로 변경
+- 현지시간(이탈리아)과 한국시간 분리 저장
+- 새 데이터베이스 사용 (DB_CONFIG_V2)
+- 핵심 로직은 원본과 동일
 """
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
@@ -28,7 +24,6 @@ import logging
 import os
 from io import StringIO
 import json
-import zipfile
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -39,26 +34,20 @@ from config import DB_CONFIG_V2 as DB_CONFIG
 
 from config import FILE_SERVER_CONFIG
 
-class AmazonScraper:
-    def __init__(self, country_code='it'):
+class AmazonITScraper:
+    def __init__(self):
         self.driver = None
         self.db_engine = None
-        self.country_code = country_code.lower()
+        self.country_code = 'it'
         self.wait = None
-
         # V2: 타임존 분리 (현지시간 + 한국시간)
         self.korea_tz = pytz.timezone('Asia/Seoul')
-        self.local_tz = pytz.timezone('Europe/Rome')  # 이탈리아 중부 유럽 시간
-
-        # DB 연결 설정
+        self.local_tz = pytz.timezone('Europe/Rome')  # 이탈리아 현지 시간
+        
         self.setup_db_connection()
-
-        # 기본 선택자 설정
-        self.setup_default_selectors()
-
-        # DB에서 선택자 로드 (덮어쓰기/병합)
+        self.setup_it_selectors()
         self.load_selectors_from_db()
-
+        
     def setup_db_connection(self):
         """DB 연결 설정"""
         try:
@@ -67,347 +56,746 @@ class AmazonScraper:
                 f"{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}"
             )
             self.db_engine = create_engine(connection_string)
-            logger.info("✅ DB 연결 설정 완료")
-
+            logger.info("DB 연결 설정 완료")
         except Exception as e:
-            logger.error(f"❌ DB 연결 실패: {e}")
+            logger.error(f"DB 연결 실패: {e}")
             self.db_engine = None
-
-    def setup_default_selectors(self):
-        """기본 선택자 설정"""
+    
+    def setup_it_selectors(self):
+        """이탈리아 전용 선택자 설정 - 메인 상품 영역만 타겟팅"""
         self.selectors = {
-            self.country_code: {
-                'price': [
-                    "span.a-price-whole",
-                    "//span[@class='a-price-whole']",
-                    "//span[contains(@class, 'a-price-whole')]",
-                    ".a-price.a-text-price.a-size-medium .a-offscreen",
-                    "//span[@class='a-price']//span[@class='a-offscreen']",
-                    "//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-price-whole']",
-                    "//div[@class='a-section a-spacing-none aok-align-center']//span[@class='a-price-whole']",
-                    "span.a-price-range span.a-price-whole",
-                    "#apex_desktop .a-price-whole",
-                    "div.a-section.a-spacing-micro span.a-price-whole",
-                    "[data-a-color='price'] .a-offscreen",
-                    ".a-price-range .a-price .a-offscreen"
-                ],
-                'title': [
-                    "#productTitle",
-                    "//span[@id='productTitle']",
-                    "//h1/span[@id='productTitle']",
-                    "h1#title span",
-                    "//div[@id='titleSection']//h1//span"
-                ],
-                'ships_from': [
-                    "//*[@id='fulfillerInfoFeature_feature_div']/div[2]/div[1]/span",
-                    "/html/body/div[2]/div/div/div[4]/div[1]/div[3]/div/div[1]/div/div/div/form/div/div/div/div/div[4]/div/div[20]/div/div/div[1]/div/div[2]/div[2]/div[1]/span"
-                ],
-                'sold_by': [
-                    "//*[@id='merchantInfoFeature_feature_div']/div[2]/div[1]/span/a",
-                    "//*[@id='sellerProfileTriggerId']",
-                    "/html/body/div[2]/div/div/div[4]/div[1]/div[3]/div/div[1]/div/div/div/form/div/div/div/div/div[4]/div/div[20]/div/div/div[1]/div/div[3]/div[2]/div[1]/a"
-                ],
-                'imageurl': [
-                    "//div[@id='imageBlock']//img[@id='landingImage']",
-                    "//div[@id='main-image-container']//img",
-                    "//img[@class='a-dynamic-image']",
-                    "//div[@class='imgTagWrapper']//img"
-                ],
-                'availability': [
-                    "//div[@id='availability']//span",
-                    "//div[@id='availability_feature_div']//span",
-                    "//span[@class='a-size-medium a-color-success']",
-                    "//span[@class='a-size-medium a-color-price']"
-                ],
-                'stock_flag': [
-                    'Currently unavailable',
-                    'Out of Stock',
-                    'Temporarily out of stock'
-                ],
-                'blocked_patterns': [
-                    'sorry',
-                    'robot check',
-                    '503 Service Unavailable',
-                    'Something went wrong',
-                    'access denied'
-                ]
-            }
+            'price': [
+                # 메인 가격 영역만 타겟팅 (우선순위 높음)
+                "//*[@id='corePriceDisplay_desktop_feature_div']/div[1]/span[1]",
+                "//*[@id='corePrice_feature_div']/div/div/div/div/span[1]/span[1]",
+                "//*[@id='corePrice_feature_div']/div/div/span[1]/span[1]",
+                
+                # 메인 가격 영역 (더 구체적한 순서로) - centerCol 내부만
+                "//*[@id='centerCol']//*[@id='corePrice_feature_div']//span[@class='a-offscreen']",
+                "//*[@id='centerCol']//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-offscreen']",
+                "//*[@id='centerCol']//*[@id='apex_desktop']//span[@class='a-price']//span[@class='a-offscreen']",
+                
+                # 이탈리아 가격 선택자 (더 구체적인 제한)
+                "//*[@id='centerCol']//*[@id='corePrice_feature_div']//span[@class='a-offscreen'][1]",
+                
+                # 첫 번째 가격만 (centerCol 내부만, 개선된 선택자)
+                "(//*[@id='centerCol']//span[@class='a-price']//span[@class='a-offscreen'])[1]",
+                "(//*[@id='centerCol']//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-offscreen'])[1]",
+                
+                # 기본 가격 요소들 (centerCol 내부만)
+                "//*[@id='centerCol']//*[@id='priceblock_ourprice']",
+                "//*[@id='centerCol']//*[@id='priceblock_dealprice']",
+                "//*[@id='centerCol']//*[@id='listPrice']",
+                
+                # whole 가격 (centerCol 내부만)
+                "//*[@id='centerCol']//*[@id='corePrice_feature_div']//span[@class='a-price-whole']",
+                "//*[@id='centerCol']//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-price-whole']",
+                "//*[@id='centerCol']//*[@id='apex_desktop']//span[@class='a-price-whole']",
+                
+                # 이탈리아 전용 가격 선택자 (centerCol 제한)
+                "//*[@id='centerCol']//span[@class='a-price-symbol' and contains(text(), '€')]/following-sibling::span",
+                "//*[@id='centerCol']//span[contains(@class, 'a-price') and contains(text(), '€')]",
+                
+                # 백업용 일반 선택자 (최후 수단)
+                "//div[@id='centerCol']//span[@class='a-price']//span[@class='a-offscreen']",
+                "//div[@id='centerCol']//span[@class='a-price-whole']",
+            ],
+            'price_fraction': [
+                "//*[@id='centerCol']//*[@id='corePrice_feature_div']//span[@class='a-price-fraction']",
+                "//*[@id='centerCol']//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-price-fraction']",
+                "//*[@id='centerCol']//*[@id='apex_desktop']//span[@class='a-price-fraction']",
+                "//div[@id='centerCol']//span[@class='a-price-fraction']"
+            ],
+            'title': [
+                "#productTitle",
+                "//span[@id='productTitle']",
+                "//h1/span[@id='productTitle']",
+                "h1#title span",
+                "//div[@id='titleSection']//h1//span",
+                "//div[@id='title_feature_div']//h1//span"
+            ],
+            'ships_from': [
+                # 이탈리아 "Spedito da" 선택자 (centerCol 제한 제거 - 정상 영역)
+                "//*[@id='SSOFpopoverLink_ubb']",
+                "//a[@id='SSOFpopoverLink_ubb']",
+                "//*[@id='fulfillerInfoFeature_feature_div']/div[2]/div[1]/span",
+                "//div[@id='fulfillerInfoFeature_feature_div']//span",
+                "//*[@id='fulfillerInfoFeature_feature_div']//div[2]//span",
+                "//div[contains(@id, 'fulfillerInfo')]//span",
+                "//span[contains(text(), 'Spedito da')]/following-sibling::span",
+                "//span[contains(text(), 'Spedito da')]/parent::div//span[2]",
+                "//div[contains(text(), 'Spedito da')]//span",
+                "//div[@data-feature-name='shipsFromSoldBy']//span"
+            ],
+            'sold_by': [
+                # 우선 추출 xpath (최우선순위)
+                "/html/body/div[2]/div/div/div[4]/div[1]/div[4]/div/div[1]/div/div[1]/div/div/div[1]/div/div[2]/div/form/div/div/div[21]/div/div/div[1]/div/div[3]/div[2]/div[1]/span",
+                # 이탈리아 "Venduto da" 선택자 (기존)
+                "//a[@id='sellerProfileTriggerId']",
+                "//*[@id='sellerProfileTriggerId']",
+                "//*[@id='merchantInfoFeature_feature_div']/div[2]/div[1]/span",
+                "//div[@id='merchantInfoFeature_feature_div']//a",
+                "//div[@id='merchantInfoFeature_feature_div']//span",
+                "//*[@id='merchantInfoFeature_feature_div']//div[2]//span",
+                "//div[contains(@id, 'merchantInfo')]//span",
+                "//span[contains(text(), 'Venduto da')]/following-sibling::a",
+                "//span[contains(text(), 'Venduto da')]/following-sibling::span",
+                "//span[contains(text(), 'Venduto da')]/parent::div//span[2]",
+                "//div[contains(text(), 'Venduto da')]//span",
+                "//div[@data-feature-name='shipsFromSoldBy']//a"
+            ],
+            'imageurl': [
+                "//div[@id='imageBlock']//img[@id='landingImage']",
+                "//div[@id='main-image-container']//img",
+                "//img[@class='a-dynamic-image']",
+                "//div[@class='imgTagWrapper']//img",
+                "//div[@id='imageBlock_feature_div']//img"
+            ],
+            'availability': [
+                "//div[@id='availability']//span",
+                "//div[@id='availability_feature_div']//span",
+                "//span[@class='a-size-medium a-color-success']",
+                "//span[@class='a-size-medium a-color-price']",
+                "//div[@id='availability']//div[@class='a-row']//span"
+            ],
+            'excluded_price_areas': [
+                'product-comparison',
+                'comparison-desktop',
+                'non-deal-price',
+                'strikethrough',
+                'list-price',
+                'rrp-price',
+                'was-price',
+                'capacity-selection',
+                'recommendations',      # 추천상품 섹션
+                'sponsored',            # 스폰서 상품
+                'similarities',         # 유사상품
+                'related-products',     # 관련 상품
+                'also-bought',          # 함께 구매한 상품
+                'customers-also',       # 고객이 함께 본 상품
+                'also-viewed',          # 함께 본 상품
+                'compare-with',         # 비교 상품
+                'frequently-bought',    # 자주 함께 구매
+                'product-ads',          # 상품 광고
+                'sponsored-products',   # 스폰서 상품들
+                'aplus-module',         # A+ 컨텐츠 모듈
+                'dp-ads',               # 디스플레이 광고
+                'cart-desktop',         # 장바구니 영역
+                'desktop-dp-sims',      # 유사 상품 데스크톱
+                'bundleV2',             # 번들 상품
+                'purchase-info',        # 구매 정보 (다른 판매자)
+            ],
+            # 추가: 제외할 xpath 패턴들 (정규식)
+            'excluded_xpath_patterns': [
+                r'/html/body/div\[2\]/div/div/div\[4\]/div\[1\]/div\[[4-9]\]/',  # div[4] 이후 영역들
+                r'/html/body/div\[2\]/div/div/div\[4\]/div\[1\]/div\[1[0-9]\]/', # div[10] 이후
+                r'.*span\[3\]/span\[1\]$',  # span[3]/span[1]로 끝나는 패턴 (문제 xpath 패턴)
+                r'.*dp-sims.*',             # 유사 상품 영역
+                r'.*recommendations.*',      # 추천 영역
+                r'.*also-bought.*',         # 함께 구매 영역
+                r'.*also-viewed.*',         # 함께 본 영역
+                r'.*sponsored.*',           # 스폰서 영역
+                r'.*ads.*',                 # 광고 영역
+                r'.*div\[4\].*div\[5\].*',  # div[4] 이후 깊은 중첩
+            ],
+            # Sold By 전용 제외 xpath 패턴
+            'excluded_sold_by_xpaths': [
+                '/html/body/div[2]/div/div/div[4]/div[1]/div[4]/div/div[1]/div/div[1]/div/div/div[3]/div/div[1]/h5/div[5]/div/div/div/div[3]/div[2]/div/span'
+            ],
+            'stock_flag': [
+                # 이탈리아 재고 부족 메시지
+                'Attualmente non disponibile',
+                'Non disponibile', 
+                'Esaurito',
+                'Temporaneamente non disponibile',
+                'Currently unavailable', 
+                'Out of Stock',
+                'Temporarily out of stock'
+            ],
+            'blocked_patterns': [
+                'sorry', 
+                'robot check', 
+                '503 Service Unavailable',
+                'Something went wrong',
+                'access denied',
+                'qualcosa è andato storto',
+                'accesso negato',
+                'controlla di essere umano',
+                'inserisci i caratteri'
+            ],
+            'continue_buttons': [
+                # 이탈리아 "계속 쇼핑" 버튼
+                "//button[contains(text(), 'Continua lo shopping')]",
+                "//a[contains(text(), 'Continua lo shopping')]",
+                "//span[contains(text(), 'Continua lo shopping')]/ancestor::button",
+                "//input[@value='Continua lo shopping']",
+                "//button[contains(@class, 'a-button') and contains(., 'Continua')]",
+                "//div[contains(@class, 'a-button') and contains(., 'Continua')]//button",
+                "//button[contains(text(), 'Continue shopping')]",
+                "//button[contains(@class, 'a-button-primary')]",
+                "//input[@type='submit' and contains(@value, 'Continue')]"
+            ]
         }
-
+    
     def load_selectors_from_db(self):
-        """DB에서 Amazon용 선택자 로드"""
+        """DB에서 이탈리아 특화 선택자 로드"""
         if not self.db_engine:
             logger.warning("DB 연결이 없어 선택자 로드 불가")
             return
-
+            
         try:
             query = """
             SELECT element_type, selector_value, priority
             FROM amazon_selectors
-            WHERE country_code = %s
+            WHERE country_code = 'it' 
               AND is_active = TRUE
               AND selector_value NOT LIKE '/html/%'
             ORDER BY element_type, priority ASC
             """
-
-            df = pd.read_sql(query, self.db_engine, params=(self.country_code,))
-            logger.info(f"✅ DB에서 선택자 로드 시작: {len(df)}개")
-
-            db_selectors = {self.country_code: {}}
-
+            
+            df = pd.read_sql(query, self.db_engine)
+            logger.info(f"DB에서 이탈리아 선택자 로드: {len(df)}개")
+            
             for element_type in df['element_type'].unique():
-                db_selectors[self.country_code][element_type] = df[df['element_type'] == element_type]['selector_value'].tolist()
-                logger.info(f"  - {element_type}: {len(db_selectors[self.country_code][element_type])}개")
-
-            for element_type, selectors in db_selectors[self.country_code].items():
-                if element_type in self.selectors[self.country_code]:
-                    existing = self.selectors[self.country_code][element_type]
-                    self.selectors[self.country_code][element_type] = selectors + [s for s in existing if s not in selectors]
+                db_selectors = df[df['element_type'] == element_type]['selector_value'].tolist()
+                
+                if element_type in self.selectors:
+                    existing = self.selectors[element_type]
+                    # DB 선택자를 기존 선택자 앞에 추가 (우선순위)
+                    self.selectors[element_type] = db_selectors + [s for s in existing if s not in db_selectors]
                 else:
-                    self.selectors[self.country_code][element_type] = selectors
-
-            logger.info(f"✅ DB 선택자 로드 완료")
-
+                    self.selectors[element_type] = db_selectors
+            
+            logger.info("이탈리아 DB 선택자 로드 완료")
+            
         except Exception as e:
-            logger.error(f"❌ DB 선택자 로드 실패: {e}")
-
+            logger.error(f"DB 선택자 로드 실패: {e}")
+    
     def setup_driver(self):
-        """Chrome 드라이버 설정"""
-        logger.info("🔧 Chrome 드라이버 설정 중...")
-
+        """이탈리아 전용 Chrome 드라이버 설정"""
+        logger.info("이탈리아 전용 Chrome 드라이버 설정 중...")
+        
         try:
             options = uc.ChromeOptions()
-
             options.add_argument('--disable-blink-features=AutomationControlled')
             options.add_argument('--disable-dev-shm-usage')
             options.add_argument('--no-sandbox')
             options.add_argument('--disable-setuid-sandbox')
-
-            user_agents = [
+            options.add_argument('--disable-gpu')
+            options.add_argument('--disable-software-rasterizer')
+            
+            # 이탈리아 사용자 에이전트
+            italian_user_agents = [
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             ]
-            options.add_argument(f'--user-agent={random.choice(user_agents)}')
-
-            options.add_experimental_option('prefs', {'intl.accept_languages': 'it-IT,it'})
-
+            
+            options.add_argument(f'--user-agent={random.choice(italian_user_agents)}')
+            
+            # 이탈리아 언어 설정
+            options.add_experimental_option('prefs', {
+                'intl.accept_languages': 'it-IT,it,en-US,en'
+            })
+            
             self.driver = uc.Chrome(options=options)
             self.driver.maximize_window()
-
             self.wait = WebDriverWait(self.driver, 20)
-
-            logger.info("✅ 드라이버 설정 완료")
+            
+            logger.info("이탈리아 드라이버 설정 완료")
             return True
-
+            
         except Exception as e:
-            logger.error(f"❌ 드라이버 설정 실패: {e}")
+            logger.error(f"드라이버 설정 실패: {e}")
             return False
-
+    
+    def is_excluded_price_element(self, element):
+        """가격 요소가 제외 대상인지 확인 (추천상품/관련상품 영역 강화)"""
+        try:
+            # 1. 요소의 HTML 확인
+            element_html = self.driver.execute_script("return arguments[0].outerHTML;", element)
+            excluded_areas = self.selectors.get('excluded_price_areas', [])
+            
+            for pattern in excluded_areas:
+                if pattern in element_html.lower():
+                    logger.debug(f"제외 영역 감지: {pattern}")
+                    return True
+            
+            # 2. centerCol 외부의 요소는 제외
+            try:
+                center_col = self.driver.execute_script("""
+                    return arguments[0].closest('#centerCol');
+                """, element)
+                if not center_col:
+                    logger.info("centerCol 외부 요소 - 제외")
+                    return True
+            except Exception as e:
+                logger.debug(f"centerCol 확인 오류: {e}")
+            
+            # 3. XPath로 요소 위치 확인
+            try:
+                element_xpath = self.driver.execute_script("""
+                    function getXPath(element) {
+                        var xpath = '';
+                        for (; element && element.nodeType == 1; element = element.parentNode) {
+                            var id = element.id;
+                            if (id) {
+                                xpath = '//' + element.tagName.toLowerCase() + '[@id="' + id + '"]' + xpath;
+                                break;
+                            } else {
+                                var sameTag = [];
+                                for (var i = 0; i < element.parentNode.childNodes.length; i++) {
+                                    var child = element.parentNode.childNodes[i];
+                                    if (child.nodeType == 1 && child.tagName == element.tagName) {
+                                        sameTag.push(child);
+                                    }
+                                }
+                                xpath = '/' + element.tagName.toLowerCase() + '[' + (sameTag.indexOf(element) + 1) + ']' + xpath;
+                            }
+                        }
+                        return xpath;
+                    }
+                    return getXPath(arguments[0]);
+                """, element)
+                
+                logger.debug(f"요소 xpath: {element_xpath}")
+                
+                # 제외할 xpath 패턴 확인
+                excluded_patterns = self.selectors.get('excluded_xpath_patterns', [])
+                for pattern in excluded_patterns:
+                    if re.search(pattern, element_xpath):
+                        logger.info(f"제외 xpath 패턴 매치: {pattern}")
+                        return True
+                
+                # div[4] 이후 영역들은 추천상품으로 간주하여 제외
+                if ('div[1]/div[4]' in element_xpath or 
+                    'div[1]/div[5]' in element_xpath or 
+                    'div[1]/div[6]' in element_xpath or
+                    'div[1]/div[7]' in element_xpath or
+                    'div[1]/div[8]' in element_xpath or
+                    'div[1]/div[9]' in element_xpath or
+                    re.search(r'div\[1\]/div\[1[0-9]\]', element_xpath)):
+                    logger.info(f"div[4] 이후 영역 제외: {element_xpath}")
+                    return True
+                    
+            except Exception as e:
+                logger.debug(f"XPath 확인 오류: {e}")
+            
+            # 4. 부모 요소들 확인
+            parent_checks = [
+                "arguments[0].closest('.product-comparison-desktop')",
+                "arguments[0].closest('[class*=\"comparison\"]')",
+                "arguments[0].closest('[class*=\"non-deal\"]')",
+                "arguments[0].closest('[class*=\"recommendations\"]')",
+                "arguments[0].closest('[class*=\"sponsored\"]')",
+                "arguments[0].closest('[class*=\"similarities\"]')",
+                "arguments[0].closest('[class*=\"also-bought\"]')",
+                "arguments[0].closest('[class*=\"also-viewed\"]')",
+                "arguments[0].closest('[class*=\"related\"]')",
+                "arguments[0].closest('[class*=\"frequently\"]')",
+                "arguments[0].closest('[class*=\"customers-also\"]')",
+                "arguments[0].closest('[id*=\"sims\"]')",
+                "arguments[0].closest('[id*=\"ads\"]')",
+                "arguments[0].closest('[data-component-type*=\"sims\"]')",
+                "arguments[0].closest('[data-feature-name*=\"sims\"]')",
+            ]
+            
+            for check in parent_checks:
+                try:
+                    parent = self.driver.execute_script(f"return {check}", element)
+                    if parent:
+                        logger.info(f"제외 상위 요소 발견")
+                        return True
+                except:
+                    continue
+            
+            # 5. 특정 ID나 클래스를 가진 상위 요소 확인
+            try:
+                excluded_containers = self.driver.execute_script("""
+                    var element = arguments[0];
+                    var excludedIds = ['dp-sims-desktop', 'similarities-desktop', 'desktop-dp-sims', 
+                                      'recommendations', 'also-bought', 'also-viewed', 'bundleV2'];
+                    var excludedClasses = ['sims-', 'recommendations', 'also-', 'sponsored', 'ads-'];
+                    
+                    while (element && element !== document.body) {
+                        if (element.id) {
+                            for (var i = 0; i < excludedIds.length; i++) {
+                                if (element.id.indexOf(excludedIds[i]) !== -1) {
+                                    return true;
+                                }
+                            }
+                        }
+                        if (element.className && typeof element.className === 'string') {
+                            for (var i = 0; i < excludedClasses.length; i++) {
+                                if (element.className.indexOf(excludedClasses[i]) !== -1) {
+                                    return true;
+                                }
+                            }
+                        }
+                        element = element.parentElement;
+                    }
+                    return false;
+                """, element)
+                
+                if excluded_containers:
+                    logger.info("제외 컨테이너 내부 요소 감지")
+                    return True
+            except Exception as e:
+                logger.debug(f"컨테이너 확인 오류: {e}")
+            
+            return False
+        except Exception as e:
+            logger.debug(f"제외 요소 확인 오류: {e}")
+            return False
+    
     def is_page_blocked(self):
-        """페이지 차단 감지"""
+        """이탈리아 페이지 차단 감지"""
         try:
             page_title = self.driver.title.lower()
             page_source = self.driver.page_source.lower()
             current_url = self.driver.current_url.lower()
-
+            
+            # 기본 도메인 확인
+            if 'amazon' not in current_url:
+                logger.info("Amazon 도메인이 아닌 페이지")
+                return True
+            
+            # 먼저 정상 제품 페이지인지 확인 (우선순위)
+            try:
+                normal_page_indicators = [
+                    "//span[@id='productTitle']",
+                    "//div[@id='feature-bullets']", 
+                    "//div[@id='centerCol']",
+                    "//div[@id='dp-container']",
+                    "//div[@id='apex_desktop']"
+                ]
+                
+                for selector in normal_page_indicators:
+                    try:
+                        element = self.driver.find_element(By.XPATH, selector)
+                        if element and element.is_displayed():
+                            logger.debug("정상 제품 페이지 요소 발견 - 정상 페이지로 판단")
+                            return False  # 정상 페이지
+                    except:
+                        continue
+                        
+            except Exception as e:
+                logger.debug(f"정상 페이지 확인 중 오류: {e}")
+            
+            # 정상 페이지 요소가 없을 때만 차단 페이지 확인
+            # 이탈리아 심각한 차단 지표
             serious_blocked_indicators = {
-                'title': ['503', 'access denied', 'error has occurred', 'sorry'],
-                'content': ['enter the characters', 'verify you are human', 'access denied', 'automated access', 'suspicious activity', 'robot check']
+                'title': [
+                    '503',
+                    'access denied',
+                    'accesso negato',
+                    'error has occurred',
+                    'errore',
+                    'ci dispiace'
+                ],
+                'content': [
+                    'enter the characters',
+                    'inserisci i caratteri',
+                    'verify you are human',
+                    'controlla di essere umano',
+                    'access denied',
+                    'accesso negato',
+                    'automated access',
+                    'suspicious activity',
+                    'attività sospetta',
+                    'si è verificato un errore',
+                    'ci dispiace'
+                ]
             }
-
+            
             for pattern in serious_blocked_indicators['title']:
                 if pattern in page_title:
-                    logger.warning(f"🚫 차단 감지 (제목): '{pattern}' in '{page_title}'")
+                    logger.warning(f"이탈리아 심각한 차단 감지 (제목): {pattern}")
                     return True
-
-            for pattern in serious_blocked_indicators['content']:
-                if pattern in page_source:
-                    logger.warning(f"🚫 차단 감지 (본문): '{pattern}'")
-                    try:
-                        local_time = datetime.now(self.local_tz)
-                        screenshot_name = f"blocked_{self.country_code}_{local_time.strftime('%Y%m%d_%H%M%S')}.png"
-                        self.driver.save_screenshot(screenshot_name)
-                        logger.info(f"📸 차단 페이지 스크린샷 저장: {screenshot_name}")
-                    except:
-                        pass
-                    return True
-
-            if 'amazon' not in current_url:
-                logger.warning(f"🚫 Amazon 페이지가 아님: {current_url}")
-                return True
-
-            return False
-
+            
+            # "Ci dispiace" 오류는 차단이 아닌 처리 가능한 오류로 분류
+            if ('ci dispiace' in page_source and 
+                'continua lo shopping' not in page_source and 
+                'continue shopping' not in page_source and
+                'clicca qui per tornare' not in page_source):
+                # 홈페이지 링크도 없으면 심각한 차단
+                for pattern in serious_blocked_indicators['content']:
+                    if pattern in page_source and pattern not in ['ci dispiace', 'si è verificato un errore']:
+                        logger.warning(f"이탈리아 심각한 차단 감지 (본문): {pattern}")
+                        return True
+            
+            return False  # 기본적으로 정상으로 판단
+            
         except Exception as e:
-            logger.error(f"페이지 차단 확인 중 오류: {e}")
-            return False
-
+            logger.error(f"이탈리아 페이지 차단 확인 중 오류: {e}")
+            return False  # 오류 시 정상으로 판단
+    
     def wait_for_page_load(self, timeout=10):
-        """페이지 로드 대기"""
+        """이탈리아 페이지 로드 대기"""
         try:
             self.wait.until(
                 lambda driver: driver.execute_script("return document.readyState") == "complete"
             )
-
+            
+            # 이탈리아 페이지 요소 확인
             possible_elements = [
                 (By.ID, "productTitle"),
                 (By.ID, "priceblock_ourprice"),
                 (By.CLASS_NAME, "a-price-whole"),
                 (By.ID, "availability"),
-                (By.ID, "imageBlock")
+                (By.ID, "imageBlock"),
+                (By.ID, "corePrice_feature_div"),
+                (By.ID, "corePriceDisplay_desktop_feature_div")
             ]
-
+            
             for by, value in possible_elements:
                 try:
-                    WebDriverWait(self.driver, 3).until(EC.presence_of_element_located((by, value)))
-                    logger.debug(f"✅ 요소 발견: {by}={value}")
+                    WebDriverWait(self.driver, 3).until(
+                        EC.presence_of_element_located((by, value))
+                    )
+                    logger.debug(f"이탈리아 요소 발견: {by}={value}")
                     return True
                 except:
                     continue
-
+            
             return True
-
+            
         except Exception as e:
-            logger.warning(f"페이지 로드 대기 중 오류: {e}")
+            logger.warning(f"이탈리아 페이지 로드 대기 중 오류: {e}")
             return False
 
+    def handle_captcha_or_block_page(self, original_url=None):
+        """이탈리아 차단 페이지나 캡차 처리"""
+        try:
+            logger.info("이탈리아 차단/캡차 페이지 확인 중...")
+            
+            # 먼저 정상 페이지인지 확인 (불필요한 처리 방지)
+            try:
+                normal_check = self.driver.find_element(By.XPATH, "//span[@id='productTitle']")
+                if normal_check and normal_check.is_displayed():
+                    logger.info("정상 제품 페이지 확인됨 - 처리 불필요")
+                    return True
+            except:
+                pass
+            
+            page_source = self.driver.page_source.lower()
+            page_title = self.driver.title.lower()
+            
+            # 1. "Ci dispiace" 오류 페이지 정확한 감지
+            ci_dispiace_indicators = [
+                'ci dispiace' in page_title,
+                'si è verificato un errore quando abbiamo tentato di elaborare la richiesta' in page_source,
+                'stiamo lavorando al problema' in page_source,
+                'clicca qui per tornare alla home page di amazon.it' in page_source,
+                'non sarà stato elaborato per il momento' in page_source
+            ]
+            
+            if sum(ci_dispiace_indicators) >= 2:
+                logger.info("이탈리아 'Ci dispiace' 오류 페이지 확인됨")
+                
+                # "Clicca qui per tornare alla home page di Amazon.it" 링크 찾기
+                home_link_selectors = [
+                    "//a[contains(text(), 'Clicca qui per tornare alla home page')]",
+                    "//a[contains(text(), 'tornare alla home page')]",
+                    "//a[contains(text(), 'home page di Amazon')]",
+                    "//a[contains(@href, 'amazon.it') and contains(text(), 'home')]",
+                    "//a[contains(text(), 'Amazon.it') and contains(text(), 'home')]"
+                ]
+                
+                for selector in home_link_selectors:
+                    try:
+                        logger.info(f"이탈리아 홈페이지 링크 찾기 시도: {selector}")
+                        
+                        link = self.driver.find_element(By.XPATH, selector)
+                        
+                        if link and link.is_displayed():
+                            link_text = link.text
+                            logger.info(f"이탈리아 홈페이지 링크 발견: '{link_text}'")
+                            
+                            # 홈페이지 링크 클릭
+                            self.driver.execute_script("arguments[0].scrollIntoView();", link)
+                            time.sleep(1)
+                            
+                            try:
+                                link.click()
+                                logger.info("이탈리아 홈페이지 링크 클릭 성공")
+                            except:
+                                self.driver.execute_script("arguments[0].click();", link)
+                                logger.info("이탈리아 홈페이지 링크 JavaScript 클릭 성공")
+                            
+                            time.sleep(3)
+                            
+                            # 원래 URL로 다시 이동
+                            if original_url:
+                                logger.info(f"원래 URL로 재접속: {original_url}")
+                                self.driver.get(original_url)
+                                time.sleep(3)
+                                return True
+                            else:
+                                logger.info("이탈리아 홈페이지 이동 완료")
+                                return True
+                                
+                    except Exception as e:
+                        logger.debug(f"이탈리아 홈페이지 링크 오류: {e}")
+                        continue
+                
+                # 홈페이지 링크를 찾지 못했으면 직접 홈페이지로 이동
+                logger.info("이탈리아 홈페이지 링크를 찾지 못함, 직접 이동")
+                self.driver.get("https://www.amazon.it/")
+                time.sleep(3)
+                
+                if original_url:
+                    logger.info(f"원래 URL로 재접속: {original_url}")
+                    self.driver.get(original_url)
+                    time.sleep(3)
+                
+                return True
+            
+            # 2. 일반 Continue 버튼 처리 (Ci dispiace가 아닌 경우에만)
+            if 'ci dispiace' not in page_title and 'ci dispiace' not in page_source:
+                for selector in self.selectors['continue_buttons']:
+                    try:
+                        logger.info(f"이탈리아 Continue 버튼 찾기 시도: {selector}")
+                        
+                        if selector.startswith('//'):
+                            button = self.driver.find_element(By.XPATH, selector)
+                        else:
+                            button = self.driver.find_element(By.CSS_SELECTOR, selector)
+                        
+                        if button and button.is_displayed():
+                            button_text = button.text
+                            logger.info(f"이탈리아 Continue 버튼 발견: {selector} (텍스트: '{button_text}')")
+                            
+                            self.driver.execute_script("arguments[0].scrollIntoView();", button)
+                            time.sleep(1)
+                            
+                            try:
+                                button.click()
+                                logger.info("이탈리아 Continue 버튼 클릭 성공")
+                            except:
+                                self.driver.execute_script("arguments[0].click();", button)
+                                logger.info("이탈리아 Continue 버튼 JavaScript 클릭 성공")
+                            
+                            time.sleep(3)
+                            return True
+                            
+                    except Exception as e:
+                        logger.debug(f"이탈리아 Continue 버튼 오류: {e}")
+                        continue
+            
+            logger.debug("이탈리아 처리 가능한 버튼을 찾을 수 없음")
+            return False
+            
+        except Exception as e:
+            logger.error(f"이탈리아 차단 페이지 처리 중 오류: {e}")
+            return False
+    
+    def extract_clean_text_from_element(self, element, element_name="요소"):
+        """요소에서 깨끗한 텍스트 추출"""
+        try:
+            text_methods = [
+                element.get_attribute('textContent'),
+                element.get_attribute('innerText'),
+                element.text
+            ]
+            
+            for text in text_methods:
+                if text and text.strip():
+                    clean_text = text.strip()
+                    
+                    if element_name in ["Ships From", "Sold By"]:
+                        clean_text = self.clean_ships_sold_text(clean_text, element_name)
+                    
+                    if clean_text:
+                        return clean_text
+            
+            return None
+        except Exception as e:
+            logger.debug(f"텍스트 추출 오류: {e}")
+            return None
+    
+    def clean_ships_sold_text(self, text, element_type):
+        """Ships From / Sold By 텍스트 정리 (이탈리아 특화)"""
+        try:
+            label_patterns = {
+                'Ships From': ['ships from', 'fulfilled by', 'spedito da'],
+                'Sold By': ['sold by', 'venduto da']
+            }
+            
+            text_lower = text.lower().strip()
+            patterns = label_patterns.get(element_type, [])
+            
+            # 라벨만 있는 경우 스킵
+            if text_lower in patterns:
+                return None
+            
+            # 패턴 매칭 및 텍스트 추출
+            for pattern in patterns:
+                if text_lower.startswith(pattern + ' '):
+                    # "Fulfilled by Amazon" -> "Amazon" 추출
+                    actual_value = text[len(pattern):].strip()
+                    if actual_value:
+                        return actual_value
+                
+                # 패턴이 텍스트 중간에 있는 경우도 처리
+                if pattern in text_lower:
+                    # 패턴 이후의 텍스트 추출
+                    pattern_index = text_lower.find(pattern)
+                    if pattern_index >= 0:
+                        after_pattern = text[pattern_index + len(pattern):].strip()
+                        if after_pattern:
+                            return after_pattern
+            
+            return text
+        except Exception as e:
+            logger.debug(f"텍스트 정리 오류: {e}")
+            return text
+    
     def extract_element_text(self, selectors, element_name="요소"):
-        """선택자 목록에서 텍스트 추출"""
-        logger.debug(f"🔍 {element_name} 추출 시작 - 총 {len(selectors)}개 선택자")
-
+        """선택자 목록에서 텍스트 추출 (가격만 필터링 적용)"""
+        logger.info(f"이탈리아 {element_name} 추출 시작 - 총 {len(selectors)}개 선택자")
+        
         for idx, selector in enumerate(selectors, 1):
             try:
-                logger.debug(f"  [{idx}/{len(selectors)}] 시도 중: {selector}")
-
+                logger.info(f"[{idx}/{len(selectors)}] 시도: {selector}")
+                
                 if selector.startswith('//') or selector.startswith('('):
                     elements = self.driver.find_elements(By.XPATH, selector)
                     selector_type = "XPath"
                 else:
                     elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
                     selector_type = "CSS"
-
-                logger.debug(f"      타입: {selector_type}, 발견: {len(elements)}개")
-
+                
+                logger.info(f"타입: {selector_type}, 발견: {len(elements)}개")
+                
                 if elements:
                     for i, element in enumerate(elements):
                         try:
                             if element.is_displayed():
-                                text1 = element.text.strip()
-                                text2 = element.get_attribute('textContent').strip() if element.get_attribute('textContent') else ""
-                                text3 = element.get_attribute('innerText').strip() if element.get_attribute('innerText') else ""
-
-                                text = max([text1, text2, text3], key=len)
-
+                                # 가격 요소만 강화된 필터링 적용
+                                if element_name == "가격" and self.is_excluded_price_element(element):
+                                    continue
+                                
+                                text = self.extract_clean_text_from_element(element, element_name)
                                 if text:
-                                    logger.debug(f"      ✅ 추출 성공: '{text[:100]}'")
+                                    logger.info(f"이탈리아 최종 추출 성공: '{text}'")
                                     return text
                         except Exception as e:
-                            logger.debug(f"      요소 처리 중 오류: {e}")
-
-            except Exception as e:
-                logger.debug(f"      ❌ 선택자 오류: {str(e)}")
-                continue
-
-        logger.debug(f"❌ {element_name} 추출 실패")
-        return None
-
-    def extract_price(self):
-        """가격 추출"""
-        logger.info(f"💰 가격 추출 시작 - 국가: {self.country_code}")
-
-        excluded_areas = [
-            "#similarities_feature_div", "#sp_detail", "#bookDescription_feature_div",
-            "#books-entity-details", "#compare-table", "[data-cel-widget*='comparison']",
-            "[data-cel-widget*='sponsored']", ".s-result-item", ".a-carousel-card",
-            ".acs-shwcs-widget", "#customer_also_viewed_feature_div",
-            "#similarities-widget", ".a-accordion-inner"
-        ]
-
-        main_product_areas = ["#dp-container", "#centerCol", "#rightCol", "#apex_desktop"]
-
-        price_selectors = self.selectors[self.country_code].get('price', [])
-
-        for idx, selector in enumerate(price_selectors, 1):
-            try:
-                logger.debug(f"  [{idx}/{len(price_selectors)}] 가격 선택자 시도: {selector}")
-
-                if selector.startswith('//') or selector.startswith('('):
-                    elements = self.driver.find_elements(By.XPATH, selector)
-                    selector_type = "XPath"
-                else:
-                    elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                    selector_type = "CSS"
-
-                logger.debug(f"      타입: {selector_type}, 발견: {len(elements)}개")
-
-                for i, element in enumerate(elements):
-                    try:
-                        if not element.is_displayed():
-                            continue
-
-                        is_in_excluded_area = False
-
-                        for excluded_selector in excluded_areas:
-                            try:
-                                excluded_elements = self.driver.find_elements(By.CSS_SELECTOR, excluded_selector)
-                                for excluded_area in excluded_elements:
-                                    if self.driver.execute_script("return arguments[0].contains(arguments[1]);", excluded_area, element):
-                                        is_in_excluded_area = True
-                                        break
-                                if is_in_excluded_area:
-                                    break
-                            except:
-                                continue
-
-                        if is_in_excluded_area:
-                            continue
-
-                        is_in_main_area = False
-
-                        for main_selector in main_product_areas:
-                            try:
-                                main_area = self.driver.find_element(By.CSS_SELECTOR, main_selector)
-                                if self.driver.execute_script("return arguments[0].contains(arguments[1]);", main_area, element):
-                                    is_in_main_area = True
-                                    break
-                            except:
-                                continue
-
-                        if not is_in_main_area:
-                            element_class = element.get_attribute('class') or ''
-                            if 'a-price' in element_class:
-                                is_in_main_area = True
-                            else:
-                                continue
-
-                        text1 = element.text.strip()
-                        text2 = element.get_attribute('textContent').strip() if element.get_attribute('textContent') else ""
-                        text3 = element.get_attribute('innerText').strip() if element.get_attribute('innerText') else ""
-
-                        price_text = max([text1, text2, text3], key=len)
-
-                        if price_text:
-                            price = self.parse_italian_price(price_text)
-                            if price and price > 0:
-                                logger.info(f"✅ 가격 추출 성공: {price} (원본: {price_text})")
-                                return price
-
-                    except Exception as e:
-                        logger.debug(f"요소 처리 오류: {e}")
-
+                            logger.debug(f"요소 처리 중 오류: {e}")
+                
             except Exception as e:
                 logger.debug(f"선택자 오류: {str(e)}")
-
-        logger.warning("❌ 메인 영역에서 가격을 찾을 수 없음")
+                continue
+        
+        logger.error(f"이탈리아 {element_name} 추출 완전 실패")
         return None
-
+    
     def parse_italian_price(self, price_text):
         """이탈리아 가격 파싱 (€ 통화, 쉼표 소수점)"""
         try:
             price_text = price_text.strip()
             logger.debug(f"이탈리아 가격 파싱: '{price_text}'")
-
+            
             # 무효한 패턴 확인
             invalid_patterns = [
                 r'^[a-zA-Z\s]+$',
@@ -416,20 +804,20 @@ class AmazonScraper:
                 r'list\s*price',
                 r'buy\s*used'
             ]
-
+            
             for pattern in invalid_patterns:
                 if re.search(pattern, price_text, re.IGNORECASE):
                     logger.debug(f"무효한 가격 패턴 감지: {pattern}")
                     return None
-
+            
             # 유로 기호와 공백 제거
             cleaned = re.sub(r'[€\s]', '', price_text)
             logger.debug(f"통화 제거 후: '{cleaned}'")
-
+            
             # 빈 문자열 체크
             if not cleaned:
                 return None
-
+            
             # 이탈리아 형식: 61,84 또는 1.234,56
             if ',' in cleaned:
                 # 쉼표가 있으면 마지막 쉼표를 소수점으로 처리
@@ -440,21 +828,21 @@ class AmazonScraper:
                     decimal_part = parts[1]
                     final_price = f"{integer_part}.{decimal_part}"
                     logger.debug(f"이탈리아 쉼표→점 변환: '{final_price}'")
-
+                    
                     # 최종 검증
                     if re.match(r'^\d+\.\d{1,2}$', final_price):
                         return final_price
                 else:
                     # 쉼표가 있지만 소수점이 아닌 경우
                     cleaned = cleaned.replace(',', '')
-
+            
             # 끝에 점만 있는 경우 처리 (예: "294." -> "294")
             if cleaned.endswith('.') and len(cleaned) > 1:
                 cleaned_no_dot = cleaned[:-1]
                 if cleaned_no_dot.isdigit():
                     logger.debug(f"끝 점 제거: '{cleaned}' -> '{cleaned_no_dot}'")
                     cleaned = cleaned_no_dot
-
+            
             # 정수 가격 또는 점으로 구분된 가격
             if re.match(r'^\d+(\.\d{1,2})?$', cleaned):
                 try:
@@ -468,57 +856,239 @@ class AmazonScraper:
                 except Exception as e:
                     logger.debug(f"float 변환 실패: {cleaned} - {e}")
                     pass
-
+                
         except Exception as e:
             logger.debug(f"이탈리아 가격 파싱 오류: {price_text} - {e}")
-
+            
         return None
-
-    def validate_seller_info(self, ships_from, sold_by):
-        """ships_from과 sold_by 정보 검증"""
+    
+    def extract_price(self):
+        """이탈리아 가격 추출 (개선된 버전) - 메인 상품 영역만 타겟팅"""
+        logger.info("이탈리아 가격 추출 시작 (메인 상품 영역만)")
+        
+        # 1단계: 메인 신품 가격 추출 (centerCol 내부만)
+        price_selectors = self.selectors.get('price', [])
+        
+        for idx, selector in enumerate(price_selectors, 1):
+            try:
+                logger.info(f"[신품 {idx}/{len(price_selectors)}] 시도: {selector}")
+                
+                if selector.startswith('//') or selector.startswith('('):
+                    elements = self.driver.find_elements(By.XPATH, selector)
+                else:
+                    elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                
+                for element in elements:
+                    try:
+                        if element.is_displayed():
+                            if self.is_excluded_price_element(element):
+                                continue
+                            
+                            text = self.extract_clean_text_from_element(element, "가격")
+                            if text:
+                                logger.info(f"이탈리아 1단계 추출된 텍스트: '{text}'")
+                                
+                                # 끝에 점이 있거나 2자리 이하 숫자만 있으면 분리된 가격으로 판단
+                                if text.endswith('.') or (text.isdigit() and len(text) <= 2):
+                                    logger.info(f"분리된 가격 감지: '{text}' - whole+fraction 조합 시도")
+                                    continue  # 1단계 건너뛰고 2단계 whole+fraction으로
+                                
+                                price = self.parse_italian_price(text)
+                                if price:
+                                    logger.info(f"이탈리아 가격 추출 성공: {price}")
+                                    return price
+                                else:
+                                    logger.debug(f"파싱 실패한 텍스트: '{text}'")
+                    except Exception as e:
+                        logger.debug(f"요소 처리 오류: {e}")
+                        continue
+            except Exception as e:
+                logger.debug(f"선택자 오류: {e}")
+                continue
+        
+        # 2단계: whole + fraction 조합 시도 (centerCol 내부만)
+        logger.info("이탈리아 whole + fraction 조합 시도 (centerCol 내부만)")
+        whole_fraction_selectors = [
+            ("//*[@id='centerCol']//*[@id='corePrice_feature_div']//span[@class='a-price-whole']", 
+             "//*[@id='centerCol']//*[@id='corePrice_feature_div']//span[@class='a-price-fraction']"),
+            ("//*[@id='centerCol']//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-price-whole']", 
+             "//*[@id='centerCol']//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-price-fraction']"),
+            ("//div[@id='centerCol']//span[@class='a-price-whole']", 
+             "//div[@id='centerCol']//span[@class='a-price-fraction']")
+        ]
+        
+        for whole_xpath, fraction_xpath in whole_fraction_selectors:
+            try:
+                whole_elem = self.driver.find_element(By.XPATH, whole_xpath)
+                fraction_elem = self.driver.find_element(By.XPATH, fraction_xpath)
+                
+                if (whole_elem and fraction_elem and 
+                    whole_elem.is_displayed() and fraction_elem.is_displayed()):
+                    
+                    # 제외 요소 확인
+                    if (self.is_excluded_price_element(whole_elem) or 
+                        self.is_excluded_price_element(fraction_elem)):
+                        continue
+                    
+                    whole_text = whole_elem.text.strip()
+                    fraction_text = fraction_elem.text.strip()
+                    
+                    logger.info(f"이탈리아 정수부: {whole_text}, 소수부: {fraction_text}")
+                    
+                    if whole_text and fraction_text:
+                        # 정수부에서도 숫자가 아닌 문자 제거
+                        whole_clean = re.sub(r'[^\d]', '', whole_text)
+                        fraction_clean = re.sub(r'[^\d]', '', fraction_text)
+                        if whole_clean and fraction_clean:
+                            combined_price = f"{whole_clean}.{fraction_clean}"
+                            logger.info(f"이탈리아 조합된 가격: {combined_price}")
+                            
+                            price = self.parse_italian_price(combined_price)
+                            if price:
+                                logger.info(f"이탈리아 조합 가격 추출 성공: {price}")
+                                return price
+            except Exception as e:
+                logger.debug(f"조합 오류: {e}")
+                continue
+        
+        logger.error("이탈리아 모든 방법으로 가격 추출 실패 (메인 상품 영역만 검색)")
+        return None
+    
+    def check_stock_availability(self):
+        """이탈리아 재고 상태 확인"""
         try:
-            ships_from_exists = ships_from and str(ships_from).strip()
-            sold_by_exists = sold_by and str(sold_by).strip()
-
-            logger.info(f"🔍 판매자 정보 확인: ships_from='{ships_from}', sold_by='{sold_by}'")
-            logger.info(f"   ships_from 존재: {ships_from_exists}, sold_by 존재: {sold_by_exists}")
-
-            if not ships_from_exists and not sold_by_exists:
-                logger.warning("⚠️ ships_from과 sold_by 모두 비어있음 - 가격 0 설정")
-                return False
-
-            logger.info("✅ 판매자 정보 있음 - 정상 가격 추출 진행")
+            # 이탈리아 availability 요소 확인
+            try:
+                availability_elem = self.driver.find_element(By.ID, "availability")
+                availability_text = availability_elem.text.lower()
+                
+                # 이탈리아 재고 없음 메시지 확인
+                italian_out_of_stock = [
+                    'attualmente non disponibile',
+                    'non disponibile', 
+                    'esaurito',
+                    'temporaneamente non disponibile',
+                    'currently unavailable',
+                    'out of stock',
+                    'temporarily out of stock'
+                ]
+                
+                if any(phrase in availability_text for phrase in italian_out_of_stock):
+                    logger.info(f"이탈리아 재고 없음: {availability_text}")
+                    return False
+                    
+                # 이탈리아 재고 있음 메시지 확인
+                italian_in_stock = [
+                    'disponibile',
+                    'in stock',
+                    'disponibilità immediata',
+                    'pronto per la spedizione',
+                    'only',
+                    'left in stock',
+                    'disponibili'
+                ]
+                
+                if any(phrase in availability_text for phrase in italian_in_stock):
+                    logger.info(f"이탈리아 재고 있음: {availability_text}")
+                    return True
+                    
+            except NoSuchElementException:
+                logger.debug("이탈리아 availability 요소를 찾을 수 없음")
+            
+            # 구매 버튼 확인
+            buy_buttons = [
+                "add-to-cart-button",
+                "buy-now-button",
+                "add-to-cart-button-ubb"
+            ]
+            
+            for button_id in buy_buttons:
+                try:
+                    button = self.driver.find_element(By.ID, button_id)
+                    if button and button.is_enabled():
+                        logger.info("이탈리아 구매 버튼 활성화 - 재고 있음")
+                        return True
+                except:
+                    continue
+            
+            logger.info("이탈리아 재고 상태 불명확 - 기본값: 재고 있음")
             return True
-
+            
         except Exception as e:
-            logger.error(f"판매자 정보 검증 오류: {e}")
+            logger.warning(f"이탈리아 재고 확인 중 오류: {e}")
             return True
 
     def extract_product_info(self, url, row_data, retry_count=0, max_retries=3):
-        """제품 정보 추출 (V2: 타임존 분리)"""
+        """이탈리아 제품 정보 추출"""
         try:
-            logger.info(f"\n{'='*60}")
-            logger.info(f"🔍 제품 정보 추출 시작")
-            logger.info(f"📌 URL: {url}")
-            logger.info(f"📌 브랜드: {row_data.get('brand', 'N/A')}")
-            logger.info(f"📌 제품: {row_data.get('item', 'N/A')}")
-
+            logger.info("=" * 60)
+            logger.info("이탈리아 제품 정보 추출 시작")
+            logger.info(f"URL: {url}")
+            logger.info(f"브랜드: {row_data.get('brand', 'N/A')}")
+            logger.info(f"제품: {row_data.get('item', 'N/A')}")
+            
             self.driver.get(url)
-            time.sleep(random.uniform(2, 4))
-
+            time.sleep(random.uniform(3, 5))
+            
+            # 차단 페이지 확인 및 처리
             if self.is_page_blocked():
-                logger.warning("⚠️ 차단 페이지 감지됨")
-                raise Exception("페이지 차단 감지")
-
-            self.wait_for_page_load()
-
+                logger.info("이탈리아 차단 페이지 감지 - 복구 시도")
+                if self.handle_captcha_or_block_page(original_url=url):
+                    logger.info("이탈리아 차단 페이지 복구 완료")
+                    time.sleep(3)
+                    self.wait_for_page_load()
+                else:
+                    raise Exception("이탈리아 차단 페이지 복구 실패")
+            
+            # 복구 후 현재 URL 확인
+            current_url = self.driver.current_url.lower()
+            logger.info(f"현재 페이지 URL: {current_url}")
+            
+            # 정상 Amazon 제품 페이지인지 확인
+            if 'amazon.it' not in current_url:
+                logger.warning("Amazon 이탈리아 도메인이 아닌 페이지")
+                raise Exception("Amazon 이탈리아 도메인이 아닌 페이지로 이동됨")
+            
+            # 제품 페이지 요소 존재 확인으로 정상 페이지 판단
+            try:
+                basic_elements = [
+                    "//span[@id='productTitle']",
+                    "//div[@id='feature-bullets']",
+                    "//div[@id='centerCol']",
+                    "//div[@id='dp-container']"
+                ]
+                
+                page_valid = False
+                for selector in basic_elements:
+                    try:
+                        element = self.driver.find_element(By.XPATH, selector)
+                        if element:
+                            page_valid = True
+                            break
+                    except:
+                        continue
+                
+                if not page_valid:
+                    logger.warning("제품 페이지 요소를 찾을 수 없음")
+                    raise Exception("유효한 제품 페이지가 아님")
+                    
+                logger.info("정상 제품 페이지 확인됨")
+                
+            except Exception as e:
+                logger.error(f"제품 페이지 검증 실패: {e}")
+                raise Exception("제품 페이지 접근 실패")
+            
             # V2: 타임존 분리
-            local_time = datetime.now(self.local_tz)
-            korea_time = datetime.now(self.korea_tz)
 
+            
+            now_time = datetime.now(self.korea_tz)
+
+            
+            local_time = datetime.now(self.local_tz)
+            
             result = {
                 'retailerid': row_data.get('retailerid', ''),
-                'country_code': self.country_code,
+                'country_code': 'it',
                 'ships_from': None,
                 'channel': row_data.get('channel', 'Online'),
                 'retailersku': row_data.get('retailersku', ''),
@@ -530,84 +1100,111 @@ class AmazonScraper:
                 'segment_lv3': row_data.get('seg_lv3', ''),
                 'capacity': row_data.get('capacity', ''),
                 'item': row_data.get('item', ''),
-                'crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M'),
-                'crawl_strdatetime': local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4],
-                'kr_crawl_datetime': korea_time.strftime('%Y-%m-%d %H:%M'),
-                'kr_crawl_strdatetime': korea_time.strftime('%Y%m%d%H%M%S') + f"{korea_time.microsecond:06d}"[:4],
                 'retailprice': None,
                 'sold_by': None,
                 'imageurl': None,
                 'producturl': url,
+                'crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'local_crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M:%S'),  # V2: 현지시간
+                'crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4],
                 'title': None,
                 'vat': row_data.get('vat', 'o')
             }
-
-            result['title'] = self.extract_element_text(self.selectors[self.country_code].get('title', []), "제목")
-            result['sold_by'] = self.extract_element_text(self.selectors[self.country_code].get('sold_by', []), "판매자")
-            result['ships_from'] = self.extract_element_text(self.selectors[self.country_code].get('ships_from', []), "배송지")
-
-            seller_info_valid = self.validate_seller_info(result['ships_from'], result['sold_by'])
-
-            if not seller_info_valid:
+            
+            # 제목 추출
+            result['title'] = self.extract_element_text(
+                self.selectors['title'], 
+                "제목"
+            )
+            
+            # 재고 확인
+            has_stock = self.check_stock_availability()
+            
+            # Ships From 추출 (기본 추출만, 추가 필터링 없음)
+            result['ships_from'] = self.extract_element_text(
+                self.selectors['ships_from'], 
+                "Ships From"
+            )
+            
+            # Sold By 추출 (기본 추출만, 추가 필터링 없음)
+            result['sold_by'] = self.extract_element_text(
+                self.selectors['sold_by'], 
+                "Sold By"
+            )
+            
+            # Ships From과 Sold By가 모두 없으면 가격도 빈 값으로 처리
+            if not result['ships_from'] and not result['sold_by']:
+                logger.warning("Ships From과 Sold By가 모두 없음 - 가격을 빈 값으로 설정")
                 result['retailprice'] = None
-                logger.info("💰 최종 가격: None (이유: 판매자 정보 없음)")
             else:
-                logger.info("💰 가격 추출 시작 (판매자 정보 있음)")
+                # 가격 추출 (개선된 메서드 사용 - 메인 영역만)
+                logger.info("이탈리아 가격 추출 시도")
                 result['retailprice'] = self.extract_price()
-
-                if result['retailprice'] is not None:
-                    logger.info(f"💰 최종 가격: {result['retailprice']} (정상 추출)")
-                else:
-                    logger.warning("💰 최종 가격: None (추출 실패)")
-
-            for selector in self.selectors[self.country_code].get('imageurl', []):
+                
+                # 가격 범위 검증
+                if result['retailprice']:
+                    try:
+                        price_value = float(re.sub(r'[^\d.]', '', str(result['retailprice'])))
+                        if price_value < 1 or price_value > 50000:
+                            logger.warning(f"이탈리아 비정상적인 가격: {result['retailprice']}")
+                            result['retailprice'] = None
+                    except:
+                        result['retailprice'] = None
+                
+                # 재고 없을 때 가격 처리
+                if not has_stock and result['retailprice'] is None:
+                    result['retailprice'] = None
+            
+            # 이미지 URL 추출
+            for selector in self.selectors['imageurl']:
                 try:
                     if selector.startswith('//'):
                         element = self.driver.find_element(By.XPATH, selector)
                     else:
                         element = self.driver.find_element(By.CSS_SELECTOR, selector)
-
+                    
                     result['imageurl'] = element.get_attribute('src')
                     if result['imageurl']:
-                        logger.debug(f"✅ 이미지 URL 추출 성공")
+                        logger.debug("이탈리아 이미지 URL 추출 성공")
                         break
                 except:
                     continue
-
-            logger.info(f"\n📊 추출 결과:")
-            logger.info(f"   📌 제목: {result['title'][:50] + '...' if result['title'] and len(result['title']) > 50 else result['title']}")
-            logger.info(f"   💰 가격: {result['retailprice']}")
-            logger.info(f"   🖼️ 이미지: {'있음' if result['imageurl'] else '없음'}")
-            logger.info(f"   🏪 판매자: {result['sold_by']}")
-            logger.info(f"   📦 배송지: {result['ships_from']}")
-            logger.info(f"   ⏰ 호주 시간: {result['crawl_datetime']}")
-            logger.info(f"   ⏰ 한국 시간: {result['kr_crawl_datetime']}")
-
+            
+            logger.info("이탈리아 추출 결과:")
+            logger.info(f"제목: {result['title'][:50] + '...' if result['title'] and len(result['title']) > 50 else result['title']}")
+            logger.info(f"가격: {result['retailprice']}")
+            logger.info(f"이미지: {'있음' if result['imageurl'] else '없음'}")
+            logger.info(f"판매자: {result['sold_by']}")
+            logger.info(f"배송지: {result['ships_from']}")
+            
             return result
-
+            
         except Exception as e:
-            logger.error(f"❌ 페이지 처리 오류: {e}")
-
+            logger.error(f"이탈리아 페이지 처리 오류: {e}")
+            
             if retry_count < max_retries:
                 wait_time = (retry_count + 1) * 10
-                logger.info(f"🔄 {wait_time}초 후 재시도... ({retry_count + 1}/{max_retries})")
+                logger.info(f"이탈리아 {wait_time}초 후 재시도... ({retry_count + 1}/{max_retries})")
                 time.sleep(wait_time)
-
+                
                 try:
                     self.driver.refresh()
                 except:
-                    logger.info("🔧 드라이버 재시작 중...")
+                    logger.info("이탈리아 드라이버 재시작 중...")
                     self.driver.quit()
                     self.setup_driver()
-
+                
                 return self.extract_product_info(url, row_data, retry_count + 1, max_retries)
+            
+            # 실패 시 기본 결과 반환
+            # V2: 타임존 분리
+
+            now_time = datetime.now(self.korea_tz)
 
             local_time = datetime.now(self.local_tz)
-            korea_time = datetime.now(self.korea_tz)
-
             return {
                 'retailerid': row_data.get('retailerid', ''),
-                'country_code': self.country_code,
+                'country_code': 'it',
                 'ships_from': None,
                 'channel': row_data.get('channel', 'Online'),
                 'retailersku': row_data.get('retailersku', ''),
@@ -619,77 +1216,59 @@ class AmazonScraper:
                 'segment_lv3': row_data.get('seg_lv3', ''),
                 'capacity': row_data.get('capacity', ''),
                 'item': row_data.get('item', ''),
-                'crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M'),
-                'crawl_strdatetime': local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4],
-                'kr_crawl_datetime': korea_time.strftime('%Y-%m-%d %H:%M'),
-                'kr_crawl_strdatetime': korea_time.strftime('%Y%m%d%H%M%S') + f"{korea_time.microsecond:06d}"[:4],
                 'retailprice': None,
                 'sold_by': None,
                 'imageurl': None,
                 'producturl': url,
+                'crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'local_crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M:%S'),  # V2: 현지시간
+                'crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4],
                 'title': None,
                 'vat': row_data.get('vat', 'o')
             }
-
+    
     def get_crawl_targets(self, limit=None):
-        """DB에서 크롤링 대상 URL 목록 조회"""
+        """이탈리아 크롤링 대상 URL 목록 조회"""
         try:
-            query = f"""
+            query = """
             SELECT *
             FROM samsung_price_tracking_list
-            WHERE country = '{self.country_code}'
+            WHERE country = 'it' 
               AND mall_name = 'amazon'
               AND is_active = TRUE
             """
-
+                
             if limit:
                 query += f" LIMIT {limit}"
-
+            
             df = pd.read_sql(query, self.db_engine)
-            logger.info(f"✅ 크롤링 대상 {len(df)}개 조회 완료")
+            logger.info(f"이탈리아 크롤링 대상 {len(df)}개 조회 완료")
             return df.to_dict('records')
-
+            
         except Exception as e:
-            logger.error(f"크롤링 대상 조회 실패: {e}")
+            logger.error(f"이탈리아 크롤링 대상 조회 실패: {e}")
             return []
-
+    
     def save_to_db(self, df):
-        """DB에 결과 저장"""
+        """이탈리아 DB에 결과 저장"""
         if self.db_engine is None:
-            logger.warning("⚠️ DB 연결이 없어 DB 저장을 건너뜁니다")
+            logger.warning("DB 연결이 없어 이탈리아 DB 저장을 건너뜁니다")
             return False
-
+        
         try:
-            table_name = f'amazon_price_crawl_tbl_{self.country_code}_v2'
-
+            table_name = 'amazon_price_crawl_tbl_it'
+            
             df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
-            logger.info(f"✅ DB 저장 완료: {len(df)}개 레코드 → {table_name}")
-
-            log_records = []
-            for _, row in df.iterrows():
-                log_records.append({
-                    'country_code': self.country_code,
-                    'url': row['producturl'],
-                    'status': 'success' if row['retailprice'] is not None else 'failed',
-                    'error_message': None if row['retailprice'] is not None else 'Price not found',
-                    'execution_time': random.uniform(3, 10),
-                    'retailprice': row['retailprice'],
-                    'crawl_datetime': row['kr_crawl_datetime']
-                })
-
-            if log_records:
-                log_df = pd.DataFrame(log_records)
-                log_df.to_sql('amazon_crawl_logs', self.db_engine, if_exists='append', index=False)
-                logger.info(f"✅ 크롤링 로그 저장 완료: {len(log_records)}개")
-
+            logger.info(f"이탈리아 DB 저장 완료: {len(df)}개 레코드 -> {table_name}")
+            
             return True
-
+            
         except Exception as e:
-            logger.error(f"❌ DB 저장 실패: {e}")
+            logger.error(f"이탈리아 DB 저장 실패: {e}")
             return False
-
-    def upload_to_file_server(self, local_file_path, remote_filename=None, date_str=None):
-        """파일서버에 업로드 (V2: 날짜별 디렉토리 + ZIP 압축)"""
+    
+    def upload_to_file_server(self, local_file_path, remote_filename=None):
+        """이탈리아 파일서버에 업로드"""
         try:
             transport = paramiko.Transport((FILE_SERVER_CONFIG['host'], FILE_SERVER_CONFIG['port']))
             transport.connect(
@@ -697,135 +1276,88 @@ class AmazonScraper:
                 password=FILE_SERVER_CONFIG['password']
             )
             sftp = paramiko.SFTPClient.from_transport(transport)
-
-            country_dir = f"{FILE_SERVER_CONFIG['upload_path']}/{self.country_code}"
-
-            if date_str:
-                date_dir = f"{country_dir}/{date_str}"
-
-                for dir_path in [country_dir, date_dir]:
-                    try:
-                        sftp.stat(dir_path)
-                    except FileNotFoundError:
-                        logger.info(f"📁 디렉토리 생성: {dir_path}")
-                        sftp.mkdir(dir_path)
-
-                if remote_filename is None:
-                    remote_filename = os.path.basename(local_file_path)
-
-                remote_path = f"{date_dir}/{remote_filename}"
-                sftp.put(local_file_path, remote_path)
-                logger.info(f"✅ 파일서버 업로드 완료: {remote_path}")
-
-                zip_filename = f"{date_str}.zip"
-                local_zip_path = f"temp_{zip_filename}"
-                remote_zip_path = f"{country_dir}/{zip_filename}"
-
-                zip_exists = False
-                try:
-                    sftp.stat(remote_zip_path)
-                    sftp.get(remote_zip_path, local_zip_path)
-                    zip_exists = True
-                    logger.info(f"📦 기존 ZIP 파일 다운로드: {remote_zip_path}")
-                except FileNotFoundError:
-                    logger.info(f"📦 새 ZIP 파일 생성: {zip_filename}")
-
-                with zipfile.ZipFile(local_zip_path, 'a' if zip_exists else 'w', zipfile.ZIP_DEFLATED) as zipf:
-                    zipf.write(local_file_path, remote_filename)
-                    logger.info(f"✅ ZIP 파일에 추가: {remote_filename}")
-
-                sftp.put(local_zip_path, remote_zip_path)
-                logger.info(f"✅ ZIP 파일 업로드 완료: {remote_zip_path}")
-
-                if os.path.exists(local_zip_path):
-                    os.remove(local_zip_path)
-
-            else:
-                try:
-                    sftp.stat(country_dir)
-                except FileNotFoundError:
-                    logger.info(f"📁 디렉토리 생성: {country_dir}")
-                    sftp.mkdir(country_dir)
-
-                if remote_filename is None:
-                    remote_filename = os.path.basename(local_file_path)
-
-                remote_path = f"{country_dir}/{remote_filename}"
-                sftp.put(local_file_path, remote_path)
-                logger.info(f"✅ 파일서버 업로드 완료: {remote_path}")
-
+            
+            if remote_filename is None:
+                remote_filename = os.path.basename(local_file_path)
+            
+            # 이탈리아 전용 디렉토리
+            italy_dir = f"{FILE_SERVER_CONFIG['upload_path']}/it"
+            
+            try:
+                sftp.stat(italy_dir)
+            except FileNotFoundError:
+                logger.info(f"이탈리아 디렉토리 생성: {italy_dir}")
+                sftp.mkdir(italy_dir)
+            
+            remote_path = f"{italy_dir}/{remote_filename}"
+            
+            sftp.put(local_file_path, remote_path)
+            logger.info(f"이탈리아 파일서버 업로드 완료: {remote_path}")
+            
             sftp.close()
             transport.close()
-
+            
             return True
-
+            
         except Exception as e:
-            logger.error(f"❌ 파일서버 업로드 실패: {e}")
+            logger.error(f"이탈리아 파일서버 업로드 실패: {e}")
             return False
-
+    
     def save_results(self, df, save_db=True, upload_server=True):
-        """결과를 DB와 파일서버에 저장"""
-        local_time = datetime.now(self.local_tz)
-        date_str = local_time.strftime("%Y%m%d")
-        time_str = local_time.strftime("%H%M%S")
-        country_code = self.country_code
-        mall_name = "amazon"
-
-        base_filename = f"{date_str}_{time_str}_{country_code}_{mall_name}"
-
-        results = {
-            'db_saved': False,
-            'server_uploaded': False
-        }
-
+        """이탈리아 결과를 DB와 파일서버에 저장"""
+        now = datetime.now(self.korea_tz)
+        base_filename = f"{now.strftime('%Y%m%d%H%M%S')}_it_amazon"
+        
+        results = {'db_saved': False, 'server_uploaded': False}
+        
         if save_db:
             results['db_saved'] = self.save_to_db(df)
-
+        
         if upload_server:
             try:
-                temp_csv = f'temp_{base_filename}.csv'
-                df.to_csv(temp_csv, index=False, encoding='utf-8-sig')
-
-                remote_csv_filename = f'{base_filename}.csv'
-                if self.upload_to_file_server(temp_csv, remote_csv_filename, date_str):
+                # CSV 파일 생성
+                csv_filename = f'{base_filename}.csv'
+                df.to_csv(csv_filename, index=False, encoding='utf-8-sig')
+                
+                if self.upload_to_file_server(csv_filename):
                     results['server_uploaded'] = True
-
-                if os.path.exists(temp_csv):
-                    os.remove(temp_csv)
-
-                logger.info("🗑️ 임시 파일 삭제 완료")
-
+                
+                if os.path.exists(csv_filename):
+                    os.remove(csv_filename)
+                
+                logger.info("이탈리아 임시 파일 삭제 완료")
+                
             except Exception as e:
-                logger.error(f"파일 처리 오류: {e}")
-
+                logger.error(f"이탈리아 파일 처리 오류: {e}")
+        
         return results
-
+    
     def scrape_urls(self, urls_data, max_items=None):
-        """여러 URL 스크래핑"""
+        """이탈리아 URL 스크래핑"""
         if max_items:
             urls_data = urls_data[:max_items]
-
-        logger.info(f"\n{'='*80}")
-        logger.info(f"📊 크롤링 시작")
-        logger.info(f"📌 국가: {self.country_code.upper()}")
-        logger.info(f"📌 대상: {len(urls_data)}개 제품")
-        logger.info(f"{'='*80}\n")
-
+        
+        logger.info("=" * 80)
+        logger.info("이탈리아 Amazon 크롤링 시작")
+        logger.info(f"대상: {len(urls_data)}개 제품")
+        logger.info("특화 기능: 쉼표 소수점 가격 파싱, 추천상품 영역 필터링 강화")
+        logger.info("=" * 80)
+        
         if not self.setup_driver():
-            logger.error("드라이버 설정 실패")
+            logger.error("이탈리아 드라이버 설정 실패")
             return None
-
+        
         results = []
         failed_urls = []
-
+        
         try:
             for idx, row in enumerate(urls_data):
-                logger.info(f"\n진행률: {idx + 1}/{len(urls_data)} ({(idx + 1)/len(urls_data)*100:.1f}%)")
-
+                logger.info(f"이탈리아 진행률: {idx + 1}/{len(urls_data)} ({(idx + 1)/len(urls_data)*100:.1f}%)")
+                
                 url = row.get('url')
-
+                
                 result = self.extract_product_info(url, row)
-
+                
                 if result['retailprice'] is None and result['title'] is None:
                     failed_urls.append({
                         'url': url,
@@ -840,162 +1372,181 @@ class AmazonScraper:
                         'brand': row.get('brand', ''),
                         'reason': '가격 없음'
                     })
-
+                
                 results.append(result)
-
+                
+                # 중간 저장 (10개마다)
                 if (idx + 1) % 10 == 0:
                     interim_df = pd.DataFrame(results[-10:])
                     if self.db_engine:
                         try:
-                            table_name = f'amazon_price_crawl_tbl_{self.country_code}_v2'
-                            interim_df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
-                            logger.info(f"💾 중간 저장: 10개 레코드 DB 저장")
+                            interim_df.to_sql('amazon_price_crawl_tbl_it', self.db_engine, 
+                                            if_exists='append', index=False)
+                            logger.info("이탈리아 중간 저장: 10개 레코드 DB 저장")
                         except Exception as e:
-                            logger.error(f"중간 저장 실패: {e}")
-
+                            logger.error(f"이탈리아 중간 저장 실패: {e}")
+                
+                # 대기 시간
                 if idx < len(urls_data) - 1:
                     wait_time = random.uniform(5, 10)
-                    logger.info(f"⏳ {wait_time:.1f}초 대기 중...")
+                    logger.info(f"이탈리아 {wait_time:.1f}초 대기 중...")
                     time.sleep(wait_time)
-
+                    
+                    # 20개마다 긴 휴식
                     if (idx + 1) % 20 == 0:
-                        logger.info("☕ 20개 처리 완료, 30초 휴식...")
+                        logger.info("이탈리아 20개 처리 완료, 30초 휴식...")
                         time.sleep(30)
-
+        
         except Exception as e:
-            logger.error(f"❌ 스크래핑 중 오류: {e}")
-
+            logger.error(f"이탈리아 스크래핑 중 오류: {e}")
+        
         finally:
             if failed_urls:
-                logger.warning(f"\n⚠️ 문제 발생한 URL {len(failed_urls)}개:")
+                logger.warning(f"이탈리아 문제 발생한 URL {len(failed_urls)}개:")
                 for fail in failed_urls[:5]:
                     logger.warning(f"  - {fail['brand']} {fail['item']}: {fail.get('reason', '알 수 없음')}")
                 if len(failed_urls) > 5:
                     logger.warning(f"  ... 외 {len(failed_urls) - 5}개")
-
+            
             if self.driver:
                 self.driver.quit()
-                logger.info("🔧 드라이버 종료")
-
+                logger.info("이탈리아 드라이버 종료")
+        
         return pd.DataFrame(results)
-
+    
     def analyze_results(self, df):
-        """결과 분석"""
-        logger.info(f"\n{'='*80}")
-        logger.info("📊 결과 분석")
-        logger.info(f"{'='*80}")
-
+        """이탈리아 결과 분석"""
+        logger.info("=" * 80)
+        logger.info("이탈리아 결과 분석")
+        logger.info("=" * 80)
+        
         total = len(df)
         with_price = df['retailprice'].notna().sum()
         without_price = df['retailprice'].isna().sum()
         success_rate = (with_price / total * 100) if total > 0 else 0
-
+        
         logger.info(f"전체 제품: {total}개")
         logger.info(f"가격 추출 성공: {with_price}개")
         logger.info(f"가격 추출 실패: {without_price}개")
         logger.info(f"성공률: {success_rate:.1f}%")
-
+        
         if with_price > 0:
+            price_df = df[df['retailprice'].notna()].copy()
+            
             try:
-                price_df = df[df['retailprice'].notna()].copy()
+                # 이탈리아 가격 숫자 변환
                 price_df['price_numeric'] = price_df['retailprice'].astype(str).str.replace(',', '').astype(float)
-
-                logger.info(f"\n💰 가격 통계:")
-                logger.info(f"   평균가: {price_df['price_numeric'].mean():.2f}")
-                logger.info(f"   최저가: {price_df['price_numeric'].min():.2f}")
-                logger.info(f"   최고가: {price_df['price_numeric'].max():.2f}")
+                
+                logger.info("이탈리아 가격 통계 (€):")
+                logger.info(f"   평균가: €{price_df['price_numeric'].mean():.2f}")
+                logger.info(f"   최저가: €{price_df['price_numeric'].min():.2f}")
+                logger.info(f"   최고가: €{price_df['price_numeric'].max():.2f}")
+                logger.info(f"   중간값: €{price_df['price_numeric'].median():.2f}")
             except Exception as e:
-                logger.warning(f"가격 통계 계산 오류: {e}")
-
+                logger.warning(f"이탈리아 가격 통계 계산 오류: {e}")
+            
+            # 브랜드별 성공률
             brand_stats = df.groupby('brand').agg({
                 'retailprice': ['count', lambda x: x.notna().sum()]
             })
             brand_stats.columns = ['total', 'success']
             brand_stats['success_rate'] = (brand_stats['success'] / brand_stats['total'] * 100).round(1)
-
-            logger.info(f"\n📊 브랜드별 성공률:")
+            
+            logger.info("이탈리아 브랜드별 성공률:")
             for brand, row in brand_stats.iterrows():
                 logger.info(f"   {brand}: {row['success_rate']:.1f}% ({row['success']}/{row['total']})")
 
 def main():
-    """메인 실행 함수"""
-    country_code = os.getenv('COUNTRY_CODE', 'it').lower()
+    """이탈리아 메인 실행 함수"""
     test_mode = os.getenv('TEST_MODE', 'false').lower() == 'true'
     max_items = int(os.getenv('MAX_ITEMS', '0')) or None
-
-    print(f"\n{'='*80}")
-    print(f"🚀 Amazon Italy 가격 추출 시스템 V2 (타임존 분리 + 날짜별 ZIP)")
-    print(f"{'='*80}")
-    print(f"📌 국가: {country_code.upper()}")
-    print(f"📌 모드: {'테스트' if test_mode else '실제'}")
+    
+    print("=" * 80)
+    print("Amazon 이탈리아 크롤러 v2.0 - 추천상품/관련상품 영역 필터링 강화판")
+    print("=" * 80)
+    print("국가: 이탈리아 (IT)")
+    print(f"모드: {'테스트' if test_mode else '전체 크롤링'}")
+    print("특화 기능:")
+    print("  - 이탈리아 가격 형식 지원 (61,84 → 61.84)")
+    print("  - 이탈리아 언어 지원 (Venduto da, Spedito da)")
+    print("  - 'Continua lo shopping' 버튼 자동 처리")
+    print("  - 추천상품/관련상품 영역 강화된 필터링")
     if max_items:
-        print(f"📌 최대 처리 수: {max_items}개")
-    print(f"📌 개선사항:")
-    print(f"   - 이탈리아 시간 + 한국 시간 분리 저장")
-    print(f"   - 날짜별 디렉토리 구조 (/it/YYYYMMDD/)")
-    print(f"   - 날짜별 자동 ZIP 압축 (/it/YYYYMMDD.zip)")
-    print(f"   - 새 데이터베이스 사용 (samsung_ds_retail_com)")
-    print(f"{'='*80}\n")
-
-    scraper = AmazonScraper(country_code)
-
+        print(f"최대 처리 수: {max_items}개")
+    else:
+        print("전체 제품 크롤링")
+    print("=" * 80)
+    
+    scraper = AmazonITScraper()
+    
     if scraper.db_engine is None:
         logger.error("DB 연결 실패로 종료합니다.")
         return
-
+    
     if test_mode:
-        logger.info("🧪 테스트 모드 실행 중...")
-        test_data = [{
-            'url': 'https://www.amazon.it/dp/B0B7CKVCCV',
-            'brand': 'Samsung',
-            'item': '990 PRO 1TB',
-            'retailerid': 'TEST001',
-            'retailersku': 'TEST001',
-            'channel': 'Online',
-            'seg_lv1': 'SSD',
-            'seg_lv2': 'Consumer',
-            'seg_lv3': 'NVMe',
-            'capacity': '1TB',
-            'form_factor': 'M.2'
-        }]
-
+        logger.info("이탈리아 테스트 모드 실행 중...")
+        
+        # 이탈리아 테스트 URL들
+        test_urls = [
+            'https://www.amazon.it/dp/B08N5WRWNW',
+            'https://www.amazon.it/dp/B087DFFJRD?th=1',
+            'https://www.amazon.it/dp/B09QV692XY?th=1',
+        ]
+        
+        test_data = []
+        for i, url in enumerate(test_urls):
+            test_data.append({
+                'url': url,
+                'brand': 'Samsung',
+                'item': f'Test Item IT {i+1}',
+                'retailerid': f'TESTIT00{i+1}',
+                'retailersku': f'TESTIT00{i+1}',
+                'channel': 'Online',
+                'seg_lv1': 'SSD',
+                'seg_lv2': 'Consumer',
+                'seg_lv3': 'External',
+                'capacity': '2TB',
+                'form_factor': 'External'
+            })
+        
         results_df = scraper.scrape_urls(test_data)
         if results_df is not None and not results_df.empty:
             scraper.analyze_results(results_df)
             scraper.save_results(results_df, save_db=False, upload_server=True)
         return
-
-    logger.info("📊 전체 크롤링 시작")
+    
+    logger.info("이탈리아 전체 크롤링 시작")
     urls_data = scraper.get_crawl_targets(limit=max_items)
-
+    
     if not urls_data:
-        logger.warning("크롤링 대상이 없습니다.")
+        logger.warning("이탈리아 크롤링 대상이 없습니다.")
         return
-
-    logger.info(f"✅ 크롤링 대상: {len(urls_data)}개")
-
+    
+    logger.info(f"이탈리아 크롤링 대상: {len(urls_data)}개")
+    
     results_df = scraper.scrape_urls(urls_data, max_items)
-
+    
     if results_df is None or results_df.empty:
-        logger.error("크롤링 결과가 없습니다.")
+        logger.error("이탈리아 크롤링 결과가 없습니다.")
         return
-
+    
     scraper.analyze_results(results_df)
-
-    save_results = scraper.save_results(results_df, save_db=True, upload_server=True)
-
-    logger.info(f"\n{'='*80}")
-    logger.info("📊 저장 결과")
-    logger.info(f"{'='*80}")
-    logger.info(f"DB 저장: {'✅ 성공' if save_results['db_saved'] else '❌ 실패'}")
-    logger.info(f"파일서버 업로드: {'✅ 성공' if save_results['server_uploaded'] else '❌ 실패'}")
-
-    logger.info(f"\n{'='*80}")
-    logger.info("✅ 크롤링 프로세스 완료! (V2)")
-    logger.info(f"   🎯 타임존 분리: 이탈리아 시간 + 한국 시간")
-    logger.info(f"   📁 날짜별 디렉토리 저장")
-    logger.info(f"   📦 자동 ZIP 압축")
-    logger.info(f"{'='*80}\n")
+    
+    save_results = scraper.save_results(
+        results_df,
+        save_db=True,
+        upload_server=True
+    )
+    
+    logger.info("=" * 80)
+    logger.info("이탈리아 저장 결과")
+    logger.info("=" * 80)
+    logger.info(f"DB 저장: {'성공' if save_results['db_saved'] else '실패'}")
+    logger.info(f"파일서버 업로드: {'성공' if save_results['server_uploaded'] else '실패'}")
+    
+    logger.info("=" * 80)
+    logger.info("이탈리아 크롤링 프로세스 완료!")
+    logger.info("=" * 80)
 
 if __name__ == "__main__":
     required_packages = [
@@ -1007,13 +1558,12 @@ if __name__ == "__main__":
         'paramiko',
         'openpyxl'
     ]
-
-    print("\n📦 필요한 패키지:")
+    
+    print("필요한 패키지:")
     print("pip install " + " ".join(required_packages))
-    print("\n⚠️ 환경변수 설정:")
-    print("export COUNTRY_CODE=it")
-    print("export TEST_MODE=false")
-    print("export MAX_ITEMS=10")
+    print("환경변수 설정:")
+    print("export TEST_MODE=false  # 테스트 모드")
+    print("export MAX_ITEMS=10     # 최대 처리 개수 (선택사항)")
     print()
-
+    
     main()
