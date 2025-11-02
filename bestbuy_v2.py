@@ -19,6 +19,8 @@ import pytz
 import logging
 import os
 from io import StringIO
+import zipfile
+import hashlib
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -706,7 +708,9 @@ class BestBuyScraper:
             try:
                 # 1. CSV 파일 생성
                 csv_filename = f'{base_filename}.csv'
-                df.to_csv(csv_filename, index=False, encoding='utf-8-sig')
+                # Header를 대문자로 변환
+                df.columns = df.columns.str.upper()
+                df.to_csv(csv_filename, index=False, encoding='utf-8', lineterminator='\r\n')
 
                 # 2. CSV를 ZIP으로 압축
                 zip_filename = f'{base_filename}.zip'
