@@ -312,9 +312,9 @@ class AmazonScraper:
         logger.debug(f"❌ {element_name} 추출 실패")
         return None
 
-    def extract_price(self, country_code):
+    def extract_price(self):
         """가격 추출"""
-        logger.info(f"💰 가격 추출 시작 - 국가: {country_code}")
+        logger.info(f"💰 가격 추출 시작 - 국가: {self.country_code}")
 
         excluded_areas = [
             "#similarities_feature_div", "#sp_detail", "#bookDescription_feature_div",
@@ -326,7 +326,7 @@ class AmazonScraper:
 
         main_product_areas = ["#dp-container", "#centerCol", "#rightCol", "#apex_desktop"]
 
-        price_selectors = self.selectors[country_code].get('price', [])
+        price_selectors = self.selectors[self.country_code].get('price', [])
 
         for idx, selector in enumerate(price_selectors, 1):
             try:
@@ -388,7 +388,7 @@ class AmazonScraper:
                         price_text = max([text1, text2, text3], key=len)
 
                         if price_text:
-                            price = self.parse_price_by_country(price_text, country_code)
+                            price = self.parse_french_price(price_text)
                             if price and price > 0:
                                 logger.info(f"✅ 가격 추출 성공: {price} (원본: {price_text})")
                                 return price
@@ -543,7 +543,7 @@ class AmazonScraper:
                 logger.info("💰 최종 가격: None (이유: 판매자 정보 없음)")
             else:
                 logger.info("💰 가격 추출 시작 (판매자 정보 있음)")
-                result['retailprice'] = self.extract_price(self.country_code)
+                result['retailprice'] = self.extract_price()
 
                 if result['retailprice'] is not None:
                     logger.info(f"💰 최종 가격: {result['retailprice']} (정상 추출)")

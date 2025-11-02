@@ -374,9 +374,9 @@ class AmazonUKScraper:
         logger.debug(f"❌ {element_name} 추출 실패")
         return None
 
-    def extract_price(self, country_code):
+    def extract_price(self, url):
         """가격 추출 (UK 파운드 형식 £123.45)"""
-        logger.info(f"💰 가격 추출 시작 - 국가: {country_code}")
+        logger.info(f"💰 가격 추출 시작 - 국가: {self.country_code}")
 
         # 추천 상품 영역 제외
         excluded_areas = [
@@ -403,7 +403,7 @@ class AmazonUKScraper:
             "#apex_desktop"
         ]
 
-        price_selectors = self.selectors[country_code].get('price', [])
+        price_selectors = self.selectors[self.country_code].get('price', [])
 
         for idx, selector in enumerate(price_selectors, 1):
             try:
@@ -481,7 +481,7 @@ class AmazonUKScraper:
 
                         if price_text:
                             # 가격 파싱 (UK 파운드)
-                            price = self.parse_price_uk(price_text)
+                            price = self.detect_currency_and_parse_price(price_text, url)
                             if price and price > 0:
                                 logger.info(f"✅ 가격 추출 성공: {price} (원본: {price_text})")
                                 return price
@@ -665,7 +665,7 @@ class AmazonUKScraper:
                 logger.info("💰 최종 가격: None (이유: 판매자 정보 없음)")
             else:
                 logger.info("💰 가격 추출 시작 (판매자 정보 있음)")
-                result['retailprice'] = self.extract_price(self.country_code)
+                result['retailprice'] = self.extract_price(url)
 
                 if result['retailprice'] is not None:
                     logger.info(f"💰 최종 가격: {result['retailprice']} (정상 추출)")
