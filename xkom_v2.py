@@ -475,9 +475,6 @@ Python 버전: {os.sys.version.split()[0]}
             # V2: 타임존 분리
             now_time = datetime.now(self.korea_tz)
             local_time = datetime.now(self.local_tz)
-            crawl_datetime_str = now_time.strftime('%Y-%m-%d %H:%M:%S')
-            local_crawl_datetime_str = local_time.strftime('%Y-%m-%d %H:%M:%S')
-            crawl_strdatetime = now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4]
 
             # 기본 결과 구조
             result = {
@@ -498,9 +495,10 @@ Python 버전: {os.sys.version.split()[0]}
                 'sold_by': 'X-kom',
                 'imageurl': None,
                 'producturl': url,
-                'crawl_datetime': crawl_datetime_str,
-                'local_crawl_datetime': local_crawl_datetime_str,  # V2: 현지시간
-                'crawl_strdatetime': crawl_strdatetime,
+                'crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'crawl_strdatetime': local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4],
+                'kr_crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'kr_crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4],
                 'title': None,
                 'vat': row_data.get('vat', 'x')
             }
@@ -621,8 +619,8 @@ Python 버전: {os.sys.version.split()[0]}
             return False
         
         try:
-            # xkom_price_crawl_tbl_pl 테이블에 저장
-            df.to_sql('xkom_price_crawl_tbl_pl', self.db_engine, if_exists='append', index=False)
+            # xkom_price_crawl_tbl_pl_v2 테이블에 저장
+            df.to_sql('xkom_price_crawl_tbl_pl_v2', self.db_engine, if_exists='append', index=False)
             logger.info(f"✅ DB 저장 완료: {len(df)}개 레코드")
             
             # 크롤링 로그 저장
@@ -812,7 +810,7 @@ Python 버전: {os.sys.version.split()[0]}
                     interim_df = pd.DataFrame(results[-5:])
                     if self.db_engine:
                         try:
-                            interim_df.to_sql('xkom_price_crawl_tbl_pl', self.db_engine, 
+                            interim_df.to_sql('xkom_price_crawl_tbl_pl_v2', self.db_engine, 
                                             if_exists='append', index=False)
                             logger.info(f"💾 중간 저장: 5개 레코드")
                         except:

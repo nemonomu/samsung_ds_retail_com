@@ -797,27 +797,13 @@ class AmazonScraper:
                     return result if result > 0 else None
                     
             elif country_code == 'jp':
-                # 일본: ¥1,234 형식 - 쉼표 포함 문자열로 반환
+                # 일본: ¥1,234 형식
                 price_text = re.sub(r'[¥￥\s]', '', price_text)
-                # 쉼표가 이미 있으면 그대로 사용
-                if ',' in price_text:
-                    # 쉼표가 올바른 위치에 있는지 확인
-                    match = re.search(r'([\d,]+)', price_text)
-                    if match:
-                        price_with_comma = match.group(1)
-                        # 검증을 위해 쉼표 제거 후 숫자로 변환
-                        price_num = float(price_with_comma.replace(',', ''))
-                        if price_num > 0:
-                            return price_with_comma  # 쉼표 포함 문자열 반환
-                else:
-                    # 쉼표가 없으면 추가
-                    match = re.search(r'(\d+)', price_text)
-                    if match:
-                        price_num = int(match.group(1))
-                        if price_num > 0:
-                            # 천단위마다 쉼표 추가
-                            return f"{price_num:,}"  # 쉼표 포함 문자열 반환
-                return None
+                price_text = price_text.replace(',', '')
+                match = re.search(r'(\d+)', price_text)
+                if match:
+                    result = float(match.group(1))
+                    return result if result > 0 else None
                     
             elif country_code == 'in':
                 # 인도: ₹1,234.56 형식
@@ -923,9 +909,10 @@ class AmazonScraper:
                 'sold_by': None,
                 'imageurl': None,
                 'producturl': url,
-                'crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),
-                'local_crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M:%S'),  # V2: 현지시간
-                'crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4],
+                'crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'kr_crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),  # V2: 한국시간
+                'kr_crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f\"{now_time.microsecond:06d}\"[:4],  # V2: 한국시간 문자열
+                'crawl_strdatetime': local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4],
                 'title': None,
                 'vat': row_data.get('vat', 'o')
             }
@@ -1058,9 +1045,10 @@ class AmazonScraper:
                 'sold_by': None,
                 'imageurl': None,
                 'producturl': url,
-                'crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),
-                'local_crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M:%S'),  # V2: 현지시간
-                'crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4],
+                'crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'kr_crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),  # V2: 한국시간
+                'kr_crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f\"{now_time.microsecond:06d}\"[:4],  # V2: 한국시간 문자열
+                'crawl_strdatetime': local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4],
                 'title': None,
                 'vat': row_data.get('vat', 'o')
             }
@@ -1095,7 +1083,7 @@ class AmazonScraper:
         
         try:
             # 테이블명 설정
-            table_name = f'amazon_price_crawl_tbl_{self.country_code}'
+            table_name = f'amazon_price_crawl_tbl_{self.country_code}_v2'
             
             # 데이터 저장
             df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
@@ -1305,7 +1293,7 @@ class AmazonScraper:
                     interim_df = pd.DataFrame(results[-10:])
                     if self.db_engine:
                         try:
-                            table_name = f'amazon_price_crawl_tbl_{self.country_code}'
+                            table_name = f'amazon_price_crawl_tbl_{self.country_code}_v2'
                             interim_df.to_sql(table_name, self.db_engine, 
                                             if_exists='append', index=False)
                             logger.info(f"💾 중간 저장: 10개 레코드 DB 저장")

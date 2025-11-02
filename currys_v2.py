@@ -235,9 +235,7 @@ class CurrysScraper:
             now_time = datetime.now(self.korea_tz)
 
             local_time = datetime.now(self.local_tz)
-            crawl_datetime_str = now_time.strftime('%Y-%m-%d %H:%M:%S')
-            crawl_strdatetime = now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4]
-            
+
             # 기본 결과 구조
             result = {
                 'retailerid': row_data.get('retailerid', ''),
@@ -257,8 +255,10 @@ class CurrysScraper:
                 'sold_by': 'Currys',
                 'imageurl': None,
                 'producturl': url,
-                'crawl_datetime': crawl_datetime_str,
-                'crawl_strdatetime': crawl_strdatetime,
+                'crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'crawl_strdatetime': local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4],
+                'kr_crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'kr_crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4],
                 'title': None,
                 'vat': row_data.get('vat', 'o'),
             }
@@ -374,9 +374,7 @@ class CurrysScraper:
             now_time = datetime.now(self.korea_tz)
 
             local_time = datetime.now(self.local_tz)
-            crawl_datetime_str = now_time.strftime('%Y-%m-%d %H:%M:%S')
-            crawl_strdatetime = now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4]
-            
+
             return {
                 'retailerid': row_data.get('retailerid', ''),
                 'country_code': row_data.get('country', 'gb'),
@@ -395,8 +393,10 @@ class CurrysScraper:
                 'sold_by': 'Currys',
                 'imageurl': None,
                 'producturl': url,
-                'crawl_datetime': crawl_datetime_str,
-                'crawl_strdatetime': crawl_strdatetime,
+                'crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'crawl_strdatetime': local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4],
+                'kr_crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'kr_crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4],
                 'title': None,
                 'vat': row_data.get('vat', 'o')
             }
@@ -408,8 +408,8 @@ class CurrysScraper:
             return False
         
         try:
-            # currys_price_crawl_tbl_gb 테이블에 저장
-            df.to_sql('currys_price_crawl_tbl_gb', self.db_engine, if_exists='append', index=False)
+            # currys_price_crawl_tbl_gb_v2 테이블에 저장
+            df.to_sql('currys_price_crawl_tbl_gb_v2', self.db_engine, if_exists='append', index=False)
             logger.info(f"✅ DB 저장 완료: {len(df)}개 레코드")
             
             # 크롤링 로그를 pandas DataFrame으로 만들어서 한번에 저장
@@ -432,7 +432,7 @@ class CurrysScraper:
             
             # 저장된 데이터 확인
             with self.db_engine.connect() as conn:
-                count_query = "SELECT COUNT(*) FROM currys_price_crawl_tbl_gb WHERE DATE(crawl_datetime) = CURDATE()"
+                count_query = "SELECT COUNT(*) FROM currys_price_crawl_tbl_gb_v2 WHERE DATE(crawl_datetime) = CURDATE()"
                 result = conn.execute(count_query)
                 today_count = result.scalar()
                 logger.info(f"📊 오늘 저장된 총 레코드: {today_count}개")
@@ -612,7 +612,7 @@ class CurrysScraper:
                     interim_df = pd.DataFrame(results[-10:])
                     if self.db_engine:
                         try:
-                            interim_df.to_sql('currys_price_crawl_tbl_gb', self.db_engine, 
+                            interim_df.to_sql('currys_price_crawl_tbl_gb_v2', self.db_engine, 
                                             if_exists='append', index=False)
                             logger.info(f"💾 중간 저장: 10개 레코드 DB 저장")
                         except Exception as e:
@@ -695,7 +695,7 @@ def get_db_history(engine, days=7):
                SUM(CASE WHEN retailprice IS NOT NULL THEN 1 ELSE 0 END) as with_price,
                COUNT(DISTINCT brand) as brands,
                COUNT(DISTINCT item) as items
-        FROM currys_price_crawl_tbl_gb
+        FROM currys_price_crawl_tbl_gb_v2
         WHERE crawl_datetime >= DATE_SUB(NOW(), INTERVAL {days} DAY)
         GROUP BY DATE(crawl_datetime)
         ORDER BY date DESC

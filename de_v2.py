@@ -955,9 +955,10 @@ class AmazonDEScraper:
                 'sold_by': None,
                 'imageurl': None,
                 'producturl': url,
-                'crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),
-                'local_crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M:%S'),  # V2: 현지시간
-                'crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4],
+                'crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'kr_crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),  # V2: 한국시간
+                'kr_crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f\"{now_time.microsecond:06d}\"[:4],  # V2: 한국시간 문자열
+                'crawl_strdatetime': local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4],
                 'title': None,
                 'vat': row_data.get('vat', 'o'),
             }
@@ -1060,9 +1061,10 @@ class AmazonDEScraper:
                 'sold_by': None,
                 'imageurl': None,
                 'producturl': url,
-                'crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),
-                'local_crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M:%S'),  # V2: 현지시간
-                'crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4],
+                'crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'kr_crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),  # V2: 한국시간
+                'kr_crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f\"{now_time.microsecond:06d}\"[:4],  # V2: 한국시간 문자열
+                'crawl_strdatetime': local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4],
                 'title': None,
                 'vat': row_data.get('vat', 'o'),
             }
@@ -1095,7 +1097,7 @@ class AmazonDEScraper:
             return False
         
         try:
-            table_name = 'amazon_price_crawl_tbl_de'
+            table_name = 'amazon_price_crawl_tbl_de_v2'
             df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
             logger.info(f"독일 DB 저장 완료: {len(df)}개")
             return True
@@ -1205,7 +1207,7 @@ class AmazonDEScraper:
                     interim_df = pd.DataFrame(results[-10:])
                     if self.db_engine:
                         try:
-                            table_name = 'amazon_price_crawl_tbl_de'
+                            table_name = 'amazon_price_crawl_tbl_de_v2'
                             interim_df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
                             logger.info("독일 중간 저장: 10개 레코드")
                         except Exception as e:

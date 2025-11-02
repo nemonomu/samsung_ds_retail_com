@@ -953,9 +953,10 @@ class AmazonIndiaScraper:
                 'sold_by': None,
                 'imageurl': None,
                 'producturl': url,
-                'crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),
-                'local_crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M:%S'),  # V2: 현지시간
-                'crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4],
+                'crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'kr_crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),  # V2: 한국시간
+                'kr_crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f\"{now_time.microsecond:06d}\"[:4],  # V2: 한국시간 문자열
+                'crawl_strdatetime': local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4],
                 'title': None,
                 'vat': row_data.get('vat', 'o')
             }
@@ -1055,9 +1056,10 @@ class AmazonIndiaScraper:
                 'sold_by': None,
                 'imageurl': None,
                 'producturl': url,
-                'crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),
-                'local_crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M:%S'),  # V2: 현지시간
-                'crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4],
+                'crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'kr_crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),  # V2: 한국시간
+                'kr_crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f\"{now_time.microsecond:06d}\"[:4],  # V2: 한국시간 문자열
+                'crawl_strdatetime': local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4],
                 'title': None,
                 'vat': row_data.get('vat', 'o')
             }
@@ -1104,7 +1106,7 @@ class AmazonIndiaScraper:
                 
                 logger.info("✅ 가격 데이터 정수/소수점 자동 처리 완료")
             
-            table_name = 'amazon_price_crawl_tbl_ind'
+            table_name = 'amazon_price_crawl_tbl_ind_v2'
             df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
             logger.info(f"✅ 인도 DB 저장: {len(df)}개 → {table_name}")
             

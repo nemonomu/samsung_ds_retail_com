@@ -411,9 +411,6 @@ class MediaMarktInfiniteScraper:
             # V2: 타임존 분리
             now_time = datetime.now(self.korea_tz)
             local_time = datetime.now(self.local_tz)
-            crawl_datetime_str = now_time.strftime('%Y-%m-%d %H:%M:%S')
-            local_crawl_datetime_str = local_time.strftime('%Y-%m-%d %H:%M:%S')
-            crawl_strdatetime = now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4]
 
             # 기본 결과 구조
             result = {
@@ -434,9 +431,10 @@ class MediaMarktInfiniteScraper:
                 'sold_by': 'MediaMarkt',
                 'imageurl': None,
                 'producturl': url,
-                'crawl_datetime': crawl_datetime_str,
-                'local_crawl_datetime': local_crawl_datetime_str,  # V2: 현지시간
-                'crawl_strdatetime': crawl_strdatetime,
+                'crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'crawl_strdatetime': local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4],
+                'kr_crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'kr_crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4],
                 'title': None,
                 'vat': 'o'
             }
@@ -563,8 +561,8 @@ class MediaMarktInfiniteScraper:
             return False
         
         try:
-            # mediamarkt_price_crawl_tbl_de 테이블에 저장
-            df.to_sql('mediamarkt_price_crawl_tbl_de', self.db_engine, if_exists='append', index=False)
+            # mediamarkt_price_crawl_tbl_de_v2 테이블에 저장
+            df.to_sql('mediamarkt_price_crawl_tbl_de_v2', self.db_engine, if_exists='append', index=False)
             logger.info(f"✅ DB 저장 완료: {len(df)}개 레코드")
             
             # 크롤링 로그 저장
@@ -762,7 +760,7 @@ class MediaMarktInfiniteScraper:
                     interim_df = pd.DataFrame(results[-5:])
                     if self.db_engine:
                         try:
-                            interim_df.to_sql('mediamarkt_price_crawl_tbl_de', self.db_engine, 
+                            interim_df.to_sql('mediamarkt_price_crawl_tbl_de_v2', self.db_engine, 
                                             if_exists='append', index=False)
                             logger.info(f"💾 중간 저장: 5개 레코드")
                         except:

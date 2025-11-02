@@ -22,6 +22,7 @@ from datetime import datetime
 import logging
 import os
 from io import StringIO
+import pytz
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -37,10 +38,14 @@ class DanawaScraper:
         self.driver = None
         self.db_engine = None
         self.sftp_client = None
-        
+
+        # V2: 타임존 설정 (다나와는 한국 사이트이므로 둘 다 Asia/Seoul)
+        self.korea_tz = pytz.timezone('Asia/Seoul')
+        self.local_tz = pytz.timezone('Asia/Seoul')
+
         # DB 연결 설정
         self.setup_db_connection()
-        
+
         # DB에서 XPath 로드
         self.load_xpaths_from_db()
         
@@ -304,10 +309,10 @@ class DanawaScraper:
             time.sleep(random.uniform(2, 4))
             
             # 현재 시간
-            now_time = datetime.now()
-            crawl_datetime_str = now_time.strftime('%Y-%m-%d %H:%M:%S')
-            crawl_strdatetime = now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4]
-            
+            # V2: 타임존 분리
+            now_time = datetime.now(self.korea_tz)
+            local_time = datetime.now(self.local_tz)
+
             # 기본 결과 구조
             result = {
                 'retailerid': row_data.get('retailerid', ''),
@@ -327,8 +332,10 @@ class DanawaScraper:
                 'sold_by': 'Danawa',
                 'imageurl': None,
                 'producturl': url,
-                'crawl_datetime': crawl_datetime_str,
-                'crawl_strdatetime': crawl_strdatetime,
+                'crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'crawl_strdatetime': local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4],
+                'kr_crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'kr_crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4],
                 'title': None,
                 'vat': 'o'  # 한국은 VAT 포함
             }
@@ -445,10 +452,10 @@ class DanawaScraper:
             
             # 최대 재시도 횟수 초과 시 기본값 반환
             logger.error(f"❌ 최대 재시도 횟수 초과: {url}")
-            now_time = datetime.now()
-            crawl_datetime_str = now_time.strftime('%Y-%m-%d %H:%M:%S')
-            crawl_strdatetime = now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4]
-            
+            # V2: 타임존 분리
+            now_time = datetime.now(self.korea_tz)
+            local_time = datetime.now(self.local_tz)
+
             return {
                 'retailerid': row_data.get('retailerid', ''),
                 'country_code': 'kr',
@@ -467,8 +474,10 @@ class DanawaScraper:
                 'sold_by': 'Danawa',
                 'imageurl': None,
                 'producturl': url,
-                'crawl_datetime': crawl_datetime_str,
-                'crawl_strdatetime': crawl_strdatetime,
+                'crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'crawl_strdatetime': local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4],
+                'kr_crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'kr_crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4],
                 'title': None,
                 'vat': 'o'
             }
@@ -480,8 +489,8 @@ class DanawaScraper:
             return False
         
         try:
-            # danawa_price_crawl_tbl_kr 테이블에 저장
-            df.to_sql('danawa_price_crawl_tbl_kr', self.db_engine, if_exists='append', index=False)
+            # danawa_price_crawl_tbl_kr_v2 테이블에 저장
+            df.to_sql('danawa_price_crawl_tbl_kr_v2', self.db_engine, if_exists='append', index=False)
             logger.info(f"✅ DB 저장 완료: {len(df)}개 레코드")
             
             # 크롤링 로그를 pandas DataFrame으로 만들어서 한번에 저장
@@ -504,7 +513,7 @@ class DanawaScraper:
             
             # 저장된 데이터 확인
             with self.db_engine.connect() as conn:
-                count_query = "SELECT COUNT(*) FROM danawa_price_crawl_tbl_kr WHERE DATE(crawl_datetime) = CURDATE()"
+                count_query = "SELECT COUNT(*) FROM danawa_price_crawl_tbl_kr_v2 WHERE DATE(crawl_datetime) = CURDATE()"
                 result = conn.execute(count_query)
                 today_count = result.scalar()
                 logger.info(f"📊 오늘 저장된 총 레코드: {today_count}개")
@@ -686,7 +695,7 @@ class DanawaScraper:
                     interim_df = pd.DataFrame(results[-10:])
                     if self.db_engine:
                         try:
-                            interim_df.to_sql('danawa_price_crawl_tbl_kr', self.db_engine, 
+                            interim_df.to_sql('danawa_price_crawl_tbl_kr_v2', self.db_engine, 
                                             if_exists='append', index=False)
                             logger.info(f"💾 중간 저장: 10개 레코드 DB 저장")
                         except Exception as e:
@@ -770,7 +779,7 @@ def get_db_history(engine, days=7):
                SUM(CASE WHEN retailprice = 0 THEN 1 ELSE 0 END) as out_of_stock,
                COUNT(DISTINCT brand) as brands,
                COUNT(DISTINCT item) as items
-        FROM danawa_price_crawl_tbl_kr
+        FROM danawa_price_crawl_tbl_kr_v2
         WHERE crawl_datetime >= DATE_SUB(NOW(), INTERVAL {days} DAY)
         GROUP BY DATE(crawl_datetime)
         ORDER BY date DESC
