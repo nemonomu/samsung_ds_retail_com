@@ -21,6 +21,8 @@ import pytz
 import logging
 import os
 import traceback
+import zipfile
+import hashlib
 
 # Import configuration V2
 from config import DB_CONFIG_V2 as DB_CONFIG, FILE_SERVER_CONFIG

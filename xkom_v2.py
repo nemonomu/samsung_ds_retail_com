@@ -22,6 +22,8 @@ import logging
 import os
 import traceback
 import json
+import zipfile
+import hashlib
 
 # 로깅 설정
 logging.basicConfig(

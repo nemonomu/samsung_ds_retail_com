@@ -19,6 +19,8 @@ import pytz
 import logging
 import os
 from io import StringIO
+import zipfile
+import hashlib
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
