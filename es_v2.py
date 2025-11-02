@@ -24,6 +24,8 @@ import logging
 import os
 from io import StringIO
 import json
+import zipfile
+import hashlib
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -1027,7 +1029,13 @@ class AmazonScraper:
 
             
             local_time = datetime.now(self.local_tz)
-            
+
+            # ISO 8601 형식
+            crawl_dt = local_time.strftime("%Y-%m-%dT%H:%M:%S")
+            tz_offset = local_time.strftime("%z")
+            tz_formatted = f"{tz_offset[:3]}:{tz_offset[3:]}" if tz_offset else "+00:00"
+            crawl_datetime_iso = f"{crawl_dt}{tz_formatted}"
+
             result = {
                 'retailerid': row_data.get('retailerid', ''),
                 'country_code': self.country_code,
@@ -1046,7 +1054,7 @@ class AmazonScraper:
                 'sold_by': None,
                 'imageurl': None,
                 'producturl': url,
-                'crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'crawl_datetime': crawl_datetime_iso,
                 'kr_crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),  # V2: 한국시간
                 'kr_crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4],  # V2: 한국시간 문자열
                 'crawl_strdatetime': local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4],
@@ -1166,7 +1174,7 @@ class AmazonScraper:
                 'sold_by': None,
                 'imageurl': None,
                 'producturl': url,
-                'crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'crawl_datetime': crawl_datetime_iso,
                 'kr_crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),  # V2: 한국시간
                 'kr_crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4],  # V2: 한국시간 문자열
                 'crawl_strdatetime': local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4],
@@ -1231,7 +1239,7 @@ class AmazonScraper:
             logger.error(f"DB 저장 실패: {e}")
             return False
     
-    def upload_to_file_server(self, local_file_path, remote_filename=None):
+    def upload_to_file_server(self, local_file_path, date_folder):
         """파일서버에 업로드"""
         try:
             transport = paramiko.Transport((FILE_SERVER_CONFIG['host'], FILE_SERVER_CONFIG['port']))
@@ -1240,129 +1248,87 @@ class AmazonScraper:
                 password=FILE_SERVER_CONFIG['password']
             )
             sftp = paramiko.SFTPClient.from_transport(transport)
-            
-            if remote_filename is None:
-                remote_filename = os.path.basename(local_file_path)
-            
-            country_dir = f"{FILE_SERVER_CONFIG['upload_path']}/{self.country_code}"
-            
+
+            # 날짜별 디렉토리 경로
+            date_dir = f"{FILE_SERVER_CONFIG['upload_path']}/{date_folder}"
+
+            # 디렉토리가 없으면 생성
             try:
-                sftp.stat(country_dir)
+                sftp.stat(date_dir)
             except FileNotFoundError:
-                logger.info(f"디렉토리 생성: {country_dir}")
-                sftp.mkdir(country_dir)
-            
-            remote_path = f"{country_dir}/{remote_filename}"
-            
+                logger.info(f"📁 날짜 디렉토리 생성: {date_dir}")
+                sftp.mkdir(date_dir)
+
+            # 업로드 경로
+            remote_filename = os.path.basename(local_file_path)
+            remote_path = f"{date_dir}/{remote_filename}"
+
+            # 파일 업로드
             sftp.put(local_file_path, remote_path)
-            logger.info(f"파일서버 업로드 완료: {remote_path}")
-            
+            logger.info(f"✅ 파일서버 업로드 완료: {remote_path}")
+
             sftp.close()
             transport.close()
-            
+
             return True
-            
         except Exception as e:
-            logger.error(f"파일서버 업로드 실패: {e}")
+            logger.error(f"❌ 파일서버 업로드 실패: {e}")
             return False
-    
     def save_results(self, df, save_db=True, upload_server=True):
-        """결과를 DB와 파일서버에 저장"""
+        """결과 저장"""
         now = datetime.now(self.korea_tz)
-        date_str = now.strftime("%Y%m%d")
-        time_str = now.strftime("%H%M%S")
-        country_code = self.country_code
-        mall_name = "amazon"
-        
-        base_filename = f"{date_str}{time_str}_{country_code}_{mall_name}"
-        
-        results = {
-            'db_saved': False,
-            'server_uploaded': False
-        }
-        
+        date_str = now.strftime('%Y%m%d')
+        time_str = now.strftime('%H%M%S')
+        base_filename = f"{date_str}_{time_str}_es_amazon"
+
+        results = {'db_saved': False, 'server_uploaded': False}
+
         if save_db:
             results['db_saved'] = self.save_to_db(df)
-        
+
         if upload_server:
             try:
-                temp_csv = f'temp_{base_filename}.csv'
-                df.to_csv(temp_csv, index=False, encoding='utf-8-sig')
-                
-                remote_csv_filename = f'{base_filename}.csv'
-                if self.upload_to_file_server(temp_csv, remote_csv_filename):
-                    results['server_uploaded'] = True
-                
-                temp_excel = f'temp_{base_filename}.xlsx'
-                with pd.ExcelWriter(temp_excel, engine='openpyxl') as writer:
-                    df.to_excel(writer, sheet_name='All_Results', index=False)
-                    
-                    price_df = df[df['retailprice'].notna()]
-                    if not price_df.empty:
-                        price_df.to_excel(writer, sheet_name='With_Prices', index=False)
-                    
-                    summary = pd.DataFrame({
-                        'Metric': [
-                            'Total Products', 
-                            'Products with Price', 
-                            'Products without Price', 
-                            'Success Rate (%)',
-                            'Crawl Date',
-                            'Country Code',
-                            'Mall Name',
-                            'Fix Version'
-                        ],
-                        'Value': [
-                            len(df),
-                            df['retailprice'].notna().sum(),
-                            df['retailprice'].isna().sum(),
-                            round(df['retailprice'].notna().sum() / len(df) * 100, 2) if len(df) > 0 else 0,
-                            now.strftime('%Y-%m-%d %H:%M:%S'),
-                            country_code.upper(),
-                            mall_name.capitalize(),
-                            'Recommended_Products_Filtering_Added'
-                        ]
-                    })
-                    summary.to_excel(writer, sheet_name='Summary', index=False)
-                
-                temp_json = f'temp_{base_filename}.json'
-                crawl_metadata = {
-                    'crawl_info': {
-                        'country': country_code,
-                        'crawler': 'amazon_python_crawler_recommended_filtering',
-                        'crawl_datetime': now.strftime('%Y-%m-%d %H:%M:%S'),
-                        'total_products': len(df),
-                        'successful_crawls': df['retailprice'].notna().sum(),
-                        'version': '6.0_recommended_products_filtering_added',
-                        'fixes_applied': [
-                            'Comparison table exclusion',
-                            'Main product area targeting (centerCol)',
-                            'Price validation enhanced',
-                            'Blue link bypass added',
-                            'Spanish language support',
-                            'Multi-language error handling',
-                            'Recommended products filtering',
-                            'Related products exclusion',
-                            'Sponsored content filtering'
-                        ]
-                    },
-                    'results': df.to_dict('records')
-                }
-                
-                with open(temp_json, 'w', encoding='utf-8') as f:
-                    json.dump(crawl_metadata, f, ensure_ascii=False, indent=2, default=str)
-                
-                for temp_file in [temp_csv, temp_excel, temp_json]:
+                # 1. CSV 파일 생성
+                csv_filename = f'{base_filename}.csv'
+                df.to_csv(csv_filename, index=False, encoding='utf-8-sig')
+
+                # 2. CSV를 ZIP으로 압축
+                zip_filename = f'{base_filename}.zip'
+                with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                    zipf.write(csv_filename, arcname=csv_filename)
+
+                # 3. MD5 계산
+                def calculate_md5(filename):
+                    md5 = hashlib.md5()
+                    with open(filename, 'rb') as f:
+                        for chunk in iter(lambda: f.read(4096), b''):
+                            md5.update(chunk)
+                    return md5.hexdigest()
+
+                csv_md5 = calculate_md5(csv_filename)
+                zip_md5 = calculate_md5(zip_filename)
+
+                # 4. TXT 파일 생성 (MD5 저장)
+                txt_filename = f'{base_filename}.txt'
+                with open(txt_filename, 'w', encoding='utf-8') as f:
+                    f.write(f"csv_md5: {csv_md5}\n")
+                    f.write(f"zip_md5: {zip_md5}\n")
+
+                # 5. ZIP과 TXT를 날짜 폴더에 업로드
+                if self.upload_to_file_server(zip_filename, date_str):
+                    if self.upload_to_file_server(txt_filename, date_str):
+                        results['server_uploaded'] = True
+
+                # 6. 로컬 임시 파일 삭제
+                for temp_file in [csv_filename, zip_filename, txt_filename]:
                     if os.path.exists(temp_file):
                         os.remove(temp_file)
-                
+
                 logger.info("임시 파일 삭제 완료")
-                
             except Exception as e:
-                logger.error(f"파일 처리 오류: {e}")
-        
+                logger.error(f"파일 저장 실패: {e}")
+
         return results
-    
     def scrape_urls(self, urls_data, max_items=None):
         """여러 URL 스크래핑"""
         if max_items:

@@ -236,6 +236,18 @@ class CurrysScraper:
 
             local_time = datetime.now(self.local_tz)
 
+
+            # ISO 8601 형식
+
+            crawl_dt = local_time.strftime("%Y-%m-%dT%H:%M:%S")
+
+            tz_offset = local_time.strftime("%z")
+
+            tz_formatted = f"{tz_offset[:3]}:{tz_offset[3:]}" if tz_offset else "+00:00"
+
+            crawl_datetime_iso = f"{crawl_dt}{tz_formatted}"
+
+
             # 기본 결과 구조
             result = {
                 'retailerid': row_data.get('retailerid', ''),
@@ -255,7 +267,7 @@ class CurrysScraper:
                 'sold_by': 'Currys',
                 'imageurl': None,
                 'producturl': url,
-                'crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'crawl_datetime': crawl_datetime_iso,
                 'crawl_strdatetime': local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4],
                 'kr_crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),
                 'kr_crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4],
@@ -393,7 +405,7 @@ class CurrysScraper:
                 'sold_by': 'Currys',
                 'imageurl': None,
                 'producturl': url,
-                'crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'crawl_datetime': crawl_datetime_iso,
                 'crawl_strdatetime': local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4],
                 'kr_crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),
                 'kr_crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4],
@@ -445,134 +457,96 @@ class CurrysScraper:
             logger.error(traceback.format_exc())
             return False
     
-    def upload_to_file_server(self, local_file_path, remote_filename=None, country_code='gb'):
+    def upload_to_file_server(self, local_file_path, date_folder):
         """파일서버에 업로드"""
         try:
-            # SFTP 연결
             transport = paramiko.Transport((FILE_SERVER_CONFIG['host'], FILE_SERVER_CONFIG['port']))
             transport.connect(
                 username=FILE_SERVER_CONFIG['username'],
                 password=FILE_SERVER_CONFIG['password']
             )
             sftp = paramiko.SFTPClient.from_transport(transport)
-            
-            # 원격 파일명 설정
-            if remote_filename is None:
-                remote_filename = os.path.basename(local_file_path)
-            
-            # 국가별 디렉토리 경로
-            country_dir = f"{FILE_SERVER_CONFIG['upload_path']}/{country_code}"
-            
+
+            # 날짜별 디렉토리 경로
+            date_dir = f"{FILE_SERVER_CONFIG['upload_path']}/{date_folder}"
+
             # 디렉토리가 없으면 생성
             try:
-                sftp.stat(country_dir)
+                sftp.stat(date_dir)
             except FileNotFoundError:
-                logger.info(f"📁 디렉토리 생성: {country_dir}")
-                sftp.mkdir(country_dir)
-            
+                logger.info(f"📁 날짜 디렉토리 생성: {date_dir}")
+                sftp.mkdir(date_dir)
+
             # 업로드 경로
-            remote_path = f"{country_dir}/{remote_filename}"
-            
+            remote_filename = os.path.basename(local_file_path)
+            remote_path = f"{date_dir}/{remote_filename}"
+
             # 파일 업로드
             sftp.put(local_file_path, remote_path)
             logger.info(f"✅ 파일서버 업로드 완료: {remote_path}")
-            
-            # 연결 종료
+
             sftp.close()
             transport.close()
-            
+
             return True
-            
         except Exception as e:
             logger.error(f"❌ 파일서버 업로드 실패: {e}")
             return False
-    
     def save_results(self, df, save_db=True, upload_server=True):
-        """결과를 DB와 파일서버에 저장"""
-        # 새로운 파일명 형식: {수집일자}{수집시간}_{국가코드}_{쇼핑몰}.csv
+        """결과 저장"""
         now = datetime.now(self.korea_tz)
-        date_str = now.strftime("%Y%m%d")  # 수집일자
-        time_str = now.strftime("%H%M%S")  # 수집시간
-        country_code = "gb"  # 국가코드
-        mall_name = "currys"  # 쇼핑몰
-        
-        # 파일명 생성
-        base_filename = f"{date_str}{time_str}_{country_code}_{mall_name}"
-        
-        results = {
-            'db_saved': False,
-            'server_uploaded': False
-        }
-        
-        # DB 저장
+        date_str = now.strftime('%Y%m%d')
+        time_str = now.strftime('%H%M%S')
+        base_filename = f"{date_str}_{time_str}_gb_currys"
+
+        results = {'db_saved': False, 'server_uploaded': False}
+
         if save_db:
             results['db_saved'] = self.save_to_db(df)
-        
-        # 파일서버 업로드
+
         if upload_server:
             try:
-                # CSV 임시 파일
-                temp_csv = f'temp_{base_filename}.csv'
-                df.to_csv(temp_csv, index=False, encoding='utf-8-sig')
-                
-                # 파일서버 업로드
-                remote_csv_filename = f'{base_filename}.csv'
-                if self.upload_to_file_server(temp_csv, remote_csv_filename, country_code):
-                    results['server_uploaded'] = True
-                
-                # Excel 파일도 생성 및 업로드
-                temp_excel = f'temp_{base_filename}.xlsx'
-                with pd.ExcelWriter(temp_excel, engine='openpyxl') as writer:
-                    # 전체 결과
-                    df.to_excel(writer, sheet_name='All_Results', index=False)
-                    
-                    # 가격이 있는 항목만
-                    price_df = df[df['retailprice'].notna()]
-                    if not price_df.empty:
-                        price_df.to_excel(writer, sheet_name='With_Prices', index=False)
-                    
-                    # 요약 통계
-                    summary = pd.DataFrame({
-                        'Metric': [
-                            'Total Products', 
-                            'Products with Price', 
-                            'Products without Price', 
-                            'Success Rate (%)',
-                            'Crawl Date',
-                            'Country Code',
-                            'Mall Name'
-                        ],
-                        'Value': [
-                            len(df),
-                            df['retailprice'].notna().sum(),
-                            df['retailprice'].isna().sum(),
-                            round(df['retailprice'].notna().sum() / len(df) * 100, 2) if len(df) > 0 else 0,
-                            now.strftime('%Y-%m-%d %H:%M:%S'),
-                            country_code.upper(),
-                            mall_name.capitalize()
-                        ]
-                    })
-                    summary.to_excel(writer, sheet_name='Summary', index=False)
-                
-                # Excel 파일 업로드
-                # remote_excel_filename = f'{base_filename}.xlsx'
-                # self.upload_to_file_server(temp_excel, remote_excel_filename, country_code)
-                
-                # 임시 파일 삭제
-                os.remove(temp_csv)
-                os.remove(temp_excel)
-                logger.info("🗑️ 임시 파일 삭제 완료")
-                
-                # 업로드된 파일명 로그
-                logger.info(f"📁 업로드된 파일:")
-                logger.info(f"   - CSV: {remote_csv_filename}")
-                # logger.info(f"   - Excel: {remote_excel_filename}")
-                
+                # 1. CSV 파일 생성
+                csv_filename = f'{base_filename}.csv'
+                df.to_csv(csv_filename, index=False, encoding='utf-8-sig')
+
+                # 2. CSV를 ZIP으로 압축
+                zip_filename = f'{base_filename}.zip'
+                with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                    zipf.write(csv_filename, arcname=csv_filename)
+
+                # 3. MD5 계산
+                def calculate_md5(filename):
+                    md5 = hashlib.md5()
+                    with open(filename, 'rb') as f:
+                        for chunk in iter(lambda: f.read(4096), b''):
+                            md5.update(chunk)
+                    return md5.hexdigest()
+
+                csv_md5 = calculate_md5(csv_filename)
+                zip_md5 = calculate_md5(zip_filename)
+
+                # 4. TXT 파일 생성 (MD5 저장)
+                txt_filename = f'{base_filename}.txt'
+                with open(txt_filename, 'w', encoding='utf-8') as f:
+                    f.write(f"csv_md5: {csv_md5}\n")
+                    f.write(f"zip_md5: {zip_md5}\n")
+
+                # 5. ZIP과 TXT를 날짜 폴더에 업로드
+                if self.upload_to_file_server(zip_filename, date_str):
+                    if self.upload_to_file_server(txt_filename, date_str):
+                        results['server_uploaded'] = True
+
+                # 6. 로컬 임시 파일 삭제
+                for temp_file in [csv_filename, zip_filename, txt_filename]:
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+
+                logger.info("임시 파일 삭제 완료")
             except Exception as e:
-                logger.error(f"파일 처리 오류: {e}")
-        
+                logger.error(f"파일 저장 실패: {e}")
+
         return results
-    
     def scrape_urls(self, urls_data, max_items=None):
         """여러 URL 스크래핑"""
         if max_items:
