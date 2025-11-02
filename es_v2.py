@@ -403,21 +403,72 @@ class AmazonScraper:
         return None
 
     def parse_price_by_country(self, price_text, country_code):
-        """국가별 가격 파싱"""
+        """국가별 가격 파싱 - 강화된 검증 추가"""
         try:
             price_text = price_text.strip()
+            logger.debug(f"파싱할 가격 텍스트: '{price_text}'")
 
-            # 스페인: €123,45 또는 €123.45 형식 (유럽 스타일과 미국 스타일 혼용)
-            price_text = re.sub(r'[€\s]', '', price_text)
-            # 유럽 스타일 (1.234,56) 처리
-            if ',' in price_text and '.' in price_text:
-                price_text = price_text.replace('.', '').replace(',', '.')
-            elif ',' in price_text:
-                price_text = price_text.replace(',', '.')
-            match = re.search(r'(\d+\.?\d*)', price_text)
-            if match:
-                result = float(match.group(1))
-                return result if result > 0 else None
+            # 가격이 아닌 텍스트 필터링 (165 문제 방지)
+            invalid_patterns = [
+                r'^[a-zA-Z\s]+$',  # 알파벳만 있는 경우
+                r'^\d+\s*[a-zA-Z]',  # 숫자 + 문자 조합
+                r'^[^€$£¥₹]\d+$',   # 통화 기호 없는 순수 숫자
+            ]
+
+            for pattern in invalid_patterns:
+                if re.search(pattern, price_text):
+                    logger.debug(f"무효한 가격 패턴 감지: {pattern}")
+                    return None
+
+            if country_code in ['fr', 'it', 'es', 'de']:
+                cleaned = re.sub(r'[€\s]', '', price_text)
+                logger.debug(f"통화 제거 후: '{cleaned}'")
+
+                if country_code == 'es':
+                    if ',' in cleaned and '.' not in cleaned:
+                        cleaned = cleaned.replace(',', '.')
+                        logger.debug(f"스페인 쉼표→점 변환: '{cleaned}'")
+                    elif ',' in cleaned and '.' in cleaned:
+                        parts = cleaned.rsplit(',', 1)
+                        if len(parts) == 2 and len(parts[1]) <= 2:
+                            integer_part = parts[0].replace('.', '')
+                            decimal_part = parts[1]
+                            cleaned = f"{integer_part}.{decimal_part}"
+                            logger.debug(f"스페인 복합형식 변환: '{cleaned}'")
+                else:
+                    if ',' in cleaned:
+                        parts = cleaned.split(',')
+                        if len(parts) == 2 and len(parts[1]) <= 2 and parts[1].isdigit():
+                            integer_part = parts[0].replace('.', '')
+                            decimal_part = parts[1]
+                            cleaned = f"{integer_part}.{decimal_part}"
+
+                if re.match(r'^\d+(\.\d{1,2})?$', cleaned):
+                    # 최소 가격 검증 (10유로 이상, 10000유로 미만)
+                    try:
+                        price_value = float(cleaned)
+                        if 10 <= price_value <= 10000:
+                            return cleaned
+                        else:
+                            logger.debug(f"가격 범위 벗어남: {price_value}")
+                            return None
+                    except:
+                        return None
+
+            elif country_code == 'jp':
+                cleaned = re.sub(r'[¥￥\s]', '', price_text)
+                if re.match(r'^\d{1,3}(,\d{3})*$', cleaned) or re.match(r'^\d+$', cleaned):
+                    return cleaned
+
+            elif country_code == 'in':
+                cleaned = re.sub(r'[₹\s]', '', price_text)
+                if re.match(r'^\d{1,3}(,\d{2,3})*(\.\d{1,2})?$', cleaned) or re.match(r'^\d+(\.\d{1,2})?$', cleaned):
+                    return cleaned
+
+            else:
+                cleaned = re.sub(r'[$£\s]', '', price_text)
+                if re.match(r'^\d{1,3}(,\d{3})*(\.\d{1,2})?$', cleaned) or re.match(r'^\d+(\.\d{1,2})?$', cleaned):
+                    return cleaned
 
         except Exception as e:
             logger.debug(f"가격 파싱 오류: {price_text} - {e}")

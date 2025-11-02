@@ -402,18 +402,27 @@ class AmazonScraper:
         logger.warning("❌ 메인 영역에서 가격을 찾을 수 없음")
         return None
 
-    def parse_price_by_country(self, price_text, country_code):
-        """국가별 가격 파싱"""
+    def parse_aud_price(self, price_text):
+        """호주 달러 가격 파싱"""
         try:
             price_text = price_text.strip()
+            logger.debug(f"파싱할 가격 텍스트: '{price_text}'")
 
-            # 호주: $123.45 형식
-            price_text = re.sub(r'[$\s]', '', price_text)
-            price_text = price_text.replace(',', '')
-            match = re.search(r'(\d+\.?\d*)', price_text)
-            if match:
-                result = float(match.group(1))
-                return result if result > 0 else None
+            # AUD 기호와 공백 제거
+            cleaned = re.sub(r'[A$\s]', '', price_text)
+            logger.debug(f"통화 제거 후: '{cleaned}'")
+
+            # 천단위 콤마가 있는 경우 제거하고 소수점 처리
+            if re.match(r'^\d{1,3}(,\d{3})*(\.\d{1,2})?$', cleaned):
+                cleaned = cleaned.replace(',', '')
+                logger.debug(f"콤마 제거 후: '{cleaned}'")
+
+                if re.match(r'^\d+(\.\d{1,2})?$', cleaned):
+                    return cleaned
+
+            # 단순 숫자 패턴
+            elif re.match(r'^\d+(\.\d{1,2})?$', cleaned):
+                return cleaned
 
         except Exception as e:
             logger.debug(f"가격 파싱 오류: {price_text} - {e}")

@@ -402,25 +402,75 @@ class AmazonScraper:
         logger.warning("❌ 메인 영역에서 가격을 찾을 수 없음")
         return None
 
-    def parse_price_by_country(self, price_text, country_code):
-        """국가별 가격 파싱"""
+    def parse_italian_price(self, price_text):
+        """이탈리아 가격 파싱 (€ 통화, 쉼표 소수점)"""
         try:
             price_text = price_text.strip()
+            logger.debug(f"이탈리아 가격 파싱: '{price_text}'")
 
-            # 이탈리아: €123,45 또는 €123.45 형식 (유럽 스타일과 미국 스타일 혼용)
-            price_text = re.sub(r'[€\s]', '', price_text)
-            # 유럽 스타일 (1.234,56) 처리
-            if ',' in price_text and '.' in price_text:
-                price_text = price_text.replace('.', '').replace(',', '.')
-            elif ',' in price_text:
-                price_text = price_text.replace(',', '.')
-            match = re.search(r'(\d+\.?\d*)', price_text)
-            if match:
-                result = float(match.group(1))
-                return result if result > 0 else None
+            # 무효한 패턴 확인
+            invalid_patterns = [
+                r'^[a-zA-Z\s]+$',
+                r'^\d+\s*[a-zA-Z]',
+                r'was\s*€',
+                r'list\s*price',
+                r'buy\s*used'
+            ]
+
+            for pattern in invalid_patterns:
+                if re.search(pattern, price_text, re.IGNORECASE):
+                    logger.debug(f"무효한 가격 패턴 감지: {pattern}")
+                    return None
+
+            # 유로 기호와 공백 제거
+            cleaned = re.sub(r'[€\s]', '', price_text)
+            logger.debug(f"통화 제거 후: '{cleaned}'")
+
+            # 빈 문자열 체크
+            if not cleaned:
+                return None
+
+            # 이탈리아 형식: 61,84 또는 1.234,56
+            if ',' in cleaned:
+                # 쉼표가 있으면 마지막 쉼표를 소수점으로 처리
+                parts = cleaned.rsplit(',', 1)
+                if len(parts) == 2 and len(parts[1]) <= 2 and parts[1].isdigit():
+                    # 정수 부분에서 점 제거 (천단위 구분자)
+                    integer_part = parts[0].replace('.', '')
+                    decimal_part = parts[1]
+                    final_price = f"{integer_part}.{decimal_part}"
+                    logger.debug(f"이탈리아 쉼표→점 변환: '{final_price}'")
+
+                    # 최종 검증
+                    if re.match(r'^\d+\.\d{1,2}$', final_price):
+                        return final_price
+                else:
+                    # 쉼표가 있지만 소수점이 아닌 경우
+                    cleaned = cleaned.replace(',', '')
+
+            # 끝에 점만 있는 경우 처리 (예: "294." -> "294")
+            if cleaned.endswith('.') and len(cleaned) > 1:
+                cleaned_no_dot = cleaned[:-1]
+                if cleaned_no_dot.isdigit():
+                    logger.debug(f"끝 점 제거: '{cleaned}' -> '{cleaned_no_dot}'")
+                    cleaned = cleaned_no_dot
+
+            # 정수 가격 또는 점으로 구분된 가격
+            if re.match(r'^\d+(\.\d{1,2})?$', cleaned):
+                try:
+                    price_value = float(cleaned)
+                    logger.info(f"이탈리아 최종 가격 검증: '{cleaned}' -> {price_value}")
+                    if 1 <= price_value <= 50000:
+                        logger.info(f"이탈리아 가격 파싱 성공: {cleaned}")
+                        return cleaned
+                    else:
+                        logger.debug(f"가격 범위 벗어남: {price_value}")
+                except Exception as e:
+                    logger.debug(f"float 변환 실패: {cleaned} - {e}")
+                    pass
 
         except Exception as e:
-            logger.debug(f"가격 파싱 오류: {price_text} - {e}")
+            logger.debug(f"이탈리아 가격 파싱 오류: {price_text} - {e}")
 
         return None
 

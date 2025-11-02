@@ -402,25 +402,69 @@ class AmazonScraper:
         logger.warning("❌ 메인 영역에서 가격을 찾을 수 없음")
         return None
 
-    def parse_price_by_country(self, price_text, country_code):
-        """국가별 가격 파싱"""
+    def parse_german_price(self, price_text):
+        """독일 가격 파싱 (개선된 버전)"""
         try:
             price_text = price_text.strip()
+            logger.debug(f"파싱할 가격 텍스트: '{price_text}'")
 
-            # 독일: €123,45 또는 €123.45 형식 (유럽 스타일과 미국 스타일 혼용)
-            price_text = re.sub(r'[€\s]', '', price_text)
-            # 유럽 스타일 (1.234,56) 처리
-            if ',' in price_text and '.' in price_text:
-                price_text = price_text.replace('.', '').replace(',', '.')
-            elif ',' in price_text:
-                price_text = price_text.replace(',', '.')
-            match = re.search(r'(\d+\.?\d*)', price_text)
-            if match:
-                result = float(match.group(1))
-                return result if result > 0 else None
+            # 무효한 패턴 확인
+            invalid_patterns = [
+                r'^[a-zA-Z\s]+$',
+                r'^\d+\s*[a-zA-Z]',
+                r'was\s*€',
+                r'list\s*price',
+                r'buy\s*used'
+            ]
+
+            for pattern in invalid_patterns:
+                if re.search(pattern, price_text, re.IGNORECASE):
+                    logger.debug(f"무효한 가격 패턴 감지: {pattern}")
+                    return None
+
+            # 유로 기호와 공백 제거
+            cleaned = re.sub(r'[€\s]', '', price_text)
+            logger.debug(f"통화 제거 후: '{cleaned}'")
+
+            # 빈 문자열 체크
+            if not cleaned:
+                return None
+
+            # 4자리 숫자인 경우 센트로 간주 (예: 1299 → 12.99)
+            if re.match(r'^\d{4}$', cleaned) and len(cleaned) == 4:
+                try:
+                    cents = int(cleaned)
+                    euros = cents / 100
+                    if 10 <= euros <= 10000:
+                        formatted_price = f"{euros:.2f}"
+                        logger.debug(f"독일 센트→유로 변환: {cleaned} → {formatted_price}")
+                        return formatted_price
+                except:
+                    pass
+
+            # 독일식 숫자 형식 처리 (예: 1.299,99 → 1299.99)
+            if ',' in cleaned and '.' not in cleaned:
+                # 단순히 쉼표를 소수점으로 변경
+                cleaned = cleaned.replace(',', '.')
+            elif ',' in cleaned and '.' in cleaned:
+                # 천단위 구분자(.)와 소수점 구분자(,) 구분
+                parts = cleaned.rsplit(',', 1)
+                if len(parts) == 2 and len(parts[1]) <= 2:
+                    integer_part = parts[0].replace('.', '')
+                    decimal_part = parts[1]
+                    cleaned = f"{integer_part}.{decimal_part}"
+
+            # 최종 검증
+            if re.match(r'^\d+(?:\.\d{1,2})?$', cleaned):
+                try:
+                    price_value = float(cleaned)
+                    if 1 <= price_value <= 50000:  # 가격 범위 확대
+                        return cleaned
+                except:
+                    pass
 
         except Exception as e:
-            logger.debug(f"가격 파싱 오류: {price_text} - {e}")
+            logger.debug(f"가격 파싱 오류: {e}")
 
         return None
 

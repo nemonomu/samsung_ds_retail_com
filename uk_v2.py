@@ -495,24 +495,75 @@ class AmazonUKScraper:
         logger.warning("❌ 메인 영역에서 가격을 찾을 수 없음")
         return None
 
-    def parse_price_uk(self, price_text):
-        """영국 파운드 가격 파싱 (£123.45 형식)"""
+    def detect_currency_and_parse_price(self, price_text, url):
+        """URL을 기반으로 통화를 감지하고 가격 파싱"""
         try:
-            # 기본 정리
             price_text = price_text.strip()
 
-            # 영국: £123.45 또는 독일: €123.45 형식
-            price_text = re.sub(r'[£€\s]', '', price_text)
-            price_text = price_text.replace(',', '')
-            match = re.search(r'(\d+\.?\d*)', price_text)
-            if match:
-                result = float(match.group(1))
-                return result if result > 0 else None
+            # URL 기반으로 국가 감지
+            is_german = '.de/' in url or 'amazon.de' in url
 
-        except Exception as e:
-            logger.debug(f"가격 파싱 오류: {price_text} - {e}")
+            # 무효한 패턴 확인
+            invalid_patterns = [
+                r'^[a-zA-Z\s]+$',
+                r'^\d+\s*[a-zA-Z]',
+            ]
 
-        return None
+            if is_german:
+                invalid_patterns.extend([
+                    r'war\s*[€]',
+                    r'uvp\s*[€]',
+                    r'gebraucht'
+                ])
+            else:
+                invalid_patterns.extend([
+                    r'was\s*[£]',
+                    r'list\s*price',
+                    r'buy\s*used'
+                ])
+
+            for pattern in invalid_patterns:
+                if re.search(pattern, price_text, re.IGNORECASE):
+                    return None
+
+            if is_german:
+                # 독일: 유로 처리
+                cleaned = re.sub(r'[€\s]', '', price_text)
+
+                # 독일 형식: 1.234,99
+                if re.match(r'^\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?$', cleaned):
+                    try:
+                        if ',' in cleaned:
+                            parts = cleaned.split(',')
+                            if len(parts) == 2:
+                                whole_part = parts[0].replace('.', '')
+                                decimal_part = parts[1]
+                                price_value = float(f"{whole_part}.{decimal_part}")
+                            else:
+                                return None
+                        else:
+                            price_value = float(cleaned.replace('.', ''))
+
+                        if 5 <= price_value <= 50000:
+                            return str(price_value)
+                    except:
+                        pass
+            else:
+                # 영국: 파운드 처리
+                cleaned = re.sub(r'[£\s]', '', price_text)
+
+                # 영국 형식: 1,234.99
+                if re.match(r'^\d{1,4}(?:,\d{3})*(?:\.\d{1,2})?$', cleaned):
+                    try:
+                        price_value = float(cleaned.replace(',', ''))
+                        if 5 <= price_value <= 50000:
+                            return cleaned.replace(',', '')
+                    except:
+                        pass
+
+            return None
+        except Exception:
+            return None
 
     def validate_seller_info(self, ships_from, sold_by):
         """ships_from과 sold_by 정보 검증 - 둘 다 비어있을 때만 False"""

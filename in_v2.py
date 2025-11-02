@@ -402,25 +402,35 @@ class AmazonScraper:
         logger.warning("❌ 메인 영역에서 가격을 찾을 수 없음")
         return None
 
-    def parse_price_by_country(self, price_text, country_code):
-        """국가별 가격 파싱"""
+    def parse_rupee_price(self, price_text):
+        """루피 가격 파싱 - 통화기호 완전 제거, 정수/소수점 자동 처리"""
         try:
+            # 기본 정리
             price_text = price_text.strip()
+            logger.debug(f"원본 가격 텍스트: '{price_text}'")
 
-            # 인도: €123,45 또는 €123.45 형식 (유럽 스타일과 미국 스타일 혼용)
+            # 루피 기호와 공백 제거
             price_text = re.sub(r'[₹\s]', '', price_text)
-            # 유럽 스타일 (1.234,56) 처리
-            if ',' in price_text and '.' in price_text:
-                price_text = price_text.replace('.', '').replace(',', '.')
-            elif ',' in price_text:
-                price_text = price_text.replace(',', '.')
+
+            # 콤마 제거
+            price_text = price_text.replace(',', '')
+
+            # 숫자만 추출
             match = re.search(r'(\d+\.?\d*)', price_text)
             if match:
-                result = float(match.group(1))
-                return result if result > 0 else None
+                price = float(match.group(1))
+
+                # 소수점 이하가 0이면 정수로 변환
+                if price == int(price):
+                    price = int(price)
+                    logger.debug(f"파싱된 가격 (정수): {price}")
+                else:
+                    logger.debug(f"파싱된 가격 (소수): {price}")
+
+                return price
 
         except Exception as e:
-            logger.debug(f"가격 파싱 오류: {price_text} - {e}")
+            logger.debug(f"루피 가격 파싱 오류: {price_text} - {e}")
 
         return None
 
