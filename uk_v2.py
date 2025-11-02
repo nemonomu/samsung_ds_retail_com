@@ -24,6 +24,8 @@ import logging
 import os
 from io import StringIO
 import json
+import zipfile
+import hashlib
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -716,7 +718,7 @@ class AmazonUKScraper:
             logger.error(f"DB 저장 실패: {e}")
             return False
     
-    def upload_to_file_server(self, local_file_path, remote_filename=None):
+    def upload_to_file_server(self, local_file_path, date_folder):
         """파일서버에 업로드"""
         try:
             transport = paramiko.Transport((FILE_SERVER_CONFIG['host'], FILE_SERVER_CONFIG['port']))
@@ -725,72 +727,87 @@ class AmazonUKScraper:
                 password=FILE_SERVER_CONFIG['password']
             )
             sftp = paramiko.SFTPClient.from_transport(transport)
-            
-            if remote_filename is None:
-                remote_filename = os.path.basename(local_file_path)
-            
-            gb_dir = f"{FILE_SERVER_CONFIG['upload_path']}/gb"
-            
+
+            # 날짜별 디렉토리 경로
+            date_dir = f"{FILE_SERVER_CONFIG['upload_path']}/{date_folder}"
+
+            # 디렉토리가 없으면 생성
             try:
-                sftp.stat(gb_dir)
+                sftp.stat(date_dir)
             except FileNotFoundError:
-                logger.info(f"UK 디렉토리 생성: {gb_dir}")
-                sftp.mkdir(gb_dir)
-            
-            remote_path = f"{gb_dir}/{remote_filename}"
+                logger.info(f"📁 날짜 디렉토리 생성: {date_dir}")
+                sftp.mkdir(date_dir)
+
+            # 업로드 경로
+            remote_filename = os.path.basename(local_file_path)
+            remote_path = f"{date_dir}/{remote_filename}"
+
+            # 파일 업로드
             sftp.put(local_file_path, remote_path)
-            logger.info(f"파일서버 업로드 완료: {remote_path}")
-            
+            logger.info(f"✅ 파일서버 업로드 완료: {remote_path}")
+
             sftp.close()
             transport.close()
-            
+
             return True
         except Exception as e:
-            logger.error(f"파일서버 업로드 실패: {e}")
+            logger.error(f"❌ 파일서버 업로드 실패: {e}")
             return False
-    
     def save_results(self, df, save_db=True, upload_server=True):
         """결과 저장"""
         now = datetime.now(self.korea_tz)
-        base_filename = f"{now.strftime('%Y%m%d%H%M%S')}_gb_amazon"
-        
+        date_str = now.strftime('%Y%m%d')
+        time_str = now.strftime('%H%M%S')
+        base_filename = f"{date_str}_{time_str}_uk_amazon"
+
         results = {'db_saved': False, 'server_uploaded': False}
-        
+
         if save_db:
             results['db_saved'] = self.save_to_db(df)
-        
+
         if upload_server:
             try:
+                # 1. CSV 파일 생성
                 csv_filename = f'{base_filename}.csv'
                 df.to_csv(csv_filename, index=False, encoding='utf-8-sig')
-                
-                if self.upload_to_file_server(csv_filename):
-                    results['server_uploaded'] = True
-                
-            #    excel_filename = f'{base_filename}.xlsx'
-             #   with pd.ExcelWriter(excel_filename, engine='openpyxl') as writer:
-              #      df.to_excel(writer, sheet_name='All_Results', index=False)
-                    
-               #     price_df = df[df['retailprice'] != '0']
-                #    if not price_df.empty:
-                 #       price_df.to_excel(writer, sheet_name='With_Prices', index=False)
-                    
-               #     zero_price_df = df[df['retailprice'] == '0']
-               #     if not zero_price_df.empty:
-               #         zero_price_df.to_excel(writer, sheet_name='Zero_Prices', index=False)
-                
-              #  self.upload_to_file_server(excel_filename)
-                
-                if os.path.exists(csv_filename):
-                    os.remove(csv_filename)
-               # if os.path.exists(excel_filename):
-                #    os.remove(excel_filename)
-                
+
+                # 2. CSV를 ZIP으로 압축
+                zip_filename = f'{base_filename}.zip'
+                with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                    zipf.write(csv_filename, arcname=csv_filename)
+
+                # 3. MD5 계산
+                def calculate_md5(filename):
+                    md5 = hashlib.md5()
+                    with open(filename, 'rb') as f:
+                        for chunk in iter(lambda: f.read(4096), b''):
+                            md5.update(chunk)
+                    return md5.hexdigest()
+
+                csv_md5 = calculate_md5(csv_filename)
+                zip_md5 = calculate_md5(zip_filename)
+
+                # 4. TXT 파일 생성 (MD5 저장)
+                txt_filename = f'{base_filename}.txt'
+                with open(txt_filename, 'w', encoding='utf-8') as f:
+                    f.write(f"csv_md5: {csv_md5}\n")
+                    f.write(f"zip_md5: {zip_md5}\n")
+
+                # 5. ZIP과 TXT를 날짜 폴더에 업로드
+                if self.upload_to_file_server(zip_filename, date_str):
+                    if self.upload_to_file_server(txt_filename, date_str):
+                        results['server_uploaded'] = True
+
+                # 6. 로컬 임시 파일 삭제
+                for temp_file in [csv_filename, zip_filename, txt_filename]:
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+
+                logger.info("임시 파일 삭제 완료")
             except Exception as e:
                 logger.error(f"파일 저장 실패: {e}")
-        
+
         return results
-    
     def scrape_urls(self, urls_data, max_items=None):
         """URL 스크래핑"""
         if max_items:
