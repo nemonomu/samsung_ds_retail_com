@@ -310,6 +310,18 @@ class CoolblueScraper:
 
             local_time = datetime.now(self.local_tz)
 
+
+            # ISO 8601 형식
+
+            crawl_dt = local_time.strftime("%Y-%m-%dT%H:%M:%S")
+
+            tz_offset = local_time.strftime("%z")
+
+            tz_formatted = f"{tz_offset[:3]}:{tz_offset[3:]}" if tz_offset else "+00:00"
+
+            crawl_datetime_iso = f"{crawl_dt}{tz_formatted}"
+
+
             # 기본 결과 구조
             result = {
                 'retailerid': row_data.get('retailerid', ''),
@@ -329,7 +341,7 @@ class CoolblueScraper:
                 'sold_by': 'Coolblue',
                 'imageurl': None,
                 'producturl': url,
-                'crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'crawl_datetime': crawl_datetime_iso,
                 'crawl_strdatetime': local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4],
                 'kr_crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),
                 'kr_crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4],
@@ -615,7 +627,7 @@ class CoolblueScraper:
                 'sold_by': 'Coolblue',
                 'imageurl': None,
                 'producturl': url,
-                'crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'crawl_datetime': crawl_datetime_iso,
                 'crawl_strdatetime': local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4],
                 'kr_crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),
                 'kr_crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4],
