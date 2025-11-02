@@ -61,6 +61,36 @@ COUNTRY_CONFIGS = {
         'country_name': 'BestBuy',
         'class_name': 'BestBuyScraper',
         'method_prefix': 'bestbuy'
+    },
+    'currys': {
+        'timezone': 'Europe/London',
+        'country_name': 'Currys 영국',
+        'class_name': 'CurrysScraper',
+        'method_prefix': 'currys'
+    },
+    'xkom': {
+        'timezone': 'Europe/Warsaw',
+        'country_name': 'X-KOM 폴란드',
+        'class_name': 'XKOMScraper',
+        'method_prefix': 'xkom'
+    },
+    'danawa': {
+        'timezone': 'Asia/Seoul',
+        'country_name': '다나와 한국',
+        'class_name': 'DanawaScraper',
+        'method_prefix': 'danawa'
+    },
+    'mediamarkt': {
+        'timezone': 'Europe/Amsterdam',
+        'country_name': 'MediaMarkt 네덜란드',
+        'class_name': 'MediaMarktScraper',
+        'method_prefix': 'mediamarkt'
+    },
+    'coolblue_nl': {
+        'timezone': 'Europe/Amsterdam',
+        'country_name': 'Coolblue 네덜란드',
+        'class_name': 'CoolblueScraper',
+        'method_prefix': 'coolblue'
     }
 }
 
@@ -153,8 +183,8 @@ def main():
     print("V2 변환 스크립트 시작")
     print("=" * 60)
 
-    # fr은 이미 수동으로 완료
-    files_to_convert = ['de', 'it', 'au', 'in', 'es', 'uk', 'jp', 'usa', 'bestbuy']
+    # 변환할 파일 목록
+    files_to_convert = ['currys', 'xkom', 'danawa', 'mediamarkt', 'coolblue_nl']
 
     success_count = 0
     for country_code in files_to_convert:

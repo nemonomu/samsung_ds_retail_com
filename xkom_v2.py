@@ -1,7 +1,9 @@
 """
-X-kom 무한 크롤러 - DB 기반 버전
-초기 수동 인증 후 무한 크롤링
-파일명 형식: {수집일자}{수집시간}_{국가코드}_{쇼핑몰}.csv
+X-kom 무한 크롤러 V2 (타임존 분리 버전)
+원본 xkom.py 기반 - DB/타임존/파일서버 설정만 V2로 변경
+- 현지시간(폴란드)과 한국시간 분리 저장
+- 새 데이터베이스 사용 (DB_CONFIG_V2)
+- 핵심 로직은 원본과 동일
 """
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
@@ -15,6 +17,7 @@ import time
 import random
 import re
 from datetime import datetime, timedelta
+import pytz
 import logging
 import os
 import traceback
@@ -31,7 +34,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Import database configuration
+# Import database configuration V2
 from config import DB_CONFIG_V2 as DB_CONFIG
 
 from config import FILE_SERVER_CONFIG
@@ -43,9 +46,12 @@ class XKomInfiniteScraper:
         self.sftp_client = None
         self.is_logged_in = False
         self.crawl_count = 0
-        self.start_time = datetime.now()
+        # V2: 타임존 분리 (현지시간 + 한국시간)
+        self.korea_tz = pytz.timezone('Asia/Seoul')
+        self.local_tz = pytz.timezone('Europe/Warsaw')  # X-KOM 폴란드 현지 시간
+        self.start_time = datetime.now(self.korea_tz)
         self.saved_cookies = []
-        
+
         # 이메일 설정 (Windows 환경변수 또는 직접 설정)
         self.email_config = {
             'smtp_server': os.environ.get('SMTP_SERVER', 'smtp.gmail.com'),
@@ -466,15 +472,13 @@ Python 버전: {os.sys.version.split()[0]}
                 self.is_logged_in = False
                 return None
             
-            # 현재 시간
             # V2: 타임존 분리
+            now_time = datetime.now(self.korea_tz)
             local_time = datetime.now(self.local_tz)
-            korea_time = datetime.now(self.korea_tz)
-            crawl_datetime_str = local_time.strftime('%Y-%m-%d %H:%M')
-            crawl_strdatetime = local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4]
-            kr_crawl_datetime_str = korea_time.strftime('%Y-%m-%d %H:%M')
-            kr_crawl_strdatetime = korea_time.strftime('%Y%m%d%H%M%S') + f"{korea_time.microsecond:06d}"[:4]
-            
+            crawl_datetime_str = now_time.strftime('%Y-%m-%d %H:%M:%S')
+            local_crawl_datetime_str = local_time.strftime('%Y-%m-%d %H:%M:%S')
+            crawl_strdatetime = now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4]
+
             # 기본 결과 구조
             result = {
                 'retailerid': row_data.get('retailerid', ''),
@@ -495,6 +499,7 @@ Python 버전: {os.sys.version.split()[0]}
                 'imageurl': None,
                 'producturl': url,
                 'crawl_datetime': crawl_datetime_str,
+                'local_crawl_datetime': local_crawl_datetime_str,  # V2: 현지시간
                 'crawl_strdatetime': crawl_strdatetime,
                 'title': None,
                 'vat': row_data.get('vat', 'x')
@@ -616,8 +621,8 @@ Python 버전: {os.sys.version.split()[0]}
             return False
         
         try:
-            # xkom_price_crawl_tbl_pl_v2 테이블에 저장
-            df.to_sql('xkom_price_crawl_tbl_pl_v2', self.db_engine, if_exists='append', index=False)
+            # xkom_price_crawl_tbl_pl 테이블에 저장
+            df.to_sql('xkom_price_crawl_tbl_pl', self.db_engine, if_exists='append', index=False)
             logger.info(f"✅ DB 저장 완료: {len(df)}개 레코드")
             
             # 크롤링 로그 저장
@@ -680,8 +685,8 @@ Python 버전: {os.sys.version.split()[0]}
     def save_results(self, df):
         """결과를 DB와 파일서버에 저장"""
         now = datetime.now()
-        date_str = local_time.strftime("%Y%m%d")
-        time_str = local_time.strftime("%H%M%S")
+        date_str = now.strftime("%Y%m%d")
+        time_str = now.strftime("%H%M%S")
         country_code = "pl"
         mall_name = "xkom"
         
@@ -807,7 +812,7 @@ Python 버전: {os.sys.version.split()[0]}
                     interim_df = pd.DataFrame(results[-5:])
                     if self.db_engine:
                         try:
-                            interim_df.to_sql('xkom_price_crawl_tbl_pl_v2', self.db_engine, 
+                            interim_df.to_sql('xkom_price_crawl_tbl_pl', self.db_engine, 
                                             if_exists='append', index=False)
                             logger.info(f"💾 중간 저장: 5개 레코드")
                         except:

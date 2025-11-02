@@ -19,13 +19,12 @@ import pytz
 import logging
 import os
 from io import StringIO
-import zipfile
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Import database configuration
+# Import database configuration V2
 from config import DB_CONFIG_V2 as DB_CONFIG
 
 from config import FILE_SERVER_CONFIG
@@ -37,9 +36,9 @@ class CurrysScraper:
         self.sftp_client = None
 
         # 타임존 설정 추가
-        # V2: 타임존 분리
+        # V2: 타임존 분리 (현지시간 + 한국시간)
         self.korea_tz = pytz.timezone('Asia/Seoul')
-        self.local_tz = pytz.timezone('Europe/London')  # Currys
+        self.local_tz = pytz.timezone('Europe/London')  # Currys 영국 현지 시간
 
         # DB 연결 설정
         self.setup_db_connection()
@@ -230,13 +229,14 @@ class CurrysScraper:
             wait = WebDriverWait(self.driver, 20)
             time.sleep(random.uniform(3, 5))
             
-            # 현재 시간 (V2: 타임존 분리)
+            # 현재 시간
+            # V2: 타임존 분리
+
+            now_time = datetime.now(self.korea_tz)
+
             local_time = datetime.now(self.local_tz)
-            korea_time = datetime.now(self.korea_tz)
-            crawl_datetime_str = local_time.strftime('%Y-%m-%d %H:%M')
-            crawl_strdatetime = local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4]
-            kr_crawl_datetime_str = korea_time.strftime('%Y-%m-%d %H:%M')
-            kr_crawl_strdatetime = korea_time.strftime('%Y%m%d%H%M%S') + f"{korea_time.microsecond:06d}"[:4]
+            crawl_datetime_str = now_time.strftime('%Y-%m-%d %H:%M:%S')
+            crawl_strdatetime = now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4]
             
             # 기본 결과 구조
             result = {
@@ -370,12 +370,12 @@ class CurrysScraper:
             # 최대 재시도 횟수 초과 시 기본값 반환
             logger.error(f"❌ 최대 재시도 횟수 초과: {url}")
             # V2: 타임존 분리
+
+            now_time = datetime.now(self.korea_tz)
+
             local_time = datetime.now(self.local_tz)
-            korea_time = datetime.now(self.korea_tz)
-            crawl_datetime_str = local_time.strftime('%Y-%m-%d %H:%M')
-            crawl_strdatetime = local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4]
-            kr_crawl_datetime_str = korea_time.strftime('%Y-%m-%d %H:%M')
-            kr_crawl_strdatetime = korea_time.strftime('%Y%m%d%H%M%S') + f"{korea_time.microsecond:06d}"[:4]
+            crawl_datetime_str = now_time.strftime('%Y-%m-%d %H:%M:%S')
+            crawl_strdatetime = now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4]
             
             return {
                 'retailerid': row_data.get('retailerid', ''),
@@ -408,8 +408,8 @@ class CurrysScraper:
             return False
         
         try:
-            # currys_price_crawl_tbl_gb_v2 테이블에 저장
-            df.to_sql('currys_price_crawl_tbl_gb_v2', self.db_engine, if_exists='append', index=False)
+            # currys_price_crawl_tbl_gb 테이블에 저장
+            df.to_sql('currys_price_crawl_tbl_gb', self.db_engine, if_exists='append', index=False)
             logger.info(f"✅ DB 저장 완료: {len(df)}개 레코드")
             
             # 크롤링 로그를 pandas DataFrame으로 만들어서 한번에 저장
@@ -432,7 +432,7 @@ class CurrysScraper:
             
             # 저장된 데이터 확인
             with self.db_engine.connect() as conn:
-                count_query = "SELECT COUNT(*) FROM currys_price_crawl_tbl_gb_v2 WHERE DATE(crawl_datetime) = CURDATE()"
+                count_query = "SELECT COUNT(*) FROM currys_price_crawl_tbl_gb WHERE DATE(crawl_datetime) = CURDATE()"
                 result = conn.execute(count_query)
                 today_count = result.scalar()
                 logger.info(f"📊 오늘 저장된 총 레코드: {today_count}개")
@@ -490,9 +490,9 @@ class CurrysScraper:
     def save_results(self, df, save_db=True, upload_server=True):
         """결과를 DB와 파일서버에 저장"""
         # 새로운 파일명 형식: {수집일자}{수집시간}_{국가코드}_{쇼핑몰}.csv
-        local_time = datetime.now(self.local_tz)
-        date_str = local_time.strftime("%Y%m%d")  # 수집일자
-        time_str = local_time.strftime("%H%M%S")  # 수집시간
+        now = datetime.now(self.korea_tz)
+        date_str = now.strftime("%Y%m%d")  # 수집일자
+        time_str = now.strftime("%H%M%S")  # 수집시간
         country_code = "gb"  # 국가코드
         mall_name = "currys"  # 쇼핑몰
         
@@ -612,7 +612,7 @@ class CurrysScraper:
                     interim_df = pd.DataFrame(results[-10:])
                     if self.db_engine:
                         try:
-                            interim_df.to_sql('currys_price_crawl_tbl_gb_v2', self.db_engine, 
+                            interim_df.to_sql('currys_price_crawl_tbl_gb', self.db_engine, 
                                             if_exists='append', index=False)
                             logger.info(f"💾 중간 저장: 10개 레코드 DB 저장")
                         except Exception as e:
@@ -695,7 +695,7 @@ def get_db_history(engine, days=7):
                SUM(CASE WHEN retailprice IS NOT NULL THEN 1 ELSE 0 END) as with_price,
                COUNT(DISTINCT brand) as brands,
                COUNT(DISTINCT item) as items
-        FROM currys_price_crawl_tbl_gb_v2
+        FROM currys_price_crawl_tbl_gb
         WHERE crawl_datetime >= DATE_SUB(NOW(), INTERVAL {days} DAY)
         GROUP BY DATE(crawl_datetime)
         ORDER BY date DESC

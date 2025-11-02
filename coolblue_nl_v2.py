@@ -20,13 +20,12 @@ import logging
 import os
 import json
 from io import StringIO
-import zipfile
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Import database configuration
+# Import database configuration V2
 from config import DB_CONFIG_V2 as DB_CONFIG
 
 from config import FILE_SERVER_CONFIG
@@ -36,9 +35,9 @@ class CoolblueScraper:
         self.driver = None
         self.db_engine = None
         self.sftp_client = None
-        # V2: 타임존 분리
+        # V2: 타임존 분리 (현지시간 + 한국시간)
         self.korea_tz = pytz.timezone('Asia/Seoul')
-        self.local_tz = pytz.timezone('Europe/Amsterdam')  # 네덜란드
+        self.local_tz = pytz.timezone('Europe/Amsterdam')  # Coolblue 네덜란드 현지 시간  # 이 줄 추가 필요
 
         # DB 연결 설정
         self.setup_db_connection()
@@ -306,12 +305,12 @@ class CoolblueScraper:
             
             # 현재 시간
             # V2: 타임존 분리
+
+            now_time = datetime.now(self.korea_tz)
+
             local_time = datetime.now(self.local_tz)
-            korea_time = datetime.now(self.korea_tz)
-            crawl_datetime_str = local_time.strftime('%Y-%m-%d %H:%M')
-            crawl_strdatetime = local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4]
-            kr_crawl_datetime_str = korea_time.strftime('%Y-%m-%d %H:%M')
-            kr_crawl_strdatetime = korea_time.strftime('%Y%m%d%H%M%S') + f"{korea_time.microsecond:06d}"[:4]
+            crawl_datetime_str = now_time.strftime('%Y-%m-%d %H:%M:%S')
+            crawl_strdatetime = now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4]
             
             # 기본 결과 구조
             result = {
@@ -593,12 +592,12 @@ class CoolblueScraper:
             # 최대 재시도 횟수 초과 시 기본값 반환
             logger.error(f"❌ 최대 재시도 횟수 초과: {url}")
             # V2: 타임존 분리
+
+            now_time = datetime.now(self.korea_tz)
+
             local_time = datetime.now(self.local_tz)
-            korea_time = datetime.now(self.korea_tz)
-            crawl_datetime_str = local_time.strftime('%Y-%m-%d %H:%M')
-            crawl_strdatetime = local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4]
-            kr_crawl_datetime_str = korea_time.strftime('%Y-%m-%d %H:%M')
-            kr_crawl_strdatetime = korea_time.strftime('%Y%m%d%H%M%S') + f"{korea_time.microsecond:06d}"[:4]
+            crawl_datetime_str = now_time.strftime('%Y-%m-%d %H:%M:%S')
+            crawl_strdatetime = now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4]
             
             return {
                 'retailerid': row_data.get('retailerid', ''),
@@ -631,8 +630,8 @@ class CoolblueScraper:
             return False
         
         try:
-            # coolblue_price_crawl_tbl_nl_v2 테이블에 저장
-            df.to_sql('coolblue_price_crawl_tbl_nl_v2', self.db_engine, if_exists='append', index=False)
+            # coolblue_price_crawl_tbl_nl 테이블에 저장
+            df.to_sql('coolblue_price_crawl_tbl_nl', self.db_engine, if_exists='append', index=False)
             logger.info(f"✅ DB 저장 완료: {len(df)}개 레코드")
             
             # 크롤링 로그를 pandas DataFrame으로 만들어서 한번에 저장
@@ -654,7 +653,7 @@ class CoolblueScraper:
             
             # 저장된 데이터 확인
             with self.db_engine.connect() as conn:
-                count_query = "SELECT COUNT(*) FROM coolblue_price_crawl_tbl_nl_v2 WHERE DATE(crawl_datetime) = CURDATE()"
+                count_query = "SELECT COUNT(*) FROM coolblue_price_crawl_tbl_nl WHERE DATE(crawl_datetime) = CURDATE()"
                 result = conn.execute(count_query)
                 today_count = result.scalar()
                 logger.info(f"📊 오늘 저장된 총 레코드: {today_count}개")
@@ -667,78 +666,44 @@ class CoolblueScraper:
             logger.error(traceback.format_exc())
             return False
     
-    def upload_to_file_server(self, local_file_path, remote_filename=None, date_str=None, country_code='nl'):
-        """파일서버에 업로드 (V2: 날짜별 디렉토리 + ZIP 압축)"""
+    def upload_to_file_server(self, local_file_path, remote_filename=None, country_code='nl'):
+        """파일서버에 업로드"""
         try:
+            # SFTP 연결
             transport = paramiko.Transport((FILE_SERVER_CONFIG['host'], FILE_SERVER_CONFIG['port']))
             transport.connect(
                 username=FILE_SERVER_CONFIG['username'],
                 password=FILE_SERVER_CONFIG['password']
             )
             sftp = paramiko.SFTPClient.from_transport(transport)
-
+            
+            # 원격 파일명 설정
+            if remote_filename is None:
+                remote_filename = os.path.basename(local_file_path)
+            
+            # 국가별 디렉토리 경로
             country_dir = f"{FILE_SERVER_CONFIG['upload_path']}/{country_code}"
-
-            if date_str:
-                date_dir = f"{country_dir}/{date_str}"
-
-                for dir_path in [country_dir, date_dir]:
-                    try:
-                        sftp.stat(dir_path)
-                    except FileNotFoundError:
-                        logger.info(f"📁 디렉토리 생성: {dir_path}")
-                        sftp.mkdir(dir_path)
-
-                if remote_filename is None:
-                    remote_filename = os.path.basename(local_file_path)
-
-                remote_path = f"{date_dir}/{remote_filename}"
-                sftp.put(local_file_path, remote_path)
-                logger.info(f"✅ 파일서버 업로드 완료: {remote_path}")
-
-                # V2: ZIP 파일 생성/업데이트
-                zip_filename = f"{date_str}.zip"
-                local_zip_path = f"temp_{zip_filename}"
-                remote_zip_path = f"{country_dir}/{zip_filename}"
-
-                zip_exists = False
-                try:
-                    sftp.stat(remote_zip_path)
-                    sftp.get(remote_zip_path, local_zip_path)
-                    zip_exists = True
-                    logger.info(f"📦 기존 ZIP 파일 다운로드: {remote_zip_path}")
-                except FileNotFoundError:
-                    logger.info(f"📦 새 ZIP 파일 생성: {zip_filename}")
-
-                with zipfile.ZipFile(local_zip_path, 'a' if zip_exists else 'w', zipfile.ZIP_DEFLATED) as zipf:
-                    zipf.write(local_file_path, remote_filename)
-                    logger.info(f"✅ ZIP 파일에 추가: {remote_filename}")
-
-                sftp.put(local_zip_path, remote_zip_path)
-                logger.info(f"✅ ZIP 파일 업로드 완료: {remote_zip_path}")
-
-                if os.path.exists(local_zip_path):
-                    os.remove(local_zip_path)
-
-            else:
-                try:
-                    sftp.stat(country_dir)
-                except FileNotFoundError:
-                    logger.info(f"📁 디렉토리 생성: {country_dir}")
-                    sftp.mkdir(country_dir)
-
-                if remote_filename is None:
-                    remote_filename = os.path.basename(local_file_path)
-
-                remote_path = f"{country_dir}/{remote_filename}"
-                sftp.put(local_file_path, remote_path)
-                logger.info(f"✅ 파일서버 업로드 완료: {remote_path}")
-
+            
+            # 디렉토리가 없으면 생성
+            try:
+                sftp.stat(country_dir)
+            except FileNotFoundError:
+                logger.info(f"📁 디렉토리 생성: {country_dir}")
+                sftp.mkdir(country_dir)
+            
+            # 업로드 경로
+            remote_path = f"{country_dir}/{remote_filename}"
+            
+            # 파일 업로드
+            sftp.put(local_file_path, remote_path)
+            logger.info(f"✅ 파일서버 업로드 완료: {remote_path}")
+            
+            # 연결 종료
             sftp.close()
             transport.close()
-
+            
             return True
-
+            
         except Exception as e:
             logger.error(f"❌ 파일서버 업로드 실패: {e}")
             return False
@@ -746,9 +711,9 @@ class CoolblueScraper:
     def save_results(self, df, save_db=True, upload_server=True):
         """결과를 DB와 파일서버에 저장"""
         # 새로운 파일명 형식: {수집일자}{수집시간}_{국가코드}_{쇼핑몰}.csv
-        local_time = datetime.now(self.local_tz)
-        date_str = local_time.strftime("%Y%m%d")  # 수집일자
-        time_str = local_time.strftime("%H%M%S")  # 수집시간
+        now = datetime.now(self.korea_tz)
+        date_str = now.strftime("%Y%m%d")  # 수집일자
+        time_str = now.strftime("%H%M%S")  # 수집시간
         country_code = "nl"  # 국가코드
         mall_name = "coolblue"  # 쇼핑몰
         
@@ -771,9 +736,9 @@ class CoolblueScraper:
                 temp_csv = f'temp_{base_filename}.csv'
                 df.to_csv(temp_csv, index=False, encoding='utf-8-sig')
                 
-                # 파일서버 업로드 (V2: date_str 추가)
+                # 파일서버 업로드
                 remote_csv_filename = f'{base_filename}.csv'
-                if self.upload_to_file_server(temp_csv, remote_csv_filename, date_str, country_code):
+                if self.upload_to_file_server(temp_csv, remote_csv_filename, country_code):
                     results['server_uploaded'] = True
                 
                 # Excel 파일도 생성 및 업로드
@@ -930,7 +895,7 @@ class CoolblueScraper:
                     interim_df = pd.DataFrame(results[-10:])
                     if self.db_engine:
                         try:
-                            interim_df.to_sql('coolblue_price_crawl_tbl_nl_v2', self.db_engine, 
+                            interim_df.to_sql('coolblue_price_crawl_tbl_nl', self.db_engine, 
                                             if_exists='append', index=False)
                             logger.info(f"💾 중간 저장: 10개 레코드 DB 저장")
                         except Exception as e:
@@ -1012,7 +977,7 @@ def get_db_history(engine, days=7):
                SUM(CASE WHEN retailprice IS NOT NULL THEN 1 ELSE 0 END) as with_price,
                COUNT(DISTINCT brand) as brands,
                COUNT(DISTINCT item) as items
-        FROM coolblue_price_crawl_tbl_nl_v2
+        FROM coolblue_price_crawl_tbl_nl
         WHERE crawl_datetime >= DATE_SUB(NOW(), INTERVAL {days} DAY)
         GROUP BY DATE(crawl_datetime)
         ORDER BY date DESC
