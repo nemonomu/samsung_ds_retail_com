@@ -911,7 +911,7 @@ class AmazonScraper:
                 'producturl': url,
                 'crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M:%S'),
                 'kr_crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),  # V2: 한국시간
-                'kr_crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f\"{now_time.microsecond:06d}\"[:4],  # V2: 한국시간 문자열
+                'kr_crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4],  # V2: 한국시간 문자열
                 'crawl_strdatetime': local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4],
                 'title': None,
                 'vat': row_data.get('vat', 'o')
@@ -1047,7 +1047,7 @@ class AmazonScraper:
                 'producturl': url,
                 'crawl_datetime': local_time.strftime('%Y-%m-%d %H:%M:%S'),
                 'kr_crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),  # V2: 한국시간
-                'kr_crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f\"{now_time.microsecond:06d}\"[:4],  # V2: 한국시간 문자열
+                'kr_crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4],  # V2: 한국시간 문자열
                 'crawl_strdatetime': local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4],
                 'title': None,
                 'vat': row_data.get('vat', 'o')
