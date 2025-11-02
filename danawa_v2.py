@@ -305,11 +305,15 @@ class DanawaScraper:
             
             # 페이지 로드 대기
             time.sleep(random.uniform(2, 4))
-            
+
             # 현재 시간
-            now_time = datetime.now()
-            crawl_datetime_str = now_time.strftime('%Y-%m-%d %H:%M:%S')
-            crawl_strdatetime = now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4]
+            # V2: 타임존 분리
+            local_time = datetime.now(self.local_tz)
+            korea_time = datetime.now(self.korea_tz)
+            crawl_datetime_str = local_time.strftime('%Y-%m-%d %H:%M')
+            crawl_strdatetime = local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4]
+            kr_crawl_datetime_str = korea_time.strftime('%Y-%m-%d %H:%M')
+            kr_crawl_strdatetime = korea_time.strftime('%Y%m%d%H%M%S') + f"{korea_time.microsecond:06d}"[:4]
             
             # 기본 결과 구조
             result = {
@@ -448,9 +452,13 @@ class DanawaScraper:
             
             # 최대 재시도 횟수 초과 시 기본값 반환
             logger.error(f"❌ 최대 재시도 횟수 초과: {url}")
-            now_time = datetime.now()
-            crawl_datetime_str = now_time.strftime('%Y-%m-%d %H:%M:%S')
-            crawl_strdatetime = now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4]
+            # V2: 타임존 분리
+            local_time = datetime.now(self.local_tz)
+            korea_time = datetime.now(self.korea_tz)
+            crawl_datetime_str = local_time.strftime('%Y-%m-%d %H:%M')
+            crawl_strdatetime = local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4]
+            kr_crawl_datetime_str = korea_time.strftime('%Y-%m-%d %H:%M')
+            kr_crawl_strdatetime = korea_time.strftime('%Y%m%d%H%M%S') + f"{korea_time.microsecond:06d}"[:4]
             
             return {
                 'retailerid': row_data.get('retailerid', ''),

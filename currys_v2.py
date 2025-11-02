@@ -230,12 +230,13 @@ class CurrysScraper:
             wait = WebDriverWait(self.driver, 20)
             time.sleep(random.uniform(3, 5))
             
-            # 현재 시간
-            # V2: 타임존 분리
+            # 현재 시간 (V2: 타임존 분리)
             local_time = datetime.now(self.local_tz)
             korea_time = datetime.now(self.korea_tz)
-            crawl_datetime_str = now_time.strftime('%Y-%m-%d %H:%M:%S')
-            crawl_strdatetime = now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4]
+            crawl_datetime_str = local_time.strftime('%Y-%m-%d %H:%M')
+            crawl_strdatetime = local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4]
+            kr_crawl_datetime_str = korea_time.strftime('%Y-%m-%d %H:%M')
+            kr_crawl_strdatetime = korea_time.strftime('%Y%m%d%H%M%S') + f"{korea_time.microsecond:06d}"[:4]
             
             # 기본 결과 구조
             result = {
@@ -371,8 +372,10 @@ class CurrysScraper:
             # V2: 타임존 분리
             local_time = datetime.now(self.local_tz)
             korea_time = datetime.now(self.korea_tz)
-            crawl_datetime_str = now_time.strftime('%Y-%m-%d %H:%M:%S')
-            crawl_strdatetime = now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4]
+            crawl_datetime_str = local_time.strftime('%Y-%m-%d %H:%M')
+            crawl_strdatetime = local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4]
+            kr_crawl_datetime_str = korea_time.strftime('%Y-%m-%d %H:%M')
+            kr_crawl_strdatetime = korea_time.strftime('%Y%m%d%H%M%S') + f"{korea_time.microsecond:06d}"[:4]
             
             return {
                 'retailerid': row_data.get('retailerid', ''),
