@@ -1,0 +1,8 @@
+pandas
+pymysql
+sqlalchemy
+paramiko
+undetected-chromedriver
+selenium
+pytz
+openpyxl
