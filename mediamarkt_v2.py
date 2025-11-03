@@ -829,7 +829,7 @@ class MediaMarktInfiniteScraper:
                     
                     # 30분마다 상태 출력
                     if i == 30:
-                        uptime = datetime.now() - self.start_time
+                        uptime = datetime.now(self.korea_tz) - self.start_time
                         logger.info(f"⏱️ 가동 시간: {uptime} | 크롤링 횟수: {self.crawl_count}")
                 
                 # 1시간 후 크롤링 실행
