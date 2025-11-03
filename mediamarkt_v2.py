@@ -47,7 +47,7 @@ class MediaMarktInfiniteScraper:
         self.crawl_count = 0
         # V2: 타임존 분리 (현지시간 + 한국시간)
         self.korea_tz = pytz.timezone('Asia/Seoul')
-        self.local_tz = pytz.timezone('Europe/Amsterdam')  # MediaMarkt 네덜란드 현지 시간
+        self.local_tz = pytz.timezone('Europe/Berlin')  # MediaMarkt 독일 현지 시간
         self.start_time = datetime.now(self.korea_tz)
         self.saved_cookies = []
 
