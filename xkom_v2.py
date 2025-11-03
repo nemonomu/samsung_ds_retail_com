@@ -407,10 +407,10 @@ X-kom 크롤러 알림
 {message}
 
 === 상세 정보 ===
-시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+시간: {datetime.now(self.korea_tz).strftime('%Y-%m-%d %H:%M:%S')}
 서버: {os.environ.get('COMPUTERNAME', 'Windows EC2')}
 크롤링 횟수: {self.crawl_count}
-가동 시간: {datetime.now() - self.start_time}
+가동 시간: {datetime.now(self.korea_tz) - self.start_time}
 Python 버전: {os.sys.version.split()[0]}
 
 로그 위치: {os.getcwd()}\\xkom_infinite.log
@@ -923,7 +923,7 @@ Python 버전: {os.sys.version.split()[0]}
                     
                     # 30분마다 상태 출력
                     if i == 30:
-                        uptime = datetime.now() - self.start_time
+                        uptime = datetime.now(self.korea_tz) - self.start_time
                         logger.info(f"📊 중간 상태 보고")
                         logger.info(f"⏱️ 가동 시간: {uptime}")
                         logger.info(f"🔄 크롤링 횟수: {self.crawl_count}")
@@ -939,7 +939,7 @@ Python 버전: {os.sys.version.split()[0]}
                             f"정기 보고 - {self.crawl_count}회 완료",
                             f"X-kom 크롤러가 정상 작동 중입니다.\n\n"
                             f"총 크롤링: {self.crawl_count}회\n"
-                            f"가동 시간: {datetime.now() - self.start_time}\n"
+                            f"가동 시간: {datetime.now(self.korea_tz) - self.start_time}\n"
                             f"다음 실행: 1시간 후"
                         )
                 else:
