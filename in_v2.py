@@ -594,11 +594,11 @@ class AmazonIndiaScraper:
                 logger.info(f"\n  [{idx}/{len(price_selectors)}] 가격 선택자 시도: {selector}")
                 
                 if selector.startswith('//'):
-                    elements = WebDriverWait(self.driver, 3).until(
+                    elements = WebDriverWait(self.driver, 1).until(
                         EC.presence_of_all_elements_located((By.XPATH, selector))
                     )
                 else:
-                    elements = WebDriverWait(self.driver, 3).until(
+                    elements = WebDriverWait(self.driver, 1).until(
                         EC.presence_of_all_elements_located((By.CSS_SELECTOR, selector))
                     )
                 
@@ -1354,7 +1354,7 @@ def main():
         results_df = scraper.scrape_urls(test_data)
         if results_df is not None and not results_df.empty:
             scraper.analyze_results(results_df)
-            scraper.save_results(results_df, save_db=False, upload_server=True)
+            scraper.save_results(results_df, save_db=True, upload_server=True)
         return
     
     # 실제 크롤링
