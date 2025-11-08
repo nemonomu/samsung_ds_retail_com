@@ -1137,10 +1137,20 @@ class AmazonScraper:
             )
             sftp = paramiko.SFTPClient.from_transport(transport)
 
-            # 날짜별 디렉토리 경로
-            date_dir = f"{FILE_SERVER_CONFIG['upload_path']}/{date_folder}"
+            # 국가별 디렉토리 경로
+            country_dir = f"{FILE_SERVER_CONFIG['upload_path']}/{self.country_code}"
 
-            # 디렉토리가 없으면 생성
+            # 국가 디렉토리가 없으면 생성
+            try:
+                sftp.stat(country_dir)
+            except FileNotFoundError:
+                logger.info(f"📁 국가 디렉토리 생성: {country_dir}")
+                sftp.mkdir(country_dir)
+
+            # 날짜별 디렉토리 경로
+            date_dir = f"{country_dir}/{date_folder}"
+
+            # 날짜 디렉토리가 없으면 생성
             try:
                 sftp.stat(date_dir)
             except FileNotFoundError:
@@ -1198,19 +1208,19 @@ class AmazonScraper:
                 csv_md5 = calculate_md5(csv_filename)
                 zip_md5 = calculate_md5(zip_filename)
 
-                # 4. TXT 파일 생성 (MD5 저장)
-                txt_filename = f'{base_filename}.txt'
-                with open(txt_filename, 'w', encoding='utf-8') as f:
-                    f.write(f"csv_md5: {csv_md5}\n")
-                    f.write(f"zip_md5: {zip_md5}\n")
+                # 4. MD5 파일 생성 (정합성 확인)
+                md5_filename = f'{base_filename}.md5'
+                with open(md5_filename, 'w', encoding='utf-8') as f:
+                    f.write(f"{os.path.basename(zip_filename)} {zip_md5}\n")
+                    f.write(f"{os.path.basename(csv_filename)} {csv_md5}\n")
 
-                # 5. ZIP과 TXT를 날짜 폴더에 업로드
+                # 5. ZIP과 MD5를 날짜 폴더에 업로드
                 if self.upload_to_file_server(zip_filename, date_str):
-                    if self.upload_to_file_server(txt_filename, date_str):
+                    if self.upload_to_file_server(md5_filename, date_str):
                         results['server_uploaded'] = True
 
                 # 6. 로컬 임시 파일 삭제
-                for temp_file in [csv_filename, zip_filename, txt_filename]:
+                for temp_file in [csv_filename, zip_filename, md5_filename]:
                     if os.path.exists(temp_file):
                         os.remove(temp_file)
 
