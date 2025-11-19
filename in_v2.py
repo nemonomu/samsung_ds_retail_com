@@ -541,7 +541,9 @@ class AmazonIndiaScraper:
                 'suspicious activity',
                 '503 service unavailable',
                 'sorry, we just need to make sure you',
-                'are you a robot'
+                'are you a robot',
+                'the web address you entered is not a functioning page on our site',
+                "we're sorry. the web address"
             ]
             
             for pattern in serious_blocked_indicators:
@@ -1258,28 +1260,68 @@ class AmazonIndiaScraper:
             return None
         
         results = []
-        
+
         try:
             for idx, row in enumerate(urls_data):
                 logger.info(f"\n진행률: {idx + 1}/{len(urls_data)} ({(idx + 1)/len(urls_data)*100:.1f}%)")
-                
+
                 url = row.get('url')
-                result = self.extract_product_info(url, row)
-                results.append(result)
-                
+
+                # 개별 제품마다 try-except 처리
+                try:
+                    result = self.extract_product_info(url, row)
+                    results.append(result)
+                except Exception as product_error:
+                    logger.error(f"❌ 제품 수집 실패 (URL: {url}): {product_error}")
+                    logger.info("⏭️  다음 제품으로 계속 진행...")
+                    # 실패한 제품도 기본값으로 결과에 추가
+                    now_time = datetime.now(self.korea_tz)
+                    local_time = datetime.now(self.local_tz)
+                    crawl_dt = local_time.strftime("%Y-%m-%dT%H:%M:%S")
+                    tz_offset = local_time.strftime("%z")
+                    tz_formatted = f"{tz_offset[:3]}:{tz_offset[3:]}" if tz_offset else "+00:00"
+                    crawl_datetime_iso = f"{crawl_dt}{tz_formatted}"
+
+                    failed_result = {
+                        'retailerid': row.get('retailerid', ''),
+                        'country_code': 'in',
+                        'ships_from': None,
+                        'channel': row.get('channel', 'Online'),
+                        'retailersku': row.get('retailersku', ''),
+                        'brand': row.get('brand', ''),
+                        'brand_eng': row.get('brand_eng', row.get('brand', '')),
+                        'form_factor': row.get('form_factor', ''),
+                        'segment_lv1': row.get('seg_lv1', ''),
+                        'segment_lv2': row.get('seg_lv2', ''),
+                        'segment_lv3': row.get('seg_lv3', ''),
+                        'capacity': row.get('capacity', ''),
+                        'item': row.get('item', ''),
+                        'retailprice': None,
+                        'sold_by': None,
+                        'imageurl': None,
+                        'producturl': url,
+                        'crawl_datetime': crawl_datetime_iso,
+                        'kr_crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),
+                        'kr_crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4],
+                        'crawl_strdatetime': local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4],
+                        'title': None,
+                        'vat': row.get('vat', 'o')
+                    }
+                    results.append(failed_result)
+
                 # 대기
                 if idx < len(urls_data) - 1:
                     wait_time = random.uniform(5, 10)
                     logger.info(f"⏳ {wait_time:.1f}초 대기...")
                     time.sleep(wait_time)
-        
+
         except Exception as e:
-            logger.error(f"❌ 스크래핑 오류: {e}")
-        
+            logger.error(f"❌ 전체 스크래핑 오류: {e}")
+
         finally:
             if self.driver:
                 self.driver.quit()
-        
+
         return pd.DataFrame(results)
     
     def analyze_results(self, df):
