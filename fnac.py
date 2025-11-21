@@ -267,25 +267,20 @@ class FnacScraper:
             logger.error(f"❌ 브라우저 설정 실패: {e}")
             return False
 
-    def solve_slider_captcha(self, max_attempts=3):
-        """슬라이더 캡차 자동 해결"""
-        logger.info("🧩 슬라이더 캡차 감지 및 해결 시도...")
+    def wait_for_manual_captcha_solve(self, max_wait_seconds=300):
+        """캡차를 수동으로 해결할 때까지 대기"""
+        logger.info("🧩 캡차 감지 - 수동 해결 대기 중...")
 
-        # 캡차 관련 선택자들 (더 구체적으로)
+        # 캡차 관련 선택자들
         captcha_selectors = [
-            "//div[contains(@class, 'captcha')]",
-            "//div[contains(@id, 'captcha')]",
-            "//div[contains(@class, 'verify')]",
-            "//div[contains(@class, 'verification')]",
-            "[class*='captcha' i]",
-            "[id*='captcha' i]",
             "iframe[src*='captcha']",
             "iframe[title*='captcha' i]",
             "iframe[title*='verify' i]",
             "iframe[title*='puzzle' i]",
-            "//div[contains(text(), 'robot')]",
-            "//div[contains(text(), 'verify')]",
-            "//div[contains(text(), 'slide')]"
+            "[class*='captcha' i]",
+            "[id*='captcha' i]",
+            "//div[contains(@class, 'captcha')]",
+            "//div[contains(@id, 'captcha')]",
         ]
 
         # 슬라이더 선택자들 (캡차 전용만)
@@ -307,7 +302,6 @@ class FnacScraper:
         try:
             # 1. 캡차 존재 여부 확인
             captcha_found = False
-            captcha_element = None
             for selector in captcha_selectors:
                 try:
                     if selector.startswith('//'):
@@ -317,15 +311,7 @@ class FnacScraper:
 
                     if locator.is_visible(timeout=2000):
                         logger.info(f"🔍 캡차 요소 발견: {selector}")
-                        # 요소의 텍스트나 속성 확인
-                        try:
-                            text_content = locator.first.text_content()
-                            if text_content:
-                                logger.info(f"   캡차 텍스트: {text_content[:100]}")
-                        except:
-                            pass
                         captcha_found = True
-                        captcha_element = locator
                         break
                 except:
                     continue
@@ -334,11 +320,53 @@ class FnacScraper:
                 logger.info("✅ 캡차가 감지되지 않음")
                 return True
 
-            logger.info("⚠️ 캡차가 감지되었습니다!")
+            # 2. 캡차가 있으면 사용자에게 알리고 대기
+            logger.warning("⚠️ 캡차가 감지되었습니다!")
+            logger.warning(f"💡 수동으로 캡차를 해결해주세요. 최대 {max_wait_seconds}초 대기합니다...")
 
-            # 2. iframe 내부 캡차 확인 및 처리
-            try:
-                frames = self.page.frames
+            # 3. 캡차가 사라질 때까지 주기적으로 확인
+            start_time = time.time()
+            check_interval = 2  # 2초마다 확인
+
+            while (time.time() - start_time) < max_wait_seconds:
+                time.sleep(check_interval)
+
+                # 캡차가 여전히 있는지 확인
+                still_has_captcha = False
+                for selector in captcha_selectors:
+                    try:
+                        if selector.startswith('//'):
+                            locator = self.page.locator(f'xpath={selector}')
+                        else:
+                            locator = self.page.locator(selector)
+
+                        if locator.is_visible(timeout=1000):
+                            still_has_captcha = True
+                            break
+                    except:
+                        continue
+
+                if not still_has_captcha:
+                    logger.info("✅ 캡차가 해결되었습니다!")
+                    return True
+
+                # 진행 상황 표시
+                elapsed = int(time.time() - start_time)
+                if elapsed % 10 == 0:  # 10초마다
+                    logger.info(f"⏳ 대기 중... ({elapsed}/{max_wait_seconds}초)")
+
+            # 시간 초과
+            logger.error(f"❌ {max_wait_seconds}초 동안 캡차가 해결되지 않았습니다")
+            return False
+
+        except Exception as e:
+            logger.error(f"❌ 캡차 대기 중 오류: {e}")
+            return False
+
+    def solve_slider_captcha_old(self, max_attempts=3):
+        """이전 자동 해결 코드 (사용 안 함)"""
+        # 자동 해결 코드는 주석 처리
+        return False
                 for frame in frames:
                     if 'captcha' in frame.url.lower() or 'verify' in frame.url.lower():
                         logger.info(f"🔍 캡차 iframe 발견: {frame.url}")
@@ -687,31 +715,9 @@ class FnacScraper:
             except Exception as e:
                 logger.debug(f"쿠키 팝업 처리 중 오류 (무시): {e}")
 
-            # 슬라이더 캡차 해결 시도 - 실패하면 새로고침 후 재시도 (최대 3회)
+            # 캡차 감지 및 수동 해결 대기
             time.sleep(2)  # 캡차가 나타날 시간 대기
-
-            captcha_solved = False
-            max_refresh_attempts = 3
-
-            for refresh_attempt in range(max_refresh_attempts):
-                if refresh_attempt > 0:
-                    logger.info(f"🔄 페이지 새로고침 후 재시도 ({refresh_attempt + 1}/{max_refresh_attempts})")
-                    self.page.reload(wait_until='domcontentloaded', timeout=30000)
-                    time.sleep(1)  # 1초 대기
-
-                if self.solve_slider_captcha():
-                    captcha_solved = True
-                    logger.info("✅ 캡차 자동 해결 성공!")
-                    break
-                else:
-                    if refresh_attempt < max_refresh_attempts - 1:
-                        logger.warning(f"❌ 캡차 해결 실패, 새로고침 시도... ({refresh_attempt + 1}/{max_refresh_attempts})")
-
-            # 3회 시도 후에도 실패하면 30초 대기
-            if not captcha_solved:
-                logger.warning("⚠️ 3회 시도 후에도 캡차 자동 해결 실패")
-                logger.warning("💡 수동으로 캡차를 해결해주세요. 30초 대기합니다...")
-                time.sleep(30)
+            self.wait_for_manual_captcha_solve(max_wait_seconds=300)  # 최대 5분 대기
 
             # 세션이 제대로 설정되었는지 확인
             title = self.page.title()
@@ -735,8 +741,8 @@ class FnacScraper:
             # 페이지 로드 대기
             time.sleep(random.uniform(3, 5))
 
-            # 슬라이더 캡차가 나타났는지 확인 및 해결
-            self.solve_slider_captcha()
+            # 슬라이더 캡차가 나타났는지 확인 및 수동 해결 대기
+            self.wait_for_manual_captcha_solve(max_wait_seconds=120)  # 제품 페이지는 2분만 대기
 
             # 404 에러 체크 (봇 감지로 인한 404 위장 가능성)
             if response and response.status == 404:
