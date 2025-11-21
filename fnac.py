@@ -267,6 +267,203 @@ class FnacScraper:
             logger.error(f"❌ 브라우저 설정 실패: {e}")
             return False
 
+    def solve_slider_captcha(self, max_attempts=3):
+        """슬라이더 캡차 자동 해결"""
+        logger.info("🧩 슬라이더 캡차 감지 및 해결 시도...")
+
+        # 캡차 관련 선택자들
+        captcha_selectors = [
+            "//div[contains(@class, 'captcha')]",
+            "//div[contains(@id, 'captcha')]",
+            "//div[contains(@class, 'slider')]",
+            "//div[contains(@class, 'verify')]",
+            "//div[contains(@class, 'verification')]",
+            "[class*='captcha']",
+            "[id*='captcha']",
+            "iframe[src*='captcha']",
+            "iframe[title*='captcha']",
+            "iframe[title*='verify']"
+        ]
+
+        # 슬라이더 선택자들
+        slider_selectors = [
+            "//div[contains(@class, 'slider-button')]",
+            "//div[contains(@class, 'slide-verify-slider')]",
+            "//span[contains(@class, 'slider')]",
+            "//div[contains(@id, 'nc_')]",  # Alibaba Cloud slider
+            ".slider-button",
+            ".slide-verify-slider",
+            "#nc_1_n1z",
+            "[class*='slider']"
+        ]
+
+        try:
+            # 1. 캡차 존재 여부 확인
+            captcha_found = False
+            for selector in captcha_selectors:
+                try:
+                    if selector.startswith('//'):
+                        locator = self.page.locator(f'xpath={selector}')
+                    else:
+                        locator = self.page.locator(selector)
+
+                    if locator.is_visible(timeout=2000):
+                        logger.info(f"🔍 캡차 요소 발견: {selector}")
+                        captcha_found = True
+                        break
+                except:
+                    continue
+
+            if not captcha_found:
+                logger.info("✅ 캡차가 감지되지 않음")
+                return True
+
+            # 2. iframe 내부 캡차 확인 및 처리
+            try:
+                frames = self.page.frames
+                for frame in frames:
+                    if 'captcha' in frame.url.lower() or 'verify' in frame.url.lower():
+                        logger.info(f"🔍 캡차 iframe 발견: {frame.url}")
+                        # iframe 내부에서 슬라이더 찾기 시도
+                        for slider_sel in slider_selectors:
+                            try:
+                                if slider_sel.startswith('//'):
+                                    slider = frame.locator(f'xpath={slider_sel}')
+                                else:
+                                    slider = frame.locator(slider_sel)
+
+                                if slider.is_visible(timeout=2000):
+                                    logger.info(f"✅ iframe 내 슬라이더 발견: {slider_sel}")
+                                    return self._drag_slider(slider, frame)
+                            except:
+                                continue
+            except Exception as e:
+                logger.debug(f"iframe 처리 중 오류: {e}")
+
+            # 3. 메인 페이지에서 슬라이더 찾기
+            for attempt in range(max_attempts):
+                logger.info(f"🔄 슬라이더 해결 시도 {attempt + 1}/{max_attempts}")
+
+                for slider_sel in slider_selectors:
+                    try:
+                        if slider_sel.startswith('//'):
+                            slider = self.page.locator(f'xpath={slider_sel}')
+                        else:
+                            slider = self.page.locator(slider_sel)
+
+                        if slider.is_visible(timeout=2000):
+                            logger.info(f"✅ 슬라이더 발견: {slider_sel}")
+
+                            if self._drag_slider(slider, self.page):
+                                logger.info("✅ 슬라이더 캡차 해결 성공!")
+                                time.sleep(2)  # 검증 대기
+                                return True
+                    except Exception as e:
+                        logger.debug(f"슬라이더 {slider_sel} 처리 실패: {e}")
+                        continue
+
+                # 재시도 전 대기
+                if attempt < max_attempts - 1:
+                    time.sleep(2)
+
+            logger.warning("⚠️ 슬라이더 캡차를 자동으로 해결하지 못했습니다")
+            return False
+
+        except Exception as e:
+            logger.error(f"❌ 캡차 해결 중 오류: {e}")
+            return False
+
+    def _drag_slider(self, slider, page_or_frame):
+        """슬라이더를 자연스럽게 드래그"""
+        try:
+            # 슬라이더의 위치와 크기 가져오기
+            box = slider.bounding_box()
+            if not box:
+                logger.warning("슬라이더 위치를 가져올 수 없음")
+                return False
+
+            # 시작 위치 (슬라이더 중앙)
+            start_x = box['x'] + box['width'] / 2
+            start_y = box['y'] + box['height'] / 2
+
+            # 드래그 거리 계산 (일반적으로 슬라이더 트랙 너비만큼)
+            # 트랙 요소를 찾아서 너비를 가져오거나, 기본값 사용
+            drag_distance = 300  # 기본값
+
+            # 트랙 요소 찾기 시도
+            track_selectors = [
+                "//div[contains(@class, 'slider-track')]",
+                "//div[contains(@class, 'slide-track')]",
+                ".slider-track",
+                ".slide-verify-slider-track"
+            ]
+
+            for track_sel in track_selectors:
+                try:
+                    if track_sel.startswith('//'):
+                        track = page_or_frame.locator(f'xpath={track_sel}')
+                    else:
+                        track = page_or_frame.locator(track_sel)
+
+                    if track.is_visible(timeout=1000):
+                        track_box = track.bounding_box()
+                        if track_box:
+                            drag_distance = track_box['width'] - box['width']
+                            logger.info(f"트랙 너비 기반 드래그 거리: {drag_distance}px")
+                            break
+                except:
+                    continue
+
+            # 목표 위치
+            end_x = start_x + drag_distance
+            end_y = start_y
+
+            logger.info(f"🖱️ 슬라이더 드래그: ({start_x:.0f}, {start_y:.0f}) → ({end_x:.0f}, {end_y:.0f})")
+
+            # 자연스러운 마우스 움직임 시뮬레이션
+            # 1. 마우스를 슬라이더로 이동
+            page_or_frame.mouse.move(start_x, start_y)
+            time.sleep(random.uniform(0.1, 0.3))
+
+            # 2. 마우스 버튼 누르기
+            page_or_frame.mouse.down()
+            time.sleep(random.uniform(0.1, 0.2))
+
+            # 3. 여러 단계로 나눠서 자연스럽게 드래그
+            steps = random.randint(20, 30)
+            for i in range(steps):
+                # 진행률
+                progress = (i + 1) / steps
+
+                # 현재 x 위치 (약간의 랜덤 변화 추가)
+                current_x = start_x + (drag_distance * progress)
+
+                # y축에 약간의 흔들림 추가 (사람처럼)
+                wobble = random.uniform(-2, 2)
+                current_y = start_y + wobble
+
+                # 마우스 이동
+                page_or_frame.mouse.move(current_x, current_y)
+
+                # 각 스텝마다 약간의 랜덤 딜레이
+                time.sleep(random.uniform(0.01, 0.03))
+
+            # 4. 목표 지점에 정확히 도달
+            page_or_frame.mouse.move(end_x, end_y)
+            time.sleep(random.uniform(0.1, 0.2))
+
+            # 5. 마우스 버튼 놓기
+            page_or_frame.mouse.up()
+
+            logger.info("✅ 슬라이더 드래그 완료")
+            time.sleep(1)
+
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ 슬라이더 드래그 실패: {e}")
+            return False
+
     def initialize_session(self):
         """Fnac 세션 초기화"""
         logger.info("Fnac 세션 초기화...")
@@ -310,7 +507,7 @@ class FnacScraper:
                         if button.is_visible(timeout=2000):
                             button.click(timeout=3000)
                             logger.info(f"🍪 쿠키 동의 팝업 처리 완료 (선택자: {selector})")
-                            time.sleep(1)
+                            time.sleep(2)  # 쿠키 처리 후 대기 시간 증가
                             cookie_found = True
                             break
                     except Exception as e:
@@ -322,6 +519,10 @@ class FnacScraper:
 
             except Exception as e:
                 logger.debug(f"쿠키 팝업 처리 중 오류 (무시): {e}")
+
+            # 슬라이더 캡차 해결 시도
+            time.sleep(2)  # 캡차가 나타날 시간 대기
+            self.solve_slider_captcha()
 
             # 세션이 제대로 설정되었는지 확인
             title = self.page.title()
@@ -344,6 +545,9 @@ class FnacScraper:
 
             # 페이지 로드 대기
             time.sleep(random.uniform(3, 5))
+
+            # 슬라이더 캡차가 나타났는지 확인 및 해결
+            self.solve_slider_captcha()
 
             # 404 에러 체크 (봇 감지로 인한 404 위장 가능성)
             if response and response.status == 404:
