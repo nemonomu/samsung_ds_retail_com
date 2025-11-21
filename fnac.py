@@ -276,6 +276,36 @@ class FnacScraper:
             self.page.goto("https://www.fnac.com", wait_until='networkidle', timeout=30000)
             time.sleep(random.uniform(2, 4))
 
+            # 쿠키 팝업 처리
+            try:
+                logger.info("🍪 쿠키 팝업 확인 중...")
+                # "J'accepte" 버튼 클릭 (여러 선택자 시도)
+                cookie_selectors = [
+                    "text=J'accepte",
+                    "button:has-text(\"J'accepte\")",
+                    "//button[contains(text(), \"J'accepte\")]",
+                    "[class*='accept' i]",
+                    "[id*='accept' i]"
+                ]
+
+                for selector in cookie_selectors:
+                    try:
+                        if selector.startswith('text=') or selector.startswith('button:'):
+                            button = self.page.locator(selector)
+                        elif selector.startswith('//'):
+                            button = self.page.locator(f'xpath={selector}')
+                        else:
+                            button = self.page.locator(selector)
+
+                        button.click(timeout=3000)
+                        logger.info("🍪 쿠키 동의 팝업 처리 완료")
+                        time.sleep(1)
+                        break
+                    except:
+                        continue
+            except Exception as e:
+                logger.debug(f"쿠키 팝업 없음 또는 처리 중 오류 (무시): {e}")
+
             # 세션이 제대로 설정되었는지 확인
             title = self.page.title()
             if "fnac" in title.lower():
