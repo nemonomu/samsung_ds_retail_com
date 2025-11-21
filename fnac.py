@@ -1,12 +1,9 @@
 """
-Fnac 가격 추출 시스템 - DB 기반 버전
+Fnac 가격 추출 시스템 - Playwright 기반 버전
 DB에서 URL 읽어와서 크롤링 후 결과 저장
 파일명 형식: {수집일자}{수집시간}_{국가코드}_{쇼핑몰}.csv
 """
-import undetected_chromedriver as uc
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 import pandas as pd
 import pymysql
 from sqlalchemy import create_engine
@@ -34,7 +31,10 @@ from config import FILE_SERVER_CONFIG
 
 class FnacScraper:
     def __init__(self):
-        self.driver = None
+        self.playwright = None
+        self.browser = None
+        self.context = None
+        self.page = None
         self.db_engine = None
         self.sftp_client = None
         self.country_code = 'fr'
@@ -104,7 +104,6 @@ class FnacScraper:
             # title XPath 추가
             if 'title' in self.XPATHS:
                 new_title_selectors = [
-                    '//*[@id="FnacContent"]/div/div[1]/div[2]/div[1]/section[1]/h1',
                     '.f-productHeader__heading',
                     "//h1[@class='f-productHeader__heading']"
                 ]
@@ -112,7 +111,6 @@ class FnacScraper:
                 logger.info(f"✅ 새로운 title 선택자 추가됨. 총 title: {len(self.XPATHS['title'])}개")
             else:
                 self.XPATHS['title'] = [
-                    '//*[@id="FnacContent"]/div/div[1]/div[2]/div[1]/section[1]/h1',
                     '.f-productHeader__heading',
                     "//h1[@class='f-productHeader__heading']"
                 ]
@@ -120,7 +118,6 @@ class FnacScraper:
             # imageurl 선택자 추가
             if 'imageurl' in self.XPATHS:
                 new_image_selectors = [
-                    '//*[@id="FnacContent"]/div/div[1]/div[2]/div[1]/section[2]/div[2]/div[1]/div/img',
                     '.f-productMedias__viewItem--main',
                     "//img[@class='f-productMedias__viewItem--main']"
                 ]
@@ -128,7 +125,6 @@ class FnacScraper:
                 logger.info(f"✅ 새로운 imageurl 선택자 추가됨. 총 imageurl: {len(self.XPATHS['imageurl'])}개")
             else:
                 self.XPATHS['imageurl'] = [
-                    '//*[@id="FnacContent"]/div/div[1]/div[2]/div[1]/section[2]/div[2]/div[1]/div/img',
                     '.f-productMedias__viewItem--main',
                     "//img[@class='f-productMedias__viewItem--main']"
                 ]
@@ -142,12 +138,12 @@ class FnacScraper:
                         "//span[@class='f-faPriceBox__price userPrice checked']"
                     ],
                     'title': [
-                        '//*[@id="FnacContent"]/div/div[1]/div[2]/div[1]/section[1]/h1',
-                        '.f-productHeader__heading'
+                        '.f-productHeader__heading',
+                        "//h1[@class='f-productHeader__heading']"
                     ],
                     'imageurl': [
-                        '//*[@id="FnacContent"]/div/div[1]/div[2]/div[1]/section[2]/div[2]/div[1]/div/img',
-                        '.f-productMedias__viewItem--main'
+                        '.f-productMedias__viewItem--main',
+                        "//img[@class='f-productMedias__viewItem--main']"
                     ]
                 }
 
@@ -160,12 +156,12 @@ class FnacScraper:
                     "//span[@class='f-faPriceBox__price userPrice checked']"
                 ],
                 'title': [
-                    '//*[@id="FnacContent"]/div/div[1]/div[2]/div[1]/section[1]/h1',
-                    '.f-productHeader__heading'
+                    '.f-productHeader__heading',
+                    "//h1[@class='f-productHeader__heading']"
                 ],
                 'imageurl': [
-                    '//*[@id="FnacContent"]/div/div[1]/div[2]/div[1]/section[2]/div[2]/div[1]/div/img',
-                    '.f-productMedias__viewItem--main'
+                    '.f-productMedias__viewItem--main',
+                    "//img[@class='f-productMedias__viewItem--main']"
                 ]
             }
 
@@ -212,25 +208,63 @@ class FnacScraper:
             logger.error(f"크롤링 대상 조회 실패: {e}")
             return []
 
-    def setup_driver(self):
-        """Chrome 드라이버 설정"""
-        logger.info("🔧 Chrome 드라이버 설정 중...")
+    def setup_browser(self):
+        """Playwright 브라우저 설정"""
+        logger.info("🔧 Playwright 브라우저 설정 중...")
 
         try:
-            self.driver = uc.Chrome()
-            self.driver.maximize_window()
+            self.playwright = sync_playwright().start()
 
-            # 스텔스 모드 설정
-            stealth_script = """
-            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-            Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3]});
-            """
-            self.driver.execute_script(stealth_script)
+            # Chromium 브라우저 시작 (headless=False로 더 자연스럽게)
+            self.browser = self.playwright.chromium.launch(
+                headless=False,  # GUI 모드
+                args=[
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-dev-shm-usage',
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-web-security',
+                    '--disable-features=IsolateOrigins,site-per-process'
+                ]
+            )
 
-            logger.info("✅ 드라이버 설정 완료")
+            # 컨텍스트 생성 (프랑스 사용자 시뮬레이션)
+            self.context = self.browser.new_context(
+                viewport={'width': 1920, 'height': 1080},
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                locale='fr-FR',
+                timezone_id='Europe/Paris',
+                geolocation={'latitude': 48.8566, 'longitude': 2.3522},  # Paris
+                permissions=['geolocation']
+            )
+
+            # 페이지 생성
+            self.page = self.context.new_page()
+
+            # 추가 스텔스 설정
+            self.page.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                });
+
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [1, 2, 3, 4, 5]
+                });
+
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => ['fr-FR', 'fr', 'en-US', 'en']
+                });
+
+                window.chrome = {
+                    runtime: {}
+                };
+            """)
+
+            logger.info("✅ Playwright 브라우저 설정 완료")
             return True
+
         except Exception as e:
-            logger.error(f"❌ 드라이버 설정 실패: {e}")
+            logger.error(f"❌ 브라우저 설정 실패: {e}")
             return False
 
     def initialize_session(self):
@@ -239,11 +273,11 @@ class FnacScraper:
 
         try:
             # Fnac 메인 페이지 접속
-            self.driver.get("https://www.fnac.com")
-            time.sleep(2)
+            self.page.goto("https://www.fnac.com", wait_until='networkidle', timeout=30000)
+            time.sleep(random.uniform(2, 4))
 
             # 세션이 제대로 설정되었는지 확인
-            title = self.driver.title
+            title = self.page.title()
             if "fnac" in title.lower():
                 logger.info("✅ Fnac 세션 초기화 완료")
                 return True
@@ -259,10 +293,9 @@ class FnacScraper:
         """제품 정보 추출 (차단 페이지 감지 및 재시도 로직)"""
         try:
             logger.info(f"🔍 페이지 접속: {url} (시도: {retry_count + 1}/{max_retries + 1})")
-            self.driver.get(url)
+            self.page.goto(url, wait_until='networkidle', timeout=30000)
 
             # 페이지 로드 대기
-            wait = WebDriverWait(self.driver, 6)
             time.sleep(random.uniform(3, 5))
 
             # 현재 시간
@@ -308,13 +341,18 @@ class FnacScraper:
             try:
                 for selector in self.XPATHS.get('title', []):
                     try:
-                        if selector.startswith('//') or selector.startswith('('):
-                            title_element = self.driver.find_element(By.XPATH, selector)
+                        # XPath인지 CSS인지 판단
+                        if selector.startswith('//'):
+                            locator = self.page.locator(f'xpath={selector}')
                         else:
-                            title_element = self.driver.find_element(By.CSS_SELECTOR, selector)
+                            locator = self.page.locator(selector)
 
-                        result['title'] = title_element.text.strip()
-                        if result['title']:
+                        # 요소가 나타날 때까지 대기 (최대 5초)
+                        locator.wait_for(state='visible', timeout=5000)
+                        title_text = locator.inner_text()
+
+                        if title_text and title_text.strip():
+                            result['title'] = title_text.strip()
                             logger.info(f"제목: {result['title']}")
                             title_extracted = True
                             break
@@ -329,19 +367,22 @@ class FnacScraper:
 
                 # 1단계: 새로고침 시도
                 logger.info("🔄 새로고침 시도...")
-                self.driver.refresh()
+                self.page.reload(wait_until='networkidle', timeout=30000)
                 time.sleep(random.uniform(3, 5))
 
                 # 제목 재추출 시도
                 for selector in self.XPATHS.get('title', []):
                     try:
-                        if selector.startswith('//') or selector.startswith('('):
-                            title_element = self.driver.find_element(By.XPATH, selector)
+                        if selector.startswith('//'):
+                            locator = self.page.locator(f'xpath={selector}')
                         else:
-                            title_element = self.driver.find_element(By.CSS_SELECTOR, selector)
+                            locator = self.page.locator(selector)
 
-                        result['title'] = title_element.text.strip()
-                        if result['title']:
+                        locator.wait_for(state='visible', timeout=5000)
+                        title_text = locator.inner_text()
+
+                        if title_text and title_text.strip():
+                            result['title'] = title_text.strip()
                             logger.info(f"✅ 새로고침 후 제목 추출 성공: {result['title']}")
                             title_extracted = True
                             break
@@ -353,24 +394,27 @@ class FnacScraper:
                     logger.warning("⚠️ 새로고침 후에도 실패 - fnac.com 접속 후 재시도")
 
                     # Fnac 메인 페이지 접속
-                    self.driver.get("https://www.fnac.com")
+                    self.page.goto("https://www.fnac.com", wait_until='networkidle', timeout=30000)
                     time.sleep(random.uniform(2, 4))
 
                     # 원래 URL 재접속
                     logger.info(f"🔄 원래 URL 재접속: {url}")
-                    self.driver.get(url)
+                    self.page.goto(url, wait_until='networkidle', timeout=30000)
                     time.sleep(random.uniform(3, 5))
 
                     # 제목 재추출 시도
                     for selector in self.XPATHS.get('title', []):
                         try:
-                            if selector.startswith('//') or selector.startswith('('):
-                                title_element = self.driver.find_element(By.XPATH, selector)
+                            if selector.startswith('//'):
+                                locator = self.page.locator(f'xpath={selector}')
                             else:
-                                title_element = self.driver.find_element(By.CSS_SELECTOR, selector)
+                                locator = self.page.locator(selector)
 
-                            result['title'] = title_element.text.strip()
-                            if result['title']:
+                            locator.wait_for(state='visible', timeout=5000)
+                            title_text = locator.inner_text()
+
+                            if title_text and title_text.strip():
+                                result['title'] = title_text.strip()
                                 logger.info(f"✅ 재접속 후 제목 추출 성공: {result['title']}")
                                 title_extracted = True
                                 break
@@ -392,15 +436,16 @@ class FnacScraper:
                     try:
                         logger.info(f"🔍 선택자 시도: {selector}")
 
-                        if selector.startswith('//') or selector.startswith('('):
-                            price_element = self.driver.find_element(By.XPATH, selector)
+                        if selector.startswith('//'):
+                            locator = self.page.locator(f'xpath={selector}')
                         else:
-                            price_element = self.driver.find_element(By.CSS_SELECTOR, selector)
+                            locator = self.page.locator(selector)
 
-                        price_text = price_element.text.strip()
+                        locator.wait_for(state='visible', timeout=5000)
+                        price_text = locator.inner_text()
                         logger.info(f"🔍 추출한 텍스트: '{price_text}'")
 
-                        if price_text:
+                        if price_text and price_text.strip():
                             # Fnac 프랑스 가격 형식: "419,99 €" 또는 "419,99€"
                             # 쉼표를 점으로 변환, € 기호 제거
                             price_text_clean = price_text.replace(',', '.').replace('€', '').replace('\xa0', '').strip()
@@ -411,8 +456,6 @@ class FnacScraper:
                                 logger.info(f"✅ 가격 추출 성공: €{result['retailprice']}")
                                 price_found = True
                                 break
-                        else:
-                            logger.warning(f"⚠️ 선택자 {selector}에서 빈 텍스트")
 
                     except Exception as e:
                         logger.warning(f"❌ 선택자 {selector} 실패: {e}")
@@ -421,25 +464,27 @@ class FnacScraper:
                 # JavaScript로 가격 찾기 (최후 수단)
                 if not price_found:
                     try:
-                        script = """
-                        var priceSelectors = [
-                            '.f-faPriceBox__price',
-                            '[class*="price"]',
-                            'span[class*="Price"]'
-                        ];
+                        js_result = self.page.evaluate("""
+                            () => {
+                                var priceSelectors = [
+                                    '.f-faPriceBox__price',
+                                    '[class*="price"]',
+                                    'span[class*="Price"]'
+                                ];
 
-                        for (var i = 0; i < priceSelectors.length; i++) {
-                            var elements = document.querySelectorAll(priceSelectors[i]);
-                            for (var j = 0; j < elements.length; j++) {
-                                var text = elements[j].textContent || elements[j].innerText;
-                                if (text && /\\d/.test(text) && text.includes('€')) {
-                                    return text.trim();
+                                for (var i = 0; i < priceSelectors.length; i++) {
+                                    var elements = document.querySelectorAll(priceSelectors[i]);
+                                    for (var j = 0; j < elements.length; j++) {
+                                        var text = elements[j].textContent || elements[j].innerText;
+                                        if (text && /\\d/.test(text) && text.includes('€')) {
+                                            return text.trim();
+                                        }
+                                    }
                                 }
+                                return null;
                             }
-                        }
-                        return null;
-                        """
-                        js_result = self.driver.execute_script(script)
+                        """)
+
                         if js_result:
                             logger.info(f"🔍 JavaScript에서 추출한 텍스트: '{js_result}'")
                             price_text_clean = js_result.replace(',', '.').replace('€', '').replace('\xa0', '').strip()
@@ -465,12 +510,14 @@ class FnacScraper:
                 # 1. 선택자들 시도
                 for selector in self.XPATHS.get('imageurl', []):
                     try:
-                        if selector.startswith('//') or selector.startswith('('):
-                            image_element = self.driver.find_element(By.XPATH, selector)
+                        if selector.startswith('//'):
+                            locator = self.page.locator(f'xpath={selector}')
                         else:
-                            image_element = self.driver.find_element(By.CSS_SELECTOR, selector)
+                            locator = self.page.locator(selector)
 
-                        src = image_element.get_attribute('src')
+                        locator.wait_for(state='visible', timeout=5000)
+                        src = locator.get_attribute('src')
+
                         if src and 'fnac-static.com' in src:
                             result['imageurl'] = src
                             logger.info(f"이미지 URL: {result['imageurl']}")
@@ -482,17 +529,19 @@ class FnacScraper:
                 # 2. JavaScript로 이미지 찾기
                 if not image_found:
                     try:
-                        script = """
-                        var imgs = document.querySelectorAll('img');
-                        for (var i = 0; i < imgs.length; i++) {
-                            var src = imgs[i].src || imgs[i].getAttribute('data-src');
-                            if (src && src.includes('fnac-static.com')) {
-                                return src;
+                        js_result = self.page.evaluate("""
+                            () => {
+                                var imgs = document.querySelectorAll('img');
+                                for (var i = 0; i < imgs.length; i++) {
+                                    var src = imgs[i].src || imgs[i].getAttribute('data-src');
+                                    if (src && src.includes('fnac-static.com')) {
+                                        return src;
+                                    }
+                                }
+                                return null;
                             }
-                        }
-                        return null;
-                        """
-                        js_result = self.driver.execute_script(script)
+                        """)
+
                         if js_result:
                             result['imageurl'] = js_result
                             logger.info(f"이미지 URL (JS): {result['imageurl']}")
@@ -513,19 +562,9 @@ class FnacScraper:
 
             # 재시도 로직
             if retry_count < max_retries:
-                wait_time = (retry_count + 1) * 10  # 재시도마다 대기 시간 증가
+                wait_time = (retry_count + 1) * 10
                 logger.info(f"🔄 {wait_time}초 후 재시도합니다... (재시도 {retry_count + 1}/{max_retries})")
                 time.sleep(wait_time)
-
-                # 드라이버 새로고침
-                try:
-                    self.driver.refresh()
-                except:
-                    # 드라이버가 죽었으면 재시작
-                    logger.info("🔧 드라이버 재시작 중...")
-                    self.driver.quit()
-                    self.setup_driver()
-                    self.initialize_session()
 
                 # 재귀 호출로 재시도
                 return self.extract_product_info(url, row_data, retry_count + 1, max_retries)
@@ -594,13 +633,6 @@ class FnacScraper:
                 log_df = pd.DataFrame(log_records)
                 log_df.to_sql('amazon_crawl_logs', self.db_engine, if_exists='append', index=False)
                 logger.info(f"✅ 크롤링 로그 저장 완료: {len(log_records)}개")
-
-            # 저장된 데이터 확인
-            with self.db_engine.connect() as conn:
-                count_query = "SELECT COUNT(*) FROM fnac_price_crawl_tbl_fr WHERE DATE(crawl_datetime) = CURDATE()"
-                result = conn.execute(count_query)
-                today_count = result.scalar()
-                logger.info(f"📊 오늘 저장된 총 레코드: {today_count}개")
 
             return True
 
@@ -692,7 +724,7 @@ class FnacScraper:
                 csv_md5 = calculate_md5(csv_filename)
                 zip_md5 = calculate_md5(zip_filename)
 
-                # 4. MD5 파일 생성 (정합성 확인)
+                # 4. MD5 파일 생성
                 md5_filename = f'{base_filename}.md5'
                 with open(md5_filename, 'w', encoding='utf-8') as f:
                     f.write(f"{os.path.basename(zip_filename)} {zip_md5}\n")
@@ -718,15 +750,15 @@ class FnacScraper:
         """연결 테스트 및 세션 초기화"""
         logger.info("=== Fnac 세션 초기화 및 테스트 ===")
 
-        if not self.setup_driver():
+        if not self.setup_browser():
             return False
 
         try:
             # 1단계: Google 연결 테스트
             logger.info("1단계: Google 연결 테스트...")
-            self.driver.get("https://www.google.com")
+            self.page.goto("https://www.google.com", wait_until='networkidle', timeout=30000)
             time.sleep(2)
-            google_title = self.driver.title
+            google_title = self.page.title()
 
             if "Google" in google_title:
                 logger.info("✅ Google 접속 성공")
@@ -737,9 +769,8 @@ class FnacScraper:
             if not self.initialize_session():
                 return False
 
-            # 3단계: 테스트 상품 페이지 접속 (실제 Fnac URL로 변경 필요)
+            # 3단계: 테스트 상품 페이지 접속
             logger.info("3단계: 테스트 상품 페이지 접속...")
-            # TODO: 실제 Fnac 테스트 URL로 변경
             test_url = "https://www.fnac.com/Disque-SSD-externe-Samsung-T9-4-To-Noir/a22193592/w-4"
             test_row = {
                 'url': test_url,
@@ -787,20 +818,16 @@ class FnacScraper:
         logger.info(f"📊 총 {len(urls_data)}개 제품 처리 시작")
 
         results = []
-        failed_urls = []  # 실패한 URL 추적
+        failed_urls = []
 
         try:
             for idx, row in enumerate(urls_data):
                 logger.info(f"\n{'='*50}")
                 logger.info(f"진행률: {idx + 1}/{len(urls_data)} ({(idx + 1)/len(urls_data)*100:.1f}%)")
 
-                # URL 추출
                 url = row.get('url')
-
-                # 제품 정보 추출 (재시도 로직 포함)
                 result = self.extract_product_info(url, row)
 
-                # 실패한 URL 추적 로직 추가
                 if result['retailprice'] is None:
                     failed_urls.append({
                         'url': url,
@@ -827,7 +854,6 @@ class FnacScraper:
                     logger.info(f"⏳ {wait_time:.1f}초 대기 중...")
                     time.sleep(wait_time)
 
-                    # 10개마다 긴 휴식
                     if (idx + 1) % 10 == 0:
                         logger.info("☕ 10개 처리 완료, 30초 휴식...")
                         time.sleep(30)
@@ -836,17 +862,20 @@ class FnacScraper:
             logger.error(f"❌ 스크래핑 중 오류: {e}")
 
         finally:
-            # 실패 URL 로그
             if failed_urls:
                 logger.warning(f"\n⚠️ 가격 추출 실패한 URL {len(failed_urls)}개:")
-                for fail in failed_urls[:5]:  # 처음 5개만 표시
+                for fail in failed_urls[:5]:
                     logger.warning(f"  - {fail['brand']} {fail['item']}: {fail['url']}")
                 if len(failed_urls) > 5:
                     logger.warning(f"  ... 외 {len(failed_urls) - 5}개")
 
-            if self.driver:
-                self.driver.quit()
-                logger.info("🔧 드라이버 종료")
+            if self.browser:
+                self.browser.close()
+                logger.info("🔧 브라우저 종료")
+
+            if self.playwright:
+                self.playwright.stop()
+                logger.info("🔧 Playwright 종료")
 
         return pd.DataFrame(results)
 
@@ -874,94 +903,41 @@ class FnacScraper:
             logger.info(f"최고가: €{price_df['numeric_price'].max():.2f}")
             logger.info(f"중간값: €{price_df['numeric_price'].median():.2f}")
 
-            # 브랜드별 통계
-            if 'brand' in df.columns:
-                brand_stats = price_df['brand'].value_counts()
-                logger.info(f"\n📈 브랜드별 성공:")
-                for brand, count in brand_stats.items():
-                    logger.info(f"  {brand}: {count}개")
-
-            # 용량별 평균 가격
-            if 'capacity' in df.columns:
-                capacity_stats = price_df.groupby('capacity')['numeric_price'].agg(['mean', 'count'])
-                logger.info(f"\n💾 용량별 평균 가격:")
-                for capacity, stats in capacity_stats.iterrows():
-                    logger.info(f"  {capacity}: €{stats['mean']:.2f} ({int(stats['count'])}개)")
-
-def get_db_history(engine, days=7):
-    """DB에서 최근 기록 조회"""
-    try:
-        query = f"""
-        SELECT DATE(crawl_datetime) as date,
-               COUNT(*) as total_count,
-               SUM(CASE WHEN retailprice IS NOT NULL THEN 1 ELSE 0 END) as with_price,
-               COUNT(DISTINCT brand) as brands,
-               COUNT(DISTINCT item) as items
-        FROM fnac_price_crawl_tbl_fr
-        WHERE crawl_datetime >= DATE_SUB(NOW(), INTERVAL {days} DAY)
-        GROUP BY DATE(crawl_datetime)
-        ORDER BY date DESC
-        """
-
-        df = pd.read_sql(query, engine)
-        logger.info(f"\n📅 최근 {days}일 크롤링 기록:")
-        if not df.empty:
-            print(df.to_string(index=False))
-        else:
-            logger.info("최근 크롤링 기록이 없습니다.")
-
-    except Exception as e:
-        logger.error(f"DB 조회 오류: {e}")
-
 def main():
     """메인 실행 함수"""
-    print("\n🚀 Fnac 가격 추출 시스템 - DB 기반 버전")
+    print("\n🚀 Fnac 가격 추출 시스템 - Playwright 기반 버전")
     print("="*60)
 
-    # 스크래퍼 초기화
     scraper = FnacScraper()
 
     if scraper.db_engine is None:
         logger.error("DB 연결 실패로 종료합니다.")
         return
 
-    # 최근 크롤링 기록 확인
-    get_db_history(scraper.db_engine, 7)
-
-    # 테스트 모드 확인
+    # 테스트 모드
     test_mode = os.getenv("TEST_MODE", "false").lower()
 
     if test_mode in ["true", "1", "yes"]:
         logger.info("🧪 테스트 모드 실행")
 
-        # 연결 테스트
         if scraper.test_connection():
             logger.info("✅ 테스트 완료")
-
-            # 테스트 결과 업로드
-            test_df = pd.DataFrame([{
-                'test_type': 'session_test',
-                'country_code': 'fr',
-                'test_datetime': datetime.now(scraper.korea_tz)
-            }])
-
-            scraper.save_results(test_df, save_db=False, upload_server=True)
         else:
             logger.error("❌ 테스트 실패")
 
-        if scraper.driver:
-            scraper.driver.quit()
+        if scraper.browser:
+            scraper.browser.close()
+        if scraper.playwright:
+            scraper.playwright.stop()
         return
 
     # 실제 크롤링
     logger.info("\n📊 실제 크롤링 시작")
 
-    # 연결 테스트
     if not scraper.test_connection():
         logger.error("연결 테스트 실패로 종료합니다.")
         return
 
-    # 크롤링 대상 조회
     urls_data = scraper.get_crawl_targets()
 
     if not urls_data:
@@ -970,23 +946,17 @@ def main():
 
     logger.info(f"✅ 크롤링 대상: {len(urls_data)}개")
 
-    # 시작 시간
     start_time = datetime.now(scraper.korea_tz)
-
-    # 크롤링 실행
     results_df = scraper.scrape_urls(urls_data)
 
     if results_df is None or results_df.empty:
         logger.error("크롤링 결과가 없습니다.")
         return
 
-    # 종료 시간
     end_time = datetime.now(scraper.korea_tz)
 
-    # 최종 결과 저장
     logger.info("\n💾 최종 결과 저장")
 
-    # 최종 통계
     success_count = results_df['retailprice'].notna().sum()
     failed_count = results_df['retailprice'].isna().sum()
     success_rate = (success_count / len(results_df) * 100) if len(results_df) > 0 else 0
@@ -998,49 +968,24 @@ def main():
     logger.info(f"성공률: {success_rate:.1f}%")
     logger.info(f"소요 시간: {round((end_time - start_time).total_seconds() / 60, 2)} 분")
 
-    # DB와 파일서버에 최종 결과 저장
     save_results = scraper.save_results(
         results_df,
         save_db=True,
         upload_server=True
     )
 
-    # 상세 분석
     scraper.analyze_results(results_df)
 
-    # 저장 결과 출력
     logger.info("\n📊 저장 결과:")
     logger.info(f"DB 저장: {'✅ 성공' if save_results['db_saved'] else '❌ 실패'}")
     logger.info(f"파일서버 업로드: {'✅ 성공' if save_results['server_uploaded'] else '❌ 실패'}")
 
-    # 실패한 URL 로그
-    if failed_count > 0:
-        logger.warning(f"\n⚠️ {failed_count}개 URL에서 크롤링 실패")
-        failed_items = results_df[results_df['retailprice'].isna()]
-        logger.warning("실패 목록 (상위 5개):")
-        for idx, row in failed_items.head().iterrows():
-            logger.warning(f"  - {row['brand']} {row['item']}: {row['producturl'][:50]}...")
-
     logger.info("\n✅ 크롤링 프로세스 완료!")
-    logger.info(f"📁 모든 결과 파일이 파일서버에 업로드되었습니다.")
-    logger.info(f"📍 업로드 위치: {FILE_SERVER_CONFIG['host']}:{FILE_SERVER_CONFIG['upload_path']}/")
 
 if __name__ == "__main__":
-    # 필요한 패키지 설치 확인
-    required_packages = [
-        'undetected-chromedriver',
-        'selenium',
-        'pandas',
-        'pymysql',
-        'sqlalchemy',
-        'paramiko',
-        'openpyxl'
-    ]
-
     print("📦 필요한 패키지:")
-    print("pip install " + " ".join(required_packages))
-    print("\n⚠️ DB 설정을 먼저 확인하세요:")
-    print("DB_CONFIG 딕셔너리의 user, password, host 정보를 실제 값으로 변경해야 합니다.")
+    print("pip install playwright pandas pymysql sqlalchemy paramiko")
+    print("playwright install chromium")
     print()
 
     main()
