@@ -476,10 +476,18 @@ class FnacScraper:
                     if target.is_visible(timeout=1000):
                         target_box = target.bounding_box()
                         if target_box:
-                            # 타겟의 중앙 위치 - 슬라이더의 시작 위치
-                            target_center_x = target_box['x'] + target_box['width'] / 2
-                            drag_distance = target_center_x - start_x
-                            logger.info(f"🎯 타겟 위치 기반 드래그 거리: {drag_distance:.0f}px")
+                            # 슬라이더의 왼쪽 끝을 타겟의 왼쪽 끝에 맞춤
+                            # (퍼즐 캡차는 보통 왼쪽 끝 기준으로 맞춰야 함)
+                            slider_left = box['x']
+                            target_left = target_box['x']
+                            drag_distance = target_left - slider_left
+
+                            # 약간의 랜덤 오차 추가 (사람처럼 완벽하지 않게)
+                            # ±2픽셀 정도의 오차
+                            drag_distance += random.uniform(-2, 2)
+
+                            logger.info(f"🎯 타겟 위치 기반 드래그 거리: {drag_distance:.1f}px")
+                            logger.info(f"   슬라이더 왼쪽: {slider_left:.0f}, 타겟 왼쪽: {target_left:.0f}")
                             target_found = True
                             break
                 except:
