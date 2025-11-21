@@ -340,10 +340,29 @@ class FnacScraper:
         """제품 정보 추출 (차단 페이지 감지 및 재시도 로직)"""
         try:
             logger.info(f"🔍 페이지 접속: {url} (시도: {retry_count + 1}/{max_retries + 1})")
-            self.page.goto(url, wait_until='networkidle', timeout=30000)
+            response = self.page.goto(url, wait_until='domcontentloaded', timeout=30000)
 
             # 페이지 로드 대기
             time.sleep(random.uniform(3, 5))
+
+            # 404 에러 체크 (봇 감지로 인한 404 위장 가능성)
+            if response and response.status == 404:
+                logger.warning("⚠️ 404 에러 감지 - 봇 감지 가능성, 재접속 시도")
+
+                # 잠시 대기
+                time.sleep(random.uniform(3, 5))
+
+                # 바로 원래 URL 재접속 (메인 페이지 거치지 않음)
+                logger.info(f"🔄 URL 직접 재접속: {url}")
+                response = self.page.goto(url, wait_until='domcontentloaded', timeout=30000)
+                time.sleep(random.uniform(3, 5))
+
+                # 여전히 404이면 에러 발생
+                if response and response.status == 404:
+                    logger.error("❌ 재접속 후에도 404 에러 - URL이 존재하지 않거나 차단됨")
+                    raise Exception("404 error after retry - possible blocked or invalid URL")
+                else:
+                    logger.info("✅ 재접속 성공")
 
             # 현재 시간
             now_time = datetime.now(self.korea_tz)
