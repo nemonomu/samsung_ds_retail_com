@@ -290,6 +290,11 @@ class FnacScraper:
 
         # 슬라이더 선택자들 (캡차 전용만)
         slider_selectors = [
+            ".slider",  # geo.captcha-delivery.com
+            "div.slider",
+            ".sliderContainer .slider",
+            "//div[@class='slider']",
+            "//div[@class='sliderContainer']//div[@class='slider']",
             "//div[contains(@class, 'slider') and contains(@class, 'button')]",
             "//div[contains(@class, 'slide-verify')]",
             "//span[contains(@class, 'slider') and contains(@class, 'btn')]",
@@ -455,6 +460,10 @@ class FnacScraper:
 
             # 트랙 요소 찾기 시도
             track_selectors = [
+                ".sliderContainer",  # geo.captcha-delivery.com
+                ".sliderbg",
+                "//div[@class='sliderContainer']",
+                "//div[@class='sliderbg']",
                 "//div[contains(@class, 'slider-track')]",
                 "//div[contains(@class, 'slide-track')]",
                 ".slider-track",
