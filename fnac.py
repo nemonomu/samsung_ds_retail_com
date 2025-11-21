@@ -1102,15 +1102,17 @@ class FnacScraper:
             if not self.initialize_session():
                 return False
 
-            # 3단계: 테스트 상품 페이지 접속
+            # 3단계: 테스트 상품 페이지 접속 (DB에서 실제 URL 가져오기)
             logger.info("3단계: 테스트 상품 페이지 접속...")
-            test_url = "https://www.fnac.com/Disque-SSD-externe-Samsung-T9-4-To-Noir/a22193592/w-4"
-            test_row = {
-                'url': test_url,
-                'brand': 'Samsung',
-                'item': 'T9 4TB',
-                'country': 'fr'
-            }
+
+            # DB에서 첫 번째 제품 가져오기
+            test_products = self.get_crawl_targets(limit=1)
+            if not test_products:
+                logger.warning("⚠️ 테스트용 제품이 없어 건너뜁니다")
+                return True
+
+            test_row = test_products[0]
+            test_url = test_row.get('url')
 
             test_result = self.extract_product_info(test_url, test_row)
 
