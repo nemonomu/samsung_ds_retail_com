@@ -483,14 +483,12 @@ class FnacScraper:
                                     # 슬라이더 현재 위치
                                     slider_left = box['x']
 
-                                    # 드래그 거리 계산
+                                    # 드래그 거리 계산 (정확하게)
                                     drag_distance = target_absolute_left - slider_left
 
-                                    # 약간의 랜덤 오차 추가 (±1픽셀)
-                                    drag_distance += random.uniform(-1, 1)
-
-                                    logger.info(f"🎯 Canvas left 기반 드래그 거리: {drag_distance:.1f}px")
-                                    logger.info(f"   퍼즐 갭: {puzzle_gap_left}px, 슬라이더 현재: {slider_left:.0f}px")
+                                    logger.info(f"🎯 Canvas left 기반 드래그 거리: {drag_distance:.2f}px")
+                                    logger.info(f"   컨테이너: {container_box['x']:.2f}, 퍼즐 갭: {puzzle_gap_left}px")
+                                    logger.info(f"   타겟 절대위치: {target_absolute_left:.2f}, 슬라이더: {slider_left:.2f}")
                                     target_found = True
             except Exception as e:
                 logger.debug(f"Canvas 위치 추출 실패: {e}")
