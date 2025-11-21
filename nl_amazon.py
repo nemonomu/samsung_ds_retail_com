@@ -890,8 +890,8 @@ class AmazonNLScraper:
                             if text:
                                 logger.info(f"네덜란드 1단계 추출된 텍스트: '{text}'")
                                 
-                                # 끝에 점이 있거나 2자리 이하 숫자만 있으면 분리된 가격으로 판단
-                                if text.endswith('.') or (text.isdigit() and len(text) <= 2):
+                                # 끝에 점이나 쉼표가 있거나 2자리 이하 숫자만 있으면 분리된 가격으로 판단
+                                if text.endswith('.') or text.endswith(',') or (text.isdigit() and len(text) <= 2):
                                     logger.info(f"분리된 가격 감지: '{text}' - whole+fraction 조합 시도")
                                     continue  # 1단계 건너뛰고 2단계 whole+fraction으로
                                 
