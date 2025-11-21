@@ -455,41 +455,76 @@ class FnacScraper:
             # 드래그 거리 계산 - sliderTarget 위치를 찾아서 그곳으로 드래그
             drag_distance = 300  # 기본값
 
-            # 1. 먼저 sliderTarget을 찾아서 정확한 위치로 드래그 시도
-            target_selectors = [
-                ".sliderTarget",  # geo.captcha-delivery.com
-                "//div[@class='sliderTarget']",
-                ".slide-verify-target",
-                "//div[contains(@class, 'target')]"
-            ]
-
+            # 1. canvas 요소의 left style 값으로 정확한 퍼즐 갭 위치 찾기
             target_found = False
-            for target_sel in target_selectors:
-                try:
-                    if target_sel.startswith('//'):
-                        target = page_or_frame.locator(f'xpath={target_sel}')
-                    else:
-                        target = page_or_frame.locator(target_sel)
 
-                    if target.is_visible(timeout=1000):
-                        target_box = target.bounding_box()
-                        if target_box:
-                            # 슬라이더의 왼쪽 끝을 타겟의 왼쪽 끝에 맞춤
-                            # (퍼즐 캡차는 보통 왼쪽 끝 기준으로 맞춰야 함)
-                            slider_left = box['x']
-                            target_left = target_box['x']
-                            drag_distance = target_left - slider_left
+            # canvas 요소 찾기
+            try:
+                canvas = page_or_frame.locator("canvas[style*='left']")
+                if canvas.is_visible(timeout=2000):
+                    # style 속성에서 left 값 추출
+                    style_attr = canvas.first.get_attribute('style')
+                    if style_attr:
+                        # "left: 94px;" 같은 형식에서 숫자 추출
+                        import re
+                        left_match = re.search(r'left:\s*(\d+)px', style_attr)
+                        if left_match:
+                            puzzle_gap_left = int(left_match.group(1))
 
-                            # 약간의 랜덤 오차 추가 (사람처럼 완벽하지 않게)
-                            # ±2픽셀 정도의 오차
-                            drag_distance += random.uniform(-2, 2)
+                            # 슬라이더 컨테이너의 왼쪽 위치 (기준점)
+                            # canvas와 slider가 같은 컨테이너 안에 있다고 가정
+                            slider_container = page_or_frame.locator(".sliderContainer")
+                            if slider_container.is_visible(timeout=1000):
+                                container_box = slider_container.bounding_box()
+                                if container_box:
+                                    # 퍼즐 갭의 절대 위치
+                                    target_absolute_left = container_box['x'] + puzzle_gap_left
 
-                            logger.info(f"🎯 타겟 위치 기반 드래그 거리: {drag_distance:.1f}px")
-                            logger.info(f"   슬라이더 왼쪽: {slider_left:.0f}, 타겟 왼쪽: {target_left:.0f}")
-                            target_found = True
-                            break
-                except:
-                    continue
+                                    # 슬라이더 현재 위치
+                                    slider_left = box['x']
+
+                                    # 드래그 거리 계산
+                                    drag_distance = target_absolute_left - slider_left
+
+                                    # 약간의 랜덤 오차 추가 (±1픽셀)
+                                    drag_distance += random.uniform(-1, 1)
+
+                                    logger.info(f"🎯 Canvas left 기반 드래그 거리: {drag_distance:.1f}px")
+                                    logger.info(f"   퍼즐 갭: {puzzle_gap_left}px, 슬라이더 현재: {slider_left:.0f}px")
+                                    target_found = True
+            except Exception as e:
+                logger.debug(f"Canvas 위치 추출 실패: {e}")
+
+            # 2. 실패하면 기존 방식으로 sliderTarget 찾기
+            if not target_found:
+                target_selectors = [
+                    ".sliderTarget",
+                    "//div[@class='sliderTarget']",
+                    ".slide-verify-target",
+                    "//div[contains(@class, 'target')]"
+                ]
+
+                for target_sel in target_selectors:
+                    try:
+                        if target_sel.startswith('//'):
+                            target = page_or_frame.locator(f'xpath={target_sel}')
+                        else:
+                            target = page_or_frame.locator(target_sel)
+
+                        if target.is_visible(timeout=1000):
+                            target_box = target.bounding_box()
+                            if target_box:
+                                slider_left = box['x']
+                                target_left = target_box['x']
+                                drag_distance = target_left - slider_left
+                                drag_distance += random.uniform(-2, 2)
+
+                                logger.info(f"🎯 타겟 위치 기반 드래그 거리: {drag_distance:.1f}px")
+                                logger.info(f"   슬라이더 왼쪽: {slider_left:.0f}, 타겟 왼쪽: {target_left:.0f}")
+                                target_found = True
+                                break
+                    except:
+                        continue
 
             # 2. 타겟을 못 찾으면 트랙 너비 기반으로 계산 (하지만 끝까지는 안 감)
             if not target_found:
