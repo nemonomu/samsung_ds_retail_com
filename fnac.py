@@ -433,8 +433,6 @@ class FnacScraper:
                     time.sleep(2)
 
             logger.warning("⚠️ 슬라이더 캡차를 자동으로 해결하지 못했습니다")
-            logger.warning("💡 수동으로 캡차를 해결해주세요. 30초 대기합니다...")
-            time.sleep(30)  # 수동 해결 시간
             return False
 
         except Exception as e:
@@ -639,9 +637,31 @@ class FnacScraper:
             except Exception as e:
                 logger.debug(f"쿠키 팝업 처리 중 오류 (무시): {e}")
 
-            # 슬라이더 캡차 해결 시도
+            # 슬라이더 캡차 해결 시도 - 실패하면 새로고침 후 재시도 (최대 3회)
             time.sleep(2)  # 캡차가 나타날 시간 대기
-            self.solve_slider_captcha()
+
+            captcha_solved = False
+            max_refresh_attempts = 3
+
+            for refresh_attempt in range(max_refresh_attempts):
+                if refresh_attempt > 0:
+                    logger.info(f"🔄 페이지 새로고침 후 재시도 ({refresh_attempt + 1}/{max_refresh_attempts})")
+                    self.page.reload(wait_until='domcontentloaded', timeout=30000)
+                    time.sleep(1)  # 1초 대기
+
+                if self.solve_slider_captcha():
+                    captcha_solved = True
+                    logger.info("✅ 캡차 자동 해결 성공!")
+                    break
+                else:
+                    if refresh_attempt < max_refresh_attempts - 1:
+                        logger.warning(f"❌ 캡차 해결 실패, 새로고침 시도... ({refresh_attempt + 1}/{max_refresh_attempts})")
+
+            # 3회 시도 후에도 실패하면 30초 대기
+            if not captcha_solved:
+                logger.warning("⚠️ 3회 시도 후에도 캡차 자동 해결 실패")
+                logger.warning("💡 수동으로 캡차를 해결해주세요. 30초 대기합니다...")
+                time.sleep(30)
 
             # 세션이 제대로 설정되었는지 확인
             title = self.page.title()
