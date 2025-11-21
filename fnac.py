@@ -570,39 +570,62 @@ class FnacScraper:
                 # Page 객체
                 mouse_obj = page_or_frame.mouse
 
-            # 자연스러운 마우스 움직임 시뮬레이션
-            # 1. 마우스를 슬라이더로 이동
+            # 매우 사람다운 마우스 움직임 시뮬레이션
+            # 1. 마우스를 슬라이더로 천천히 이동 (사람은 바로 안 움직임)
             mouse_obj.move(start_x, start_y)
-            time.sleep(random.uniform(0.1, 0.3))
+            time.sleep(random.uniform(0.3, 0.6))  # 망설임
 
-            # 2. 마우스 버튼 누르기
-            mouse_obj.down()
+            # 2. 마우스 버튼 누르기 전 짧은 대기
             time.sleep(random.uniform(0.1, 0.2))
+            mouse_obj.down()
+            time.sleep(random.uniform(0.15, 0.25))  # 누른 후 약간 대기
 
-            # 3. 여러 단계로 나눠서 자연스럽게 드래그
-            steps = random.randint(20, 30)
+            # 3. 사람처럼 가변 속도로 드래그 (느림→빠름→느림)
+            steps = random.randint(25, 40)  # 더 많은 단계
+
             for i in range(steps):
-                # 진행률
                 progress = (i + 1) / steps
 
-                # 현재 x 위치 (약간의 랜덤 변화 추가)
-                current_x = start_x + (drag_distance * progress)
+                # 가속도 곡선 (ease-in-out): 처음과 끝은 느리고 중간은 빠름
+                # 사인 함수 사용으로 자연스러운 가속/감속
+                import math
+                eased_progress = (math.sin((progress - 0.5) * math.pi) + 1) / 2
 
-                # y축에 약간의 흔들림 추가 (사람처럼)
-                wobble = random.uniform(-2, 2)
+                # 현재 x 위치
+                current_x = start_x + (drag_distance * eased_progress)
+
+                # y축 흔들림 (사람은 완벽하게 직선으로 못 그음)
+                wobble = random.uniform(-3, 3)
                 current_y = start_y + wobble
 
                 # 마우스 이동
                 mouse_obj.move(current_x, current_y)
 
-                # 각 스텝마다 약간의 랜덤 딜레이
-                time.sleep(random.uniform(0.01, 0.03))
+                # 가변 딜레이 (사람은 일정한 속도로 안 움직임)
+                base_delay = 0.01
+                # 처음과 끝은 느리게, 중간은 빠르게
+                if progress < 0.2 or progress > 0.8:
+                    delay = random.uniform(0.02, 0.04)  # 느림
+                else:
+                    delay = random.uniform(0.005, 0.015)  # 빠름
+
+                time.sleep(delay)
+
+                # 가끔 중간에 아주 짧게 멈춤 (사람의 미세한 조정)
+                if random.random() < 0.15:  # 15% 확률
+                    time.sleep(random.uniform(0.05, 0.1))
 
             # 4. 목표 지점에 정확히 도달
             mouse_obj.move(end_x, end_y)
-            time.sleep(random.uniform(0.1, 0.2))
+            time.sleep(random.uniform(0.1, 0.15))
 
-            # 5. 마우스 버튼 놓기
+            # 5. 마우스 버튼 놓기 전 미세 조정 (사람처럼)
+            # 살짝 앞뒤로 움직임
+            tiny_adjust = random.uniform(-0.5, 0.5)
+            mouse_obj.move(end_x + tiny_adjust, end_y)
+            time.sleep(random.uniform(0.05, 0.1))
+
+            # 6. 마우스 버튼 놓기
             mouse_obj.up()
 
             logger.info("✅ 슬라이더 드래그 완료")
