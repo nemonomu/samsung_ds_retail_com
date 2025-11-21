@@ -615,17 +615,11 @@ class FnacScraper:
                 if random.random() < 0.15:  # 15% 확률
                     time.sleep(random.uniform(0.05, 0.1))
 
-            # 4. 목표 지점에 정확히 도달
+            # 4. 목표 지점에 정확히 도달 (마지막은 정확하게)
             mouse_obj.move(end_x, end_y)
-            time.sleep(random.uniform(0.1, 0.15))
+            time.sleep(random.uniform(0.15, 0.25))
 
-            # 5. 마우스 버튼 놓기 전 미세 조정 (사람처럼)
-            # 살짝 앞뒤로 움직임
-            tiny_adjust = random.uniform(-0.5, 0.5)
-            mouse_obj.move(end_x + tiny_adjust, end_y)
-            time.sleep(random.uniform(0.05, 0.1))
-
-            # 6. 마우스 버튼 놓기
+            # 5. 마우스 버튼 놓기
             mouse_obj.up()
 
             logger.info("✅ 슬라이더 드래그 완료")
