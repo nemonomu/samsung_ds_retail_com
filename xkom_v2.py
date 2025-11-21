@@ -496,6 +496,7 @@ Python 버전: {os.sys.version.split()[0]}
                 'retailerid': row_data.get('retailerid', ''),
                 'country_code': row_data.get('country', 'pl'),
                 'ships_from': 'PL',
+                'channel_name': 'xkom',
                 'channel': row_data.get('channel', 'Online'),
                 'retailersku': row_data.get('retailersku', ''),
                 'brand': row_data.get('brand', ''),

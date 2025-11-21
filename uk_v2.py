@@ -567,6 +567,7 @@ class AmazonUKScraper:
                 'retailerid': row_data.get('retailerid', ''),
                 'country_code': 'gb',  # 항상 gb로 고정
                 'ships_from': None,
+                'channel_name': 'amazon.co.uk',
                 'channel': row_data.get('channel', 'Online'),
                 'retailersku': row_data.get('retailersku', ''),
                 'brand': row_data.get('brand', ''),
@@ -666,6 +667,7 @@ class AmazonUKScraper:
                 'retailerid': row_data.get('retailerid', ''),
                 'country_code': 'gb',  # 항상 gb로 고정
                 'ships_from': None,
+                'channel_name': 'amazon.co.uk',
                 'channel': row_data.get('channel', 'Online'),
                 'retailersku': row_data.get('retailersku', ''),
                 'brand': row_data.get('brand', ''),
@@ -774,7 +776,7 @@ class AmazonUKScraper:
         now = datetime.now(self.korea_tz)
         date_str = now.strftime('%Y%m%d')
         time_str = now.strftime('%H%M%S')
-        base_filename = f"{date_str}_{time_str}_uk_amazon"
+        base_filename = f"{date_str}_{time_str}_gb_amazon"
 
         results = {'db_saved': False, 'server_uploaded': False}
 

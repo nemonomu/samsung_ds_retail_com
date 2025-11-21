@@ -333,6 +333,7 @@ class DanawaScraper:
                 'retailerid': row_data.get('retailerid', ''),
                 'country_code': 'kr',
                 'ships_from': 'KR',
+                'channel_name': 'danawa',
                 'channel': row_data.get('channel', 'Online'),
                 'retailersku': row_data.get('retailersku', ''),
                 'brand': row_data.get('brand', ''),
@@ -475,6 +476,7 @@ class DanawaScraper:
                 'retailerid': row_data.get('retailerid', ''),
                 'country_code': 'kr',
                 'ships_from': 'KR',
+                'channel_name': 'danawa',
                 'channel': row_data.get('channel', 'Online'),
                 'retailersku': row_data.get('retailersku', ''),
                 'brand': row_data.get('brand', ''),
@@ -698,7 +700,18 @@ class DanawaScraper:
                     if (idx + 1) % 20 == 0:
                         logger.info("☕ 20개 처리 완료, 30초 휴식...")
                         time.sleep(30)
-        
+
+            # 마지막 남은 데이터 저장 (10개 단위로 떨어지지 않는 경우)
+            remaining_count = len(results) % 10
+            if remaining_count > 0 and self.db_engine:
+                try:
+                    remaining_df = pd.DataFrame(results[-remaining_count:])
+                    remaining_df.to_sql('danawa_price_crawl_tbl_kr_v2', self.db_engine,
+                                      if_exists='append', index=False)
+                    logger.info(f"💾 마지막 배치 저장: {remaining_count}개 레코드 DB 저장")
+                except Exception as e:
+                    logger.error(f"마지막 배치 저장 실패: {e}")
+
         except Exception as e:
             logger.error(f"❌ 스크래핑 중 오류: {e}")
         
@@ -880,7 +893,7 @@ def main():
     # DB와 파일서버에 최종 결과 저장
     save_results = scraper.save_results(
         final_results_df,
-        save_db=True,
+        save_db=False,
         upload_server=True
     )
     

@@ -432,6 +432,7 @@ class MediaMarktInfiniteScraper:
                 'retailerid': row_data.get('retailerid', ''),
                 'country_code': row_data.get('country', 'de'),
                 'ships_from': 'DE',
+                'channel_name': 'mediamarkt',
                 'channel': row_data.get('channel', 'Online'),
                 'retailersku': row_data.get('retailersku', ''),
                 'brand': row_data.get('brand', ''),
