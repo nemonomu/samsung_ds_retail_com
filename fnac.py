@@ -272,39 +272,56 @@ class FnacScraper:
         logger.info("Fnac 세션 초기화...")
 
         try:
-            # Fnac 메인 페이지 접속
-            self.page.goto("https://www.fnac.com", wait_until='networkidle', timeout=30000)
-            time.sleep(random.uniform(2, 4))
+            # Fnac 메인 페이지 접속 (domcontentloaded로 변경)
+            self.page.goto("https://www.fnac.com", wait_until='domcontentloaded', timeout=30000)
+            logger.info("✅ 페이지 로드 완료")
+            time.sleep(2)
 
             # 쿠키 팝업 처리
             try:
                 logger.info("🍪 쿠키 팝업 확인 중...")
+                time.sleep(1)  # 팝업이 나타날 시간 대기
+
                 # "J'accepte" 버튼 클릭 (여러 선택자 시도)
                 cookie_selectors = [
                     "text=J'accepte",
                     "button:has-text(\"J'accepte\")",
                     "//button[contains(text(), \"J'accepte\")]",
+                    "//button[contains(text(), 'accepte')]",
                     "[class*='accept' i]",
-                    "[id*='accept' i]"
+                    "[id*='accept' i]",
+                    "button[class*='cookie']",
+                    ".didomi-button"
                 ]
 
+                cookie_found = False
                 for selector in cookie_selectors:
                     try:
-                        if selector.startswith('text=') or selector.startswith('button:'):
-                            button = self.page.locator(selector)
-                        elif selector.startswith('//'):
-                            button = self.page.locator(f'xpath={selector}')
-                        else:
-                            button = self.page.locator(selector)
+                        logger.info(f"🔍 쿠키 선택자 시도: {selector}")
 
-                        button.click(timeout=3000)
-                        logger.info("🍪 쿠키 동의 팝업 처리 완료")
-                        time.sleep(1)
-                        break
-                    except:
+                        if selector.startswith('text=') or selector.startswith('button:'):
+                            button = self.page.locator(selector).first
+                        elif selector.startswith('//'):
+                            button = self.page.locator(f'xpath={selector}').first
+                        else:
+                            button = self.page.locator(selector).first
+
+                        # 버튼이 보이는지 확인
+                        if button.is_visible(timeout=2000):
+                            button.click(timeout=3000)
+                            logger.info(f"🍪 쿠키 동의 팝업 처리 완료 (선택자: {selector})")
+                            time.sleep(1)
+                            cookie_found = True
+                            break
+                    except Exception as e:
+                        logger.debug(f"선택자 {selector} 실패: {e}")
                         continue
+
+                if not cookie_found:
+                    logger.info("쿠키 팝업이 없거나 이미 처리됨")
+
             except Exception as e:
-                logger.debug(f"쿠키 팝업 없음 또는 처리 중 오류 (무시): {e}")
+                logger.debug(f"쿠키 팝업 처리 중 오류 (무시): {e}")
 
             # 세션이 제대로 설정되었는지 확인
             title = self.page.title()
