@@ -774,7 +774,7 @@ class AmazonUKScraper:
         now = datetime.now(self.korea_tz)
         date_str = now.strftime('%Y%m%d')
         time_str = now.strftime('%H%M%S')
-        base_filename = f"{date_str}_{time_str}_uk_amazon"
+        base_filename = f"{date_str}_{time_str}_gb_amazon"
 
         results = {'db_saved': False, 'server_uploaded': False}
 
