@@ -567,6 +567,7 @@ class AmazonUKScraper:
                 'retailerid': row_data.get('retailerid', ''),
                 'country_code': 'gb',  # 항상 gb로 고정
                 'ships_from': None,
+                'channel_name': 'amazon.co.uk',
                 'channel': row_data.get('channel', 'Online'),
                 'retailersku': row_data.get('retailersku', ''),
                 'brand': row_data.get('brand', ''),
@@ -666,6 +667,7 @@ class AmazonUKScraper:
                 'retailerid': row_data.get('retailerid', ''),
                 'country_code': 'gb',  # 항상 gb로 고정
                 'ships_from': None,
+                'channel_name': 'amazon.co.uk',
                 'channel': row_data.get('channel', 'Online'),
                 'retailersku': row_data.get('retailersku', ''),
                 'brand': row_data.get('brand', ''),
