@@ -454,37 +454,67 @@ class FnacScraper:
             start_x = box['x'] + box['width'] / 2
             start_y = box['y'] + box['height'] / 2
 
-            # 드래그 거리 계산 (일반적으로 슬라이더 트랙 너비만큼)
-            # 트랙 요소를 찾아서 너비를 가져오거나, 기본값 사용
+            # 드래그 거리 계산 - sliderTarget 위치를 찾아서 그곳으로 드래그
             drag_distance = 300  # 기본값
 
-            # 트랙 요소 찾기 시도
-            track_selectors = [
-                ".sliderContainer",  # geo.captcha-delivery.com
-                ".sliderbg",
-                "//div[@class='sliderContainer']",
-                "//div[@class='sliderbg']",
-                "//div[contains(@class, 'slider-track')]",
-                "//div[contains(@class, 'slide-track')]",
-                ".slider-track",
-                ".slide-verify-slider-track"
+            # 1. 먼저 sliderTarget을 찾아서 정확한 위치로 드래그 시도
+            target_selectors = [
+                ".sliderTarget",  # geo.captcha-delivery.com
+                "//div[@class='sliderTarget']",
+                ".slide-verify-target",
+                "//div[contains(@class, 'target')]"
             ]
 
-            for track_sel in track_selectors:
+            target_found = False
+            for target_sel in target_selectors:
                 try:
-                    if track_sel.startswith('//'):
-                        track = page_or_frame.locator(f'xpath={track_sel}')
+                    if target_sel.startswith('//'):
+                        target = page_or_frame.locator(f'xpath={target_sel}')
                     else:
-                        track = page_or_frame.locator(track_sel)
+                        target = page_or_frame.locator(target_sel)
 
-                    if track.is_visible(timeout=1000):
-                        track_box = track.bounding_box()
-                        if track_box:
-                            drag_distance = track_box['width'] - box['width']
-                            logger.info(f"트랙 너비 기반 드래그 거리: {drag_distance}px")
+                    if target.is_visible(timeout=1000):
+                        target_box = target.bounding_box()
+                        if target_box:
+                            # 타겟의 중앙 위치 - 슬라이더의 시작 위치
+                            target_center_x = target_box['x'] + target_box['width'] / 2
+                            drag_distance = target_center_x - start_x
+                            logger.info(f"🎯 타겟 위치 기반 드래그 거리: {drag_distance:.0f}px")
+                            target_found = True
                             break
                 except:
                     continue
+
+            # 2. 타겟을 못 찾으면 트랙 너비 기반으로 계산 (하지만 끝까지는 안 감)
+            if not target_found:
+                track_selectors = [
+                    ".sliderContainer",
+                    ".sliderbg",
+                    "//div[@class='sliderContainer']",
+                    "//div[@class='sliderbg']",
+                    "//div[contains(@class, 'slider-track')]",
+                    "//div[contains(@class, 'slide-track')]",
+                    ".slider-track",
+                    ".slide-verify-slider-track"
+                ]
+
+                for track_sel in track_selectors:
+                    try:
+                        if track_sel.startswith('//'):
+                            track = page_or_frame.locator(f'xpath={track_sel}')
+                        else:
+                            track = page_or_frame.locator(track_sel)
+
+                        if track.is_visible(timeout=1000):
+                            track_box = track.bounding_box()
+                            if track_box:
+                                # 트랙 너비의 70-90% 정도만 드래그 (끝까지 가지 않음)
+                                max_distance = track_box['width'] - box['width']
+                                drag_distance = max_distance * random.uniform(0.7, 0.9)
+                                logger.info(f"📏 트랙 기반 드래그 거리: {drag_distance:.0f}px (최대: {max_distance:.0f}px)")
+                                break
+                    except:
+                        continue
 
             # 목표 위치
             end_x = start_x + drag_distance
