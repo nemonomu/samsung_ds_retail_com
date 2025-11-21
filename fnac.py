@@ -492,13 +492,22 @@ class FnacScraper:
 
             logger.info(f"🖱️ 슬라이더 드래그: ({start_x:.0f}, {start_y:.0f}) → ({end_x:.0f}, {end_y:.0f})")
 
+            # page 객체 가져오기 (Frame에는 mouse가 없으므로)
+            # Frame이면 page를 가져오고, Page면 그대로 사용
+            if hasattr(page_or_frame, 'page'):
+                # Frame 객체
+                mouse_obj = page_or_frame.page.mouse
+            else:
+                # Page 객체
+                mouse_obj = page_or_frame.mouse
+
             # 자연스러운 마우스 움직임 시뮬레이션
             # 1. 마우스를 슬라이더로 이동
-            page_or_frame.mouse.move(start_x, start_y)
+            mouse_obj.move(start_x, start_y)
             time.sleep(random.uniform(0.1, 0.3))
 
             # 2. 마우스 버튼 누르기
-            page_or_frame.mouse.down()
+            mouse_obj.down()
             time.sleep(random.uniform(0.1, 0.2))
 
             # 3. 여러 단계로 나눠서 자연스럽게 드래그
@@ -515,17 +524,17 @@ class FnacScraper:
                 current_y = start_y + wobble
 
                 # 마우스 이동
-                page_or_frame.mouse.move(current_x, current_y)
+                mouse_obj.move(current_x, current_y)
 
                 # 각 스텝마다 약간의 랜덤 딜레이
                 time.sleep(random.uniform(0.01, 0.03))
 
             # 4. 목표 지점에 정확히 도달
-            page_or_frame.mouse.move(end_x, end_y)
+            mouse_obj.move(end_x, end_y)
             time.sleep(random.uniform(0.1, 0.2))
 
             # 5. 마우스 버튼 놓기
-            page_or_frame.mouse.up()
+            mouse_obj.up()
 
             logger.info("✅ 슬라이더 드래그 완료")
             time.sleep(1)
