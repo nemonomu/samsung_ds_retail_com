@@ -271,35 +271,38 @@ class FnacScraper:
         """슬라이더 캡차 자동 해결"""
         logger.info("🧩 슬라이더 캡차 감지 및 해결 시도...")
 
-        # 캡차 관련 선택자들
+        # 캡차 관련 선택자들 (더 구체적으로)
         captcha_selectors = [
             "//div[contains(@class, 'captcha')]",
             "//div[contains(@id, 'captcha')]",
-            "//div[contains(@class, 'slider')]",
             "//div[contains(@class, 'verify')]",
             "//div[contains(@class, 'verification')]",
-            "[class*='captcha']",
-            "[id*='captcha']",
+            "[class*='captcha' i]",
+            "[id*='captcha' i]",
             "iframe[src*='captcha']",
-            "iframe[title*='captcha']",
-            "iframe[title*='verify']"
+            "iframe[title*='captcha' i]",
+            "iframe[title*='verify' i]",
+            "iframe[title*='puzzle' i]",
+            "//div[contains(text(), 'robot')]",
+            "//div[contains(text(), 'verify')]",
+            "//div[contains(text(), 'slide')]"
         ]
 
-        # 슬라이더 선택자들
+        # 슬라이더 선택자들 (캡차 전용만)
         slider_selectors = [
-            "//div[contains(@class, 'slider-button')]",
-            "//div[contains(@class, 'slide-verify-slider')]",
-            "//span[contains(@class, 'slider')]",
-            "//div[contains(@id, 'nc_')]",  # Alibaba Cloud slider
-            ".slider-button",
-            ".slide-verify-slider",
-            "#nc_1_n1z",
-            "[class*='slider']"
+            "//div[contains(@class, 'slider') and contains(@class, 'button')]",
+            "//div[contains(@class, 'slide-verify')]",
+            "//span[contains(@class, 'slider') and contains(@class, 'btn')]",
+            "//div[contains(@id, 'nc_') and contains(@class, 'btn')]",  # Alibaba Cloud
+            ".captcha-slider-button",
+            ".slide-verify-slider-mask-item",
+            "#nc_1_n1z"
         ]
 
         try:
             # 1. 캡차 존재 여부 확인
             captcha_found = False
+            captcha_element = None
             for selector in captcha_selectors:
                 try:
                     if selector.startswith('//'):
@@ -309,7 +312,15 @@ class FnacScraper:
 
                     if locator.is_visible(timeout=2000):
                         logger.info(f"🔍 캡차 요소 발견: {selector}")
+                        # 요소의 텍스트나 속성 확인
+                        try:
+                            text_content = locator.first.text_content()
+                            if text_content:
+                                logger.info(f"   캡차 텍스트: {text_content[:100]}")
+                        except:
+                            pass
                         captcha_found = True
+                        captcha_element = locator
                         break
                 except:
                     continue
@@ -317,6 +328,8 @@ class FnacScraper:
             if not captcha_found:
                 logger.info("✅ 캡차가 감지되지 않음")
                 return True
+
+            logger.info("⚠️ 캡차가 감지되었습니다!")
 
             # 2. iframe 내부 캡차 확인 및 처리
             try:
@@ -352,12 +365,60 @@ class FnacScraper:
                             slider = self.page.locator(slider_sel)
 
                         if slider.is_visible(timeout=2000):
-                            logger.info(f"✅ 슬라이더 발견: {slider_sel}")
+                            # 슬라이더 요소 정보 출력
+                            try:
+                                slider_class = slider.first.get_attribute('class')
+                                slider_id = slider.first.get_attribute('id')
+                                logger.info(f"✅ 슬라이더 발견: {slider_sel}")
+                                logger.info(f"   class: {slider_class}")
+                                logger.info(f"   id: {slider_id}")
+                            except:
+                                logger.info(f"✅ 슬라이더 발견: {slider_sel}")
+
+                            # 드래그 전 스크린샷
+                            try:
+                                screenshot_before = f"captcha_before_{attempt}.png"
+                                self.page.screenshot(path=screenshot_before)
+                                logger.info(f"📸 드래그 전 스크린샷: {screenshot_before}")
+                            except:
+                                pass
 
                             if self._drag_slider(slider, self.page):
-                                logger.info("✅ 슬라이더 캡차 해결 성공!")
-                                time.sleep(2)  # 검증 대기
-                                return True
+                                # 드래그 후 대기
+                                time.sleep(2)
+
+                                # 드래그 후 스크린샷
+                                try:
+                                    screenshot_after = f"captcha_after_{attempt}.png"
+                                    self.page.screenshot(path=screenshot_after)
+                                    logger.info(f"📸 드래그 후 스크린샷: {screenshot_after}")
+                                except:
+                                    pass
+
+                                # 캡차가 사라졌는지 확인
+                                captcha_still_visible = False
+                                for cap_sel in captcha_selectors[:5]:  # 처음 5개만 체크
+                                    try:
+                                        if cap_sel.startswith('//'):
+                                            cap_loc = self.page.locator(f'xpath={cap_sel}')
+                                        else:
+                                            cap_loc = self.page.locator(cap_sel)
+
+                                        if cap_loc.is_visible(timeout=1000):
+                                            captcha_still_visible = True
+                                            logger.warning(f"⚠️ 캡차가 여전히 보임: {cap_sel}")
+                                            break
+                                    except:
+                                        continue
+
+                                if not captcha_still_visible:
+                                    logger.info("✅ 슬라이더 캡차 해결 성공! (캡차가 사라짐)")
+                                    return True
+                                else:
+                                    logger.warning("⚠️ 슬라이더를 드래그했지만 캡차가 여전히 보입니다")
+                                    # 다음 슬라이더 시도
+                                    continue
+
                     except Exception as e:
                         logger.debug(f"슬라이더 {slider_sel} 처리 실패: {e}")
                         continue
@@ -367,6 +428,8 @@ class FnacScraper:
                     time.sleep(2)
 
             logger.warning("⚠️ 슬라이더 캡차를 자동으로 해결하지 못했습니다")
+            logger.warning("💡 수동으로 캡차를 해결해주세요. 30초 대기합니다...")
+            time.sleep(30)  # 수동 해결 시간
             return False
 
         except Exception as e:
