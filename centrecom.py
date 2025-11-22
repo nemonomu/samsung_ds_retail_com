@@ -597,6 +597,20 @@ class CentrecomScraper:
             logger.error("드라이버 설정 실패")
             return None
 
+        # 홈페이지 먼저 접속
+        logger.info("=" * 80)
+        logger.info("Centrecom 홈페이지 접속 중...")
+        logger.info("=" * 80)
+        try:
+            self.driver.get("https://www.centrecom.com.au/")
+            time.sleep(random.uniform(3, 5))
+            self.wait_for_page_load()
+            logger.info("홈페이지 접속 완료")
+        except Exception as e:
+            logger.error(f"홈페이지 접속 실패: {e}")
+            self.driver.quit()
+            return None
+
         results = []
         failed_urls = []
 
