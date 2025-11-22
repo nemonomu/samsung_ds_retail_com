@@ -70,10 +70,11 @@ class CentrecomScraper:
         self.selectors = {
             self.country_code: {
                 'price': [
-                    "//*[@id='product-details-form']/div/div[2]/div[2]/div[1]/div[2]/div[1]/div[3]/div[1]/span"
+                    "//*[@id='product-details-form']/div/div[1]/div[2]/div[1]/div[2]/div[1]/div[3]/div[1]/span",
+                    "//*[@id='product-details-form']/div/div[1]/div[2]/div[1]/div[2]/div[1]/div[3]/div[1]"
                 ],
                 'title': [
-                    "//*[@id='product-details-form']/div/div[2]/div[2]/div[1]/div[1]/h1"
+                    "//*[@id='product-details-form']/div/div[1]/div[2]/div[1]/div[1]/h1"
                 ],
                 'imageurl': [
                     "//*[@id='gallery-1']/div[1]/div[1]/div[3]/img"
