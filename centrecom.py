@@ -80,7 +80,8 @@ class CentrecomScraper:
                     "//*[@id='product-details-form']/div/div[2]/div[2]/div[1]/div[1]/h1"
                 ],
                 'imageurl': [
-                    "//*[@id='gallery-1']/div[1]/div[1]/div[3]/img"
+                    "//*[@id='gallery-1']/div[1]/div[1]/div[3]/img",
+                    "//*[@id='gallery-1']/div[1]/div[1]/div/img"
                 ]
             }
         }
