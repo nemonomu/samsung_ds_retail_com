@@ -1257,6 +1257,16 @@ class FnacScraper:
         """결과 분석"""
         logger.info("\n📊 === 결과 분석 ===")
 
+        # DataFrame이 비어있거나 컬럼이 없는 경우 처리
+        if df is None or df.empty:
+            logger.warning("⚠️ 분석할 데이터가 없습니다.")
+            return
+
+        if 'retailprice' not in df.columns:
+            logger.warning("⚠️ 'retailprice' 컬럼이 없습니다.")
+            logger.info(f"사용 가능한 컬럼: {list(df.columns)}")
+            return
+
         total = len(df)
         with_price = df['retailprice'].notna().sum()
         without_price = df['retailprice'].isna().sum()
