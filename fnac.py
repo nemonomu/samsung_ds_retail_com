@@ -213,6 +213,11 @@ class FnacScraper:
         logger.info("🔧 Playwright 브라우저 설정 중...")
 
         try:
+            # 임시 디렉토리 생성
+            import os
+            temp_dir = os.path.join(os.getcwd(), 'temp_playwright')
+            os.makedirs(temp_dir, exist_ok=True)
+
             self.playwright = sync_playwright().start()
 
             # Chromium 브라우저 시작 (headless=False로 더 자연스럽게)
@@ -225,7 +230,12 @@ class FnacScraper:
                     '--disable-setuid-sandbox',
                     '--disable-web-security',
                     '--disable-features=IsolateOrigins,site-per-process'
-                ]
+                ],
+                env={
+                    'TMPDIR': temp_dir,
+                    'TEMP': temp_dir,
+                    'TMP': temp_dir
+                }
             )
 
             # 컨텍스트 생성 (프랑스 사용자 시뮬레이션)
