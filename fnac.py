@@ -1,13 +1,9 @@
 """
-Fnac 가격 추출 시스템 - Undetected Chromedriver 기반 버전
+Fnac 가격 추출 시스템 - Playwright 기반 버전
 DB에서 URL 읽어와서 크롤링 후 결과 저장
 파일명 형식: {수집일자}{수집시간}_{국가코드}_{쇼핑몰}.csv
 """
-import undetected_chromedriver as uc
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 import pandas as pd
 import pymysql
 from sqlalchemy import create_engine
@@ -35,8 +31,10 @@ from config import FILE_SERVER_CONFIG
 
 class FnacScraper:
     def __init__(self):
-        self.driver = None
-        self.wait = None
+        self.playwright = None
+        self.browser = None
+        self.context = None
+        self.page = None
         self.db_engine = None
         self.sftp_client = None
         self.country_code = 'fr'
@@ -211,52 +209,119 @@ class FnacScraper:
             return []
 
     def setup_browser(self):
-        """Chrome 드라이버 설정"""
-        logger.info("🔧 Chrome 드라이버 설정 중...")
+        """Playwright 브라우저 설정"""
+        logger.info("🔧 Playwright 브라우저 설정 중...")
 
         try:
-            options = uc.ChromeOptions()
+            # 임시 디렉토리 생성
+            import os
+            temp_dir = os.path.join(os.getcwd(), 'temp_playwright')
+            os.makedirs(temp_dir, exist_ok=True)
 
-            options.add_argument('--disable-blink-features=AutomationControlled')
-            options.add_argument('--disable-dev-shm-usage')
-            options.add_argument('--no-sandbox')
-            options.add_argument('--disable-setuid-sandbox')
+            self.playwright = sync_playwright().start()
 
-            self.driver = uc.Chrome(options=options)
-            self.driver.maximize_window()
+            # Chromium 브라우저 시작 (headless=False로 더 자연스럽게)
+            self.browser = self.playwright.chromium.launch(
+                headless=False,  # GUI 모드
+                args=[
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-dev-shm-usage',
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-web-security',
+                    '--disable-features=IsolateOrigins,site-per-process'
+                ],
+                env={
+                    'TMPDIR': temp_dir,
+                    'TEMP': temp_dir,
+                    'TMP': temp_dir
+                }
+            )
 
-            self.wait = WebDriverWait(self.driver, 20)
+            # 컨텍스트 생성 (프랑스 사용자 시뮬레이션)
+            self.context = self.browser.new_context(
+                viewport={'width': 1920, 'height': 1080},
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                locale='fr-FR',
+                timezone_id='Europe/Paris',
+                geolocation={'latitude': 48.8566, 'longitude': 2.3522},  # Paris
+                permissions=['geolocation']
+            )
 
-            logger.info("✅ 드라이버 설정 완료")
+            # 페이지 생성
+            self.page = self.context.new_page()
+
+            # 추가 스텔스 설정
+            self.page.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                });
+
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [1, 2, 3, 4, 5]
+                });
+
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => ['fr-FR', 'fr', 'en-US', 'en']
+                });
+
+                window.chrome = {
+                    runtime: {}
+                };
+            """)
+
+            logger.info("✅ Playwright 브라우저 설정 완료")
             return True
 
         except Exception as e:
-            logger.error(f"❌ 드라이버 설정 실패: {e}")
+            logger.error(f"❌ 브라우저 설정 실패: {e}")
             return False
 
     def wait_for_manual_captcha_solve(self, max_wait_seconds=300):
-        """캡차를 수동으로 해결할 때까지 대기 (간소화 버전)"""
-        logger.info("🧩 캡차 감지 확인 중...")
+        """캡차를 수동으로 해결할 때까지 대기"""
+        logger.info("🧩 캡차 감지 - 수동 해결 대기 중...")
+
+        # 캡차 관련 선택자들
+        captcha_selectors = [
+            "iframe[src*='captcha']",
+            "iframe[title*='captcha' i]",
+            "iframe[title*='verify' i]",
+            "iframe[title*='puzzle' i]",
+            "[class*='captcha' i]",
+            "[id*='captcha' i]",
+            "//div[contains(@class, 'captcha')]",
+            "//div[contains(@id, 'captcha')]",
+        ]
+
+        # 슬라이더 선택자들 (캡차 전용만)
+        slider_selectors = [
+            ".slider",  # geo.captcha-delivery.com
+            "div.slider",
+            ".sliderContainer .slider",
+            "//div[@class='slider']",
+            "//div[@class='sliderContainer']//div[@class='slider']",
+            "//div[contains(@class, 'slider') and contains(@class, 'button')]",
+            "//div[contains(@class, 'slide-verify')]",
+            "//span[contains(@class, 'slider') and contains(@class, 'btn')]",
+            "//div[contains(@id, 'nc_') and contains(@class, 'btn')]",  # Alibaba Cloud
+            ".captcha-slider-button",
+            ".slide-verify-slider-mask-item",
+            "#nc_1_n1z"
+        ]
 
         try:
-            # 캡차 관련 선택자들 (간소화)
-            captcha_selectors_xpath = [
-                "//iframe[contains(@src, 'captcha')]",
-                "//div[contains(@class, 'captcha')]",
-                "//div[contains(@id, 'captcha')]"
-            ]
-
-            # 캡차 존재 여부 확인
+            # 1. 캡차 존재 여부 확인
             captcha_found = False
-            for selector in captcha_selectors_xpath:
+            for selector in captcha_selectors:
                 try:
-                    elements = self.driver.find_elements(By.XPATH, selector)
-                    for element in elements:
-                        if element.is_displayed():
-                            logger.info(f"🔍 캡차 요소 발견: {selector}")
-                            captcha_found = True
-                            break
-                    if captcha_found:
+                    if selector.startswith('//'):
+                        locator = self.page.locator(f'xpath={selector}')
+                    else:
+                        locator = self.page.locator(selector)
+
+                    if locator.is_visible(timeout=2000):
+                        logger.info(f"🔍 캡차 요소 발견: {selector}")
+                        captcha_found = True
                         break
                 except:
                     continue
@@ -265,27 +330,28 @@ class FnacScraper:
                 logger.info("✅ 캡차가 감지되지 않음")
                 return True
 
-            # 캡차가 있으면 사용자에게 알리고 대기
+            # 2. 캡차가 있으면 사용자에게 알리고 대기
             logger.warning("⚠️ 캡차가 감지되었습니다!")
             logger.warning(f"💡 수동으로 캡차를 해결해주세요. 최대 {max_wait_seconds}초 대기합니다...")
 
-            # 캡차가 사라질 때까지 주기적으로 확인
+            # 3. 캡차가 사라질 때까지 주기적으로 확인
             start_time = time.time()
-            check_interval = 2
+            check_interval = 2  # 2초마다 확인
 
             while (time.time() - start_time) < max_wait_seconds:
                 time.sleep(check_interval)
 
                 # 캡차가 여전히 있는지 확인
                 still_has_captcha = False
-                for selector in captcha_selectors_xpath:
+                for selector in captcha_selectors:
                     try:
-                        elements = self.driver.find_elements(By.XPATH, selector)
-                        for element in elements:
-                            if element.is_displayed():
-                                still_has_captcha = True
-                                break
-                        if still_has_captcha:
+                        if selector.startswith('//'):
+                            locator = self.page.locator(f'xpath={selector}')
+                        else:
+                            locator = self.page.locator(selector)
+
+                        if locator.is_visible(timeout=1000):
+                            still_has_captcha = True
                             break
                     except:
                         continue
@@ -296,7 +362,7 @@ class FnacScraper:
 
                 # 진행 상황 표시
                 elapsed = int(time.time() - start_time)
-                if elapsed % 10 == 0:
+                if elapsed % 10 == 0:  # 10초마다
                     logger.info(f"⏳ 대기 중... ({elapsed}/{max_wait_seconds}초)")
 
             # 시간 초과
@@ -307,13 +373,206 @@ class FnacScraper:
             logger.error(f"❌ 캡차 대기 중 오류: {e}")
             return False
 
+
+    def _drag_slider(self, slider, page_or_frame):
+        """슬라이더를 자연스럽게 드래그"""
+        try:
+            # 슬라이더의 위치와 크기 가져오기
+            box = slider.bounding_box()
+            if not box:
+                logger.warning("슬라이더 위치를 가져올 수 없음")
+                return False
+
+            # 시작 위치 (슬라이더 중앙)
+            start_x = box['x'] + box['width'] / 2
+            start_y = box['y'] + box['height'] / 2
+
+            # 드래그 거리 계산 - sliderTarget 위치를 찾아서 그곳으로 드래그
+            drag_distance = 300  # 기본값
+
+            # 1. canvas 요소의 left style 값으로 정확한 퍼즐 갭 위치 찾기
+            target_found = False
+
+            # canvas 요소 찾기
+            try:
+                canvas = page_or_frame.locator("canvas[style*='left']")
+                if canvas.is_visible(timeout=2000):
+                    # style 속성에서 left 값 추출
+                    style_attr = canvas.first.get_attribute('style')
+                    if style_attr:
+                        # "left: 94px;" 같은 형식에서 숫자 추출
+                        import re
+                        left_match = re.search(r'left:\s*(\d+)px', style_attr)
+                        if left_match:
+                            puzzle_gap_left = int(left_match.group(1))
+
+                            # 슬라이더 컨테이너의 왼쪽 위치 (기준점)
+                            # canvas와 slider가 같은 컨테이너 안에 있다고 가정
+                            slider_container = page_or_frame.locator(".sliderContainer")
+                            if slider_container.is_visible(timeout=1000):
+                                container_box = slider_container.bounding_box()
+                                if container_box:
+                                    # 퍼즐 갭의 절대 위치
+                                    target_absolute_left = container_box['x'] + puzzle_gap_left
+
+                                    # 슬라이더 현재 위치
+                                    slider_left = box['x']
+
+                                    # 드래그 거리 계산 (정확하게)
+                                    drag_distance = target_absolute_left - slider_left
+
+                                    logger.info(f"🎯 Canvas left 기반 드래그 거리: {drag_distance:.2f}px")
+                                    logger.info(f"   컨테이너: {container_box['x']:.2f}, 퍼즐 갭: {puzzle_gap_left}px")
+                                    logger.info(f"   타겟 절대위치: {target_absolute_left:.2f}, 슬라이더: {slider_left:.2f}")
+                                    target_found = True
+            except Exception as e:
+                logger.debug(f"Canvas 위치 추출 실패: {e}")
+
+            # 2. 실패하면 기존 방식으로 sliderTarget 찾기
+            if not target_found:
+                target_selectors = [
+                    ".sliderTarget",
+                    "//div[@class='sliderTarget']",
+                    ".slide-verify-target",
+                    "//div[contains(@class, 'target')]"
+                ]
+
+                for target_sel in target_selectors:
+                    try:
+                        if target_sel.startswith('//'):
+                            target = page_or_frame.locator(f'xpath={target_sel}')
+                        else:
+                            target = page_or_frame.locator(target_sel)
+
+                        if target.is_visible(timeout=1000):
+                            target_box = target.bounding_box()
+                            if target_box:
+                                slider_left = box['x']
+                                target_left = target_box['x']
+                                drag_distance = target_left - slider_left
+                                drag_distance += random.uniform(-2, 2)
+
+                                logger.info(f"🎯 타겟 위치 기반 드래그 거리: {drag_distance:.1f}px")
+                                logger.info(f"   슬라이더 왼쪽: {slider_left:.0f}, 타겟 왼쪽: {target_left:.0f}")
+                                target_found = True
+                                break
+                    except:
+                        continue
+
+            # 2. 타겟을 못 찾으면 트랙 너비 기반으로 계산 (하지만 끝까지는 안 감)
+            if not target_found:
+                track_selectors = [
+                    ".sliderContainer",
+                    ".sliderbg",
+                    "//div[@class='sliderContainer']",
+                    "//div[@class='sliderbg']",
+                    "//div[contains(@class, 'slider-track')]",
+                    "//div[contains(@class, 'slide-track')]",
+                    ".slider-track",
+                    ".slide-verify-slider-track"
+                ]
+
+                for track_sel in track_selectors:
+                    try:
+                        if track_sel.startswith('//'):
+                            track = page_or_frame.locator(f'xpath={track_sel}')
+                        else:
+                            track = page_or_frame.locator(track_sel)
+
+                        if track.is_visible(timeout=1000):
+                            track_box = track.bounding_box()
+                            if track_box:
+                                # 트랙 너비의 70-90% 정도만 드래그 (끝까지 가지 않음)
+                                max_distance = track_box['width'] - box['width']
+                                drag_distance = max_distance * random.uniform(0.7, 0.9)
+                                logger.info(f"📏 트랙 기반 드래그 거리: {drag_distance:.0f}px (최대: {max_distance:.0f}px)")
+                                break
+                    except:
+                        continue
+
+            # 목표 위치
+            end_x = start_x + drag_distance
+            end_y = start_y
+
+            logger.info(f"🖱️ 슬라이더 드래그: ({start_x:.0f}, {start_y:.0f}) → ({end_x:.0f}, {end_y:.0f})")
+
+            # page 객체 가져오기 (Frame에는 mouse가 없으므로)
+            # Frame이면 page를 가져오고, Page면 그대로 사용
+            if hasattr(page_or_frame, 'page'):
+                # Frame 객체
+                mouse_obj = page_or_frame.page.mouse
+            else:
+                # Page 객체
+                mouse_obj = page_or_frame.mouse
+
+            # 매우 사람다운 마우스 움직임 시뮬레이션
+            # 1. 마우스를 슬라이더로 천천히 이동 (사람은 바로 안 움직임)
+            mouse_obj.move(start_x, start_y)
+            time.sleep(random.uniform(0.3, 0.6))  # 망설임
+
+            # 2. 마우스 버튼 누르기 전 짧은 대기
+            time.sleep(random.uniform(0.1, 0.2))
+            mouse_obj.down()
+            time.sleep(random.uniform(0.15, 0.25))  # 누른 후 약간 대기
+
+            # 3. 사람처럼 가변 속도로 드래그 (느림→빠름→느림)
+            steps = random.randint(25, 40)  # 더 많은 단계
+
+            for i in range(steps):
+                progress = (i + 1) / steps
+
+                # 가속도 곡선 (ease-in-out): 처음과 끝은 느리고 중간은 빠름
+                # 사인 함수 사용으로 자연스러운 가속/감속
+                import math
+                eased_progress = (math.sin((progress - 0.5) * math.pi) + 1) / 2
+
+                # 현재 x 위치
+                current_x = start_x + (drag_distance * eased_progress)
+
+                # y축 흔들림 (사람은 완벽하게 직선으로 못 그음)
+                wobble = random.uniform(-3, 3)
+                current_y = start_y + wobble
+
+                # 마우스 이동
+                mouse_obj.move(current_x, current_y)
+
+                # 가변 딜레이 (사람은 일정한 속도로 안 움직임)
+                base_delay = 0.01
+                # 처음과 끝은 느리게, 중간은 빠르게
+                if progress < 0.2 or progress > 0.8:
+                    delay = random.uniform(0.02, 0.04)  # 느림
+                else:
+                    delay = random.uniform(0.005, 0.015)  # 빠름
+
+                time.sleep(delay)
+
+                # 가끔 중간에 아주 짧게 멈춤 (사람의 미세한 조정)
+                if random.random() < 0.15:  # 15% 확률
+                    time.sleep(random.uniform(0.05, 0.1))
+
+            # 4. 목표 지점에 정확히 도달 (마지막은 정확하게)
+            mouse_obj.move(end_x, end_y)
+            time.sleep(random.uniform(0.15, 0.25))
+
+            # 5. 마우스 버튼 놓기
+            mouse_obj.up()
+
+            logger.info("✅ 슬라이더 드래그 완료")
+            time.sleep(1)
+
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ 슬라이더 드래그 실패: {e}")
+            return False
+
     def initialize_session(self):
         """Fnac 세션 초기화"""
         logger.info("Fnac 세션 초기화...")
 
         try:
-            # Fnac 메인 페이지 접속
-            self.driver.get("https://www.fnac.com")
+            # Fnac 메인 페이지 접속 (domcontentloaded로 변경)
+            self.page.goto("https://www.fnac.com", wait_until='domcontentloaded', timeout=30000)
             logger.info("✅ 페이지 로드 완료")
             time.sleep(2)
 
@@ -324,8 +583,12 @@ class FnacScraper:
 
                 # "J'accepte" 버튼 클릭 (여러 선택자 시도)
                 cookie_selectors = [
+                    "text=J'accepte",
+                    "button:has-text(\"J'accepte\")",
                     "//button[contains(text(), \"J'accepte\")]",
                     "//button[contains(text(), 'accepte')]",
+                    "[class*='accept' i]",
+                    "[id*='accept' i]",
                     "button[class*='cookie']",
                     ".didomi-button"
                 ]
@@ -335,21 +598,19 @@ class FnacScraper:
                     try:
                         logger.info(f"🔍 쿠키 선택자 시도: {selector}")
 
-                        if selector.startswith('//'):
-                            buttons = self.driver.find_elements(By.XPATH, selector)
+                        if selector.startswith('text=') or selector.startswith('button:'):
+                            button = self.page.locator(selector).first
+                        elif selector.startswith('//'):
+                            button = self.page.locator(f'xpath={selector}').first
                         else:
-                            buttons = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                            button = self.page.locator(selector).first
 
                         # 버튼이 보이는지 확인
-                        for button in buttons:
-                            if button.is_displayed():
-                                button.click()
-                                logger.info(f"🍪 쿠키 동의 팝업 처리 완료 (선택자: {selector})")
-                                time.sleep(2)
-                                cookie_found = True
-                                break
-
-                        if cookie_found:
+                        if button.is_visible(timeout=2000):
+                            button.click(timeout=3000)
+                            logger.info(f"🍪 쿠키 동의 팝업 처리 완료 (선택자: {selector})")
+                            time.sleep(2)  # 쿠키 처리 후 대기 시간 증가
+                            cookie_found = True
                             break
                     except Exception as e:
                         logger.debug(f"선택자 {selector} 실패: {e}")
@@ -361,8 +622,12 @@ class FnacScraper:
             except Exception as e:
                 logger.debug(f"쿠키 팝업 처리 중 오류 (무시): {e}")
 
+            # 캡차 감지 및 수동 해결 대기
+            time.sleep(2)  # 캡차가 나타날 시간 대기
+            self.wait_for_manual_captcha_solve(max_wait_seconds=300)  # 최대 5분 대기
+
             # 세션이 제대로 설정되었는지 확인
-            title = self.driver.title
+            title = self.page.title()
             if "fnac" in title.lower():
                 logger.info("✅ Fnac 세션 초기화 완료")
                 return True
@@ -378,10 +643,32 @@ class FnacScraper:
         """제품 정보 추출 (차단 페이지 감지 및 재시도 로직)"""
         try:
             logger.info(f"🔍 페이지 접속: {url} (시도: {retry_count + 1}/{max_retries + 1})")
-            self.driver.get(url)
+            response = self.page.goto(url, wait_until='domcontentloaded', timeout=30000)
 
             # 페이지 로드 대기
             time.sleep(random.uniform(3, 5))
+
+            # 슬라이더 캡차가 나타났는지 확인 및 수동 해결 대기
+            self.wait_for_manual_captcha_solve(max_wait_seconds=120)  # 제품 페이지는 2분만 대기
+
+            # 404 에러 체크 (봇 감지로 인한 404 위장 가능성)
+            if response and response.status == 404:
+                logger.warning("⚠️ 404 에러 감지 - 봇 감지 가능성, 재접속 시도")
+
+                # 잠시 대기
+                time.sleep(random.uniform(3, 5))
+
+                # 바로 원래 URL 재접속 (메인 페이지 거치지 않음)
+                logger.info(f"🔄 URL 직접 재접속: {url}")
+                response = self.page.goto(url, wait_until='domcontentloaded', timeout=30000)
+                time.sleep(random.uniform(3, 5))
+
+                # 여전히 404이면 에러 발생
+                if response and response.status == 404:
+                    logger.error("❌ 재접속 후에도 404 에러 - URL이 존재하지 않거나 차단됨")
+                    raise Exception("404 error after retry - possible blocked or invalid URL")
+                else:
+                    logger.info("✅ 재접속 성공")
 
             # 현재 시간
             now_time = datetime.now(self.korea_tz)
@@ -428,12 +715,13 @@ class FnacScraper:
                     try:
                         # XPath인지 CSS인지 판단
                         if selector.startswith('//'):
-                            elements = self.driver.find_elements(By.XPATH, selector)
+                            locator = self.page.locator(f'xpath={selector}')
                         else:
-                            elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                            locator = self.page.locator(selector)
 
-                        # 요소 텍스트 추출
-                        title_text = elements[0].text if elements and elements[0].is_displayed() else None
+                        # 요소가 나타날 때까지 대기 (최대 5초)
+                        locator.wait_for(state='visible', timeout=5000)
+                        title_text = locator.inner_text()
 
                         if title_text and title_text.strip():
                             result['title'] = title_text.strip()
@@ -451,18 +739,19 @@ class FnacScraper:
 
                 # 1단계: 새로고침 시도
                 logger.info("🔄 새로고침 시도...")
-                self.driver.refresh()
+                self.page.reload(wait_until='networkidle', timeout=30000)
                 time.sleep(random.uniform(3, 5))
 
                 # 제목 재추출 시도
                 for selector in self.XPATHS.get('title', []):
                     try:
                         if selector.startswith('//'):
-                            elements = self.driver.find_elements(By.XPATH, selector)
+                            locator = self.page.locator(f'xpath={selector}')
                         else:
-                            elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                            locator = self.page.locator(selector)
 
-                        title_text = elements[0].text if elements and elements[0].is_displayed() else None
+                        locator.wait_for(state='visible', timeout=5000)
+                        title_text = locator.inner_text()
 
                         if title_text and title_text.strip():
                             result['title'] = title_text.strip()
@@ -477,23 +766,24 @@ class FnacScraper:
                     logger.warning("⚠️ 새로고침 후에도 실패 - fnac.com 접속 후 재시도")
 
                     # Fnac 메인 페이지 접속
-                    self.driver.get("https://www.fnac.com")
+                    self.page.goto("https://www.fnac.com", wait_until='networkidle', timeout=30000)
                     time.sleep(random.uniform(2, 4))
 
                     # 원래 URL 재접속
                     logger.info(f"🔄 원래 URL 재접속: {url}")
-                    self.driver.get(url)
+                    self.page.goto(url, wait_until='networkidle', timeout=30000)
                     time.sleep(random.uniform(3, 5))
 
                     # 제목 재추출 시도
                     for selector in self.XPATHS.get('title', []):
                         try:
                             if selector.startswith('//'):
-                                elements = self.driver.find_elements(By.XPATH, selector)
+                                locator = self.page.locator(f'xpath={selector}')
                             else:
-                                elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                                locator = self.page.locator(selector)
 
-                            title_text = elements[0].text if elements and elements[0].is_displayed() else None
+                            locator.wait_for(state='visible', timeout=5000)
+                            title_text = locator.inner_text()
 
                             if title_text and title_text.strip():
                                 result['title'] = title_text.strip()
@@ -519,10 +809,11 @@ class FnacScraper:
                         logger.info(f"🔍 선택자 시도: {selector}")
 
                         if selector.startswith('//'):
-                            elements = self.driver.find_elements(By.XPATH, selector)
+                            locator = self.page.locator(f'xpath={selector}')
                         else:
-                            elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                            locator = self.page.locator(selector)
 
+                        locator.wait_for(state='visible', timeout=5000)
                         price_text = locator.inner_text()
                         logger.info(f"🔍 추출한 텍스트: '{price_text}'")
 
@@ -545,7 +836,7 @@ class FnacScraper:
                 # JavaScript로 가격 찾기 (최후 수단)
                 if not price_found:
                     try:
-                        js_result = self.driver.execute_script("""
+                        js_result = self.page.evaluate("""
                             () => {
                                 var priceSelectors = [
                                     '.f-faPriceBox__price',
@@ -556,10 +847,10 @@ class FnacScraper:
                                 for (var i = 0; i < priceSelectors.length; i++) {
                                     var elements = document.querySelectorAll(priceSelectors[i]);
                                     for (var j = 0; j < elements.length; j++) {
-                        var text = elements[j].textContent || elements[j].innerText;
-                        if (text && /\\d/.test(text) && text.includes('€')) {
-                        return text.trim();
-                        }
+                                        var text = elements[j].textContent || elements[j].innerText;
+                                        if (text && /\\d/.test(text) && text.includes('€')) {
+                                            return text.trim();
+                                        }
                                     }
                                 }
                                 return null;
@@ -592,10 +883,11 @@ class FnacScraper:
                 for selector in self.XPATHS.get('imageurl', []):
                     try:
                         if selector.startswith('//'):
-                            elements = self.driver.find_elements(By.XPATH, selector)
+                            locator = self.page.locator(f'xpath={selector}')
                         else:
-                            elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                            locator = self.page.locator(selector)
 
+                        locator.wait_for(state='visible', timeout=5000)
                         src = locator.get_attribute('src')
 
                         if src and 'fnac-static.com' in src:
@@ -609,13 +901,13 @@ class FnacScraper:
                 # 2. JavaScript로 이미지 찾기
                 if not image_found:
                     try:
-                        js_result = self.driver.execute_script("""
+                        js_result = self.page.evaluate("""
                             () => {
                                 var imgs = document.querySelectorAll('img');
                                 for (var i = 0; i < imgs.length; i++) {
                                     var src = imgs[i].src || imgs[i].getAttribute('data-src');
                                     if (src && src.includes('fnac-static.com')) {
-                        return src;
+                                        return src;
                                     }
                                 }
                                 return null;
@@ -836,9 +1128,9 @@ class FnacScraper:
         try:
             # 1단계: Google 연결 테스트
             logger.info("1단계: Google 연결 테스트...")
-            self.driver.get("https://www.google.com")
+            self.page.goto("https://www.google.com", wait_until='networkidle', timeout=30000)
             time.sleep(2)
-            google_title = self.driver.title
+            google_title = self.page.title()
 
             if "Google" in google_title:
                 logger.info("✅ Google 접속 성공")
@@ -925,7 +1217,7 @@ class FnacScraper:
                     if self.db_engine:
                         try:
                             interim_df.to_sql('fnac_price_crawl_tbl_fr', self.db_engine,
-                        if_exists='append', index=False)
+                                            if_exists='append', index=False)
                             logger.info(f"💾 중간 저장: 10개 레코드 DB 저장")
                         except Exception as e:
                             logger.error(f"중간 저장 실패: {e}")
@@ -951,9 +1243,13 @@ class FnacScraper:
                 if len(failed_urls) > 5:
                     logger.warning(f"  ... 외 {len(failed_urls) - 5}개")
 
-            if self.driver:
-                self.driver.quit()
-                logger.info("🔧 드라이버 종료")
+            if self.browser:
+                self.browser.close()
+                logger.info("🔧 브라우저 종료")
+
+            if self.playwright:
+                self.playwright.stop()
+                logger.info("🔧 Playwright 종료")
 
         return pd.DataFrame(results)
 
