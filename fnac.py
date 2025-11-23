@@ -3,6 +3,17 @@ Fnac 가격 추출 시스템 - Playwright 기반 버전
 DB에서 URL 읽어와서 크롤링 후 결과 저장
 파일명 형식: {수집일자}{수집시간}_{국가코드}_{쇼핑몰}.csv
 """
+import os
+import tempfile
+
+# Playwright 임시 디렉토리 문제 해결: 환경변수를 import 전에 설정
+temp_dir = os.path.join(os.getcwd(), 'temp_playwright')
+os.makedirs(temp_dir, exist_ok=True)
+os.environ['TMPDIR'] = temp_dir
+os.environ['TEMP'] = temp_dir
+os.environ['TMP'] = temp_dir
+tempfile.tempdir = temp_dir
+
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 import pandas as pd
 import pymysql
@@ -14,7 +25,6 @@ import re
 from datetime import datetime
 import pytz
 import logging
-import os
 import json
 from io import StringIO
 import zipfile
@@ -213,11 +223,6 @@ class FnacScraper:
         logger.info("🔧 Playwright 브라우저 설정 중...")
 
         try:
-            # 임시 디렉토리 생성
-            import os
-            temp_dir = os.path.join(os.getcwd(), 'temp_playwright')
-            os.makedirs(temp_dir, exist_ok=True)
-
             self.playwright = sync_playwright().start()
 
             # Chromium 브라우저 시작 (headless=False로 더 자연스럽게)
@@ -230,12 +235,7 @@ class FnacScraper:
                     '--disable-setuid-sandbox',
                     '--disable-web-security',
                     '--disable-features=IsolateOrigins,site-per-process'
-                ],
-                env={
-                    'TMPDIR': temp_dir,
-                    'TEMP': temp_dir,
-                    'TMP': temp_dir
-                }
+                ]
             )
 
             # 컨텍스트 생성 (프랑스 사용자 시뮬레이션)
