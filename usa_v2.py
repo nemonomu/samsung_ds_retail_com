@@ -101,11 +101,12 @@ class AmazonScraper:
                 'ships_from': [
                     # 정확한 XPath를 최우선으로 배치
                     "//*[@id='fulfillerInfoFeature_feature_div']/div[2]/div[1]/span",  # 정확한 XPath (우선순위 1)
-                    
+
                     # 기타 백업 선택자들
                     "//div[@id='fulfillerInfoFeature_feature_div']//span",
                     "//*[@id='fulfillerInfoFeature_feature_div']//div[2]//span",
-                    "//div[contains(@id, 'fulfillerInfo')]//span"
+                    "//div[contains(@id, 'fulfillerInfo')]//span",
+                    "//*[@id='SSOFpopoverLink_ubb']"
                 ],
                 'sold_by': [
                     # 정확한 XPath들을 최우선으로 배치
@@ -841,12 +842,16 @@ class AmazonScraper:
             result['retailprice'] = self.extract_price(self.country_code)
             
             result['ships_from'] = self.extract_element_text(
-                self.selectors[self.country_code].get('ships_from', []), 
+                self.selectors[self.country_code].get('ships_from', []),
                 "Ships From"
             )
-            
+
+            # "Fulfilled by Amazon"이면 "Amazon"으로 변환
+            if result['ships_from'] and 'Fulfilled by Amazon' in result['ships_from']:
+                result['ships_from'] = 'Amazon'
+
             result['sold_by'] = self.extract_element_text(
-                self.selectors[self.country_code].get('sold_by', []), 
+                self.selectors[self.country_code].get('sold_by', []),
                 "Sold By"
             )
             
