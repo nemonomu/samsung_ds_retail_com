@@ -210,9 +210,72 @@ class AmazonScraper:
         }
     
     def is_excluded_price_element(self, element):
-        """추천상품/관련상품 영역 제외 필터링 메서드 - 임시 비활성화"""
-        # 필터링을 일시적으로 비활성화하여 원인 파악
-        return False
+        """추천상품/관련상품 영역 제외 필터링"""
+        try:
+            # 1. 추천 상품 컨테이너 확인 (data-asin 속성이 있는 부모 요소)
+            parent_with_asin = self.driver.execute_script("""
+                var elem = arguments[0];
+                while (elem && elem !== document.body) {
+                    if (elem.hasAttribute && elem.hasAttribute('data-asin')) {
+                        return elem;
+                    }
+                    elem = elem.parentElement;
+                }
+                return null;
+            """, element)
+
+            if parent_with_asin:
+                logger.debug("data-asin을 가진 부모 요소 발견 - 추천 상품으로 판단")
+                return True
+
+            # 2. ol/li 구조 안에 있는지 확인 (제품 목록)
+            in_list = self.driver.execute_script("""
+                var elem = arguments[0];
+                while (elem && elem !== document.body) {
+                    if (elem.tagName === 'LI' || elem.tagName === 'OL') {
+                        return true;
+                    }
+                    elem = elem.parentElement;
+                }
+                return false;
+            """, element)
+
+            if in_list:
+                logger.debug("ol/li 목록 안의 요소 - 추천 상품으로 판단")
+                return True
+
+            # 3. 제외할 영역의 클래스/ID 패턴 확인
+            excluded_areas = self.selectors[self.country_code].get('excluded_price_areas', [])
+
+            parent_element = self.driver.execute_script("""
+                var elem = arguments[0];
+                var excludedAreas = arguments[1];
+
+                while (elem && elem !== document.body) {
+                    var className = elem.className || '';
+                    var id = elem.id || '';
+
+                    for (var i = 0; i < excludedAreas.length; i++) {
+                        var pattern = excludedAreas[i].toLowerCase();
+                        if (className.toLowerCase().indexOf(pattern) !== -1 ||
+                            id.toLowerCase().indexOf(pattern) !== -1) {
+                            return true;
+                        }
+                    }
+                    elem = elem.parentElement;
+                }
+                return false;
+            """, element, excluded_areas)
+
+            if parent_element:
+                logger.debug("제외 영역 패턴 발견")
+                return True
+
+            return False
+
+        except Exception as e:
+            logger.debug(f"필터링 체크 중 오류: {e}")
+            return False
     
     def load_selectors_from_db(self):
         """DB에서 선택자 로드"""
