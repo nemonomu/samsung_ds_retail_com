@@ -210,10 +210,31 @@ class AmazonScraper:
         }
     
     def is_excluded_price_element(self, element):
-        """추천상품/관련상품 영역 제외 필터링 - 임시 비활성화"""
-        # 필터링이 너무 공격적으로 작동하여 메인 제품 가격까지 제외됨
-        # centerCol 기반 선택자만으로도 충분히 메인 영역 타겟팅 가능
-        return False
+        """추천상품/관련상품 영역 제외 필터링 - desktop-dp-lpo 영역만 제외"""
+        try:
+            # desktop-dp-lpo_feature_div (추천상품 영역)에 속하는지 확인
+            is_in_lpo = self.driver.execute_script("""
+                var el = arguments[0];
+                while (el && el !== document.body) {
+                    var id = el.id || '';
+                    // desktop-dp-lpo_feature_div_01 또는 유사 패턴 체크
+                    if (id.indexOf('desktop-dp-lpo') !== -1) {
+                        return true;
+                    }
+                    el = el.parentElement;
+                }
+                return false;
+            """, element)
+
+            if is_in_lpo:
+                logger.debug("제외됨 - desktop-dp-lpo 추천상품 영역")
+                return True
+
+            return False
+
+        except Exception as e:
+            logger.debug(f"필터링 체크 중 오류 (무시): {e}")
+            return False
     
     def load_selectors_from_db(self):
         """DB에서 선택자 로드"""
