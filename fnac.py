@@ -3,6 +3,17 @@ Fnac 가격 추출 시스템 - Playwright 기반 버전
 DB에서 URL 읽어와서 크롤링 후 결과 저장
 파일명 형식: {수집일자}{수집시간}_{국가코드}_{쇼핑몰}.csv
 """
+import os
+import tempfile
+
+# Playwright 임시 디렉토리 문제 해결: 환경변수를 import 전에 설정
+temp_dir = os.path.join(os.getcwd(), 'temp_playwright')
+os.makedirs(temp_dir, exist_ok=True)
+os.environ['TMPDIR'] = temp_dir
+os.environ['TEMP'] = temp_dir
+os.environ['TMP'] = temp_dir
+tempfile.tempdir = temp_dir
+
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 import pandas as pd
 import pymysql
@@ -14,7 +25,6 @@ import re
 from datetime import datetime
 import pytz
 import logging
-import os
 import json
 from io import StringIO
 import zipfile
@@ -1246,6 +1256,16 @@ class FnacScraper:
     def analyze_results(self, df):
         """결과 분석"""
         logger.info("\n📊 === 결과 분석 ===")
+
+        # DataFrame이 비어있거나 컬럼이 없는 경우 처리
+        if df is None or df.empty:
+            logger.warning("⚠️ 분석할 데이터가 없습니다.")
+            return
+
+        if 'retailprice' not in df.columns:
+            logger.warning("⚠️ 'retailprice' 컬럼이 없습니다.")
+            logger.info(f"사용 가능한 컬럼: {list(df.columns)}")
+            return
 
         total = len(df)
         with_price = df['retailprice'].notna().sum()

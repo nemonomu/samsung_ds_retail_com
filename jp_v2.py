@@ -97,7 +97,8 @@ class AmazonScraper:
                 ],
                 'ships_from': [
                     "//*[@id='fulfillerInfoFeature_feature_div']/div[2]/div[1]/span",
-                    "/html/body/div[2]/div/div/div[4]/div[1]/div[3]/div/div[1]/div/div/div/form/div/div/div/div/div[4]/div/div[20]/div/div/div[1]/div/div[2]/div[2]/div[1]/span"
+                    "/html/body/div[2]/div/div/div[4]/div[1]/div[3]/div/div[1]/div/div/div/form/div/div/div/div/div[4]/div/div[20]/div/div/div[1]/div/div[2]/div[2]/div[1]/span",
+                    "//*[@id='SSOFpopoverLink_ubb']"
                 ],
                 'sold_by': [
                     "//*[@id='merchantInfoFeature_feature_div']/div[2]/div[1]/span/a",
@@ -946,9 +947,13 @@ class AmazonScraper:
             
             # 배송지 정보 추출
             result['ships_from'] = self.extract_element_text(
-                self.selectors[self.country_code].get('ships_from', []), 
+                self.selectors[self.country_code].get('ships_from', []),
                 "배송지"
             )
+
+            # "Fulfilled by Amazon"이면 "Amazon"으로 변환
+            if result['ships_from'] and 'Fulfilled by Amazon' in result['ships_from']:
+                result['ships_from'] = 'Amazon'
             
             # 판매자 정보 검증 후 가격 결정
             seller_info_valid = self.validate_seller_info(result['ships_from'], result['sold_by'])
