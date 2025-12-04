@@ -602,11 +602,14 @@ class DanawaScraper:
 
         if upload_server:
             try:
+                # DataFrame 복사본 생성 (원본 보호)
+                df_copy = df.copy()
+
                 # 1. CSV 파일 생성
                 csv_filename = f'{base_filename}.csv'
                 # Header를 대문자로 변환
-                df.columns = df.columns.str.upper()
-                df.to_csv(csv_filename, index=False, encoding='utf-8', lineterminator='\r\n')
+                df_copy.columns = df_copy.columns.str.upper()
+                df_copy.to_csv(csv_filename, index=False, encoding='utf-8', lineterminator='\r\n')
 
                 # 2. CSV를 ZIP으로 압축
                 zip_filename = f'{base_filename}.zip'
@@ -908,10 +911,11 @@ def main():
     # 여전히 실패한 URL 로그
     if final_failed > 0:
         logger.warning(f"\n⚠️ 최종적으로 {final_failed}개 URL에서 가격 추출 실패")
-        failed_items = final_results_df[final_results_df['retailprice'].isna()]
-        logger.warning("실패 목록 (상위 5개):")
-        for idx, row in failed_items.head().iterrows():
-            logger.warning(f"  - {row['brand']} {row['item']}: {row['producturl'][:50]}...")
+        if 'retailprice' in final_results_df.columns:
+            failed_items = final_results_df[final_results_df['retailprice'].isna()]
+            logger.warning("실패 목록 (상위 5개):")
+            for idx, row in failed_items.head().iterrows():
+                logger.warning(f"  - {row.get('brand', 'N/A')} {row.get('item', 'N/A')}: {str(row.get('producturl', ''))[:50]}...")
     
     logger.info("\n✅ 크롤링 프로세스 완료!")
 
