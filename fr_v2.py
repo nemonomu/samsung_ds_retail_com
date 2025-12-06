@@ -1006,13 +1006,18 @@ class AmazonFRScraper:
                 "Sold By"
             )
 
-            # ships_from이 None이고 sold_by가 있을 때, 통합 라벨 확인
-            if not result['ships_from'] and result['sold_by']:
+            # ships_from이 None이거나 빈 문자열이고 sold_by가 있을 때, 통합 라벨 확인
+            if (not result['ships_from'] or not str(result['ships_from']).strip()) and result['sold_by']:
                 try:
                     # "Expéditeur / Vendeur" 라벨이 있는지 확인 (배송자/판매자 통합)
                     label_element = self.driver.find_element(By.XPATH, "//*[@id='merchantInfoFeature_feature_div']/div[1]/div/span")
                     if label_element:
+                        # text가 빈 경우 textContent, innerText 순으로 시도
                         label_text = label_element.text.strip() if label_element.text else ""
+                        if not label_text:
+                            label_text = (label_element.get_attribute('textContent') or "").strip()
+                        if not label_text:
+                            label_text = (label_element.get_attribute('innerText') or "").strip()
                         logger.info(f"통합 라벨 텍스트: '{label_text}'")
                         if "Expéditeur" in label_text and "Vendeur" in label_text:
                             # 통합 라벨 발견 - sold_by 값을 ships_from에도 저장
