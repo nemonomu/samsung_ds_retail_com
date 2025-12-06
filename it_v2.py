@@ -1142,8 +1142,8 @@ class AmazonITScraper:
                 "Sold By"
             )
 
-            # ships_from이 None이고 sold_by가 있을 때, 통합 라벨 확인
-            if not result['ships_from'] and result['sold_by']:
+            # ships_from이 None이거나 빈 문자열이고 sold_by가 있을 때, 통합 라벨 확인
+            if (not result['ships_from'] or not str(result['ships_from']).strip()) and result['sold_by']:
                 try:
                     # "Shipper / Seller" 라벨이 있는지 확인 (배송자/판매자 통합)
                     label_element = self.driver.find_element(By.XPATH, "//*[@id='merchantInfoFeature_feature_div']/div[1]/div/span")
