@@ -1018,7 +1018,7 @@ class AmazonFRScraper:
                             result['ships_from'] = result['sold_by']
                             logger.info(f"Expéditeur / Vendeur 통합 라벨 발견 - ships_from에 sold_by 값 복사: {result['ships_from']}")
                 except Exception as e:
-                    logger.debug(f"통합 라벨 확인 중 오류: {e}")
+                    logger.info(f"통합 라벨 확인 중 오류: {e}")
 
             # Ships From과 Sold By가 모두 없으면 가격도 빈 값으로 처리
             if not result['ships_from'] and not result['sold_by']:
