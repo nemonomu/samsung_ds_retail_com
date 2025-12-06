@@ -1148,7 +1148,12 @@ class AmazonITScraper:
                     # "Shipper / Seller" 라벨이 있는지 확인 (배송자/판매자 통합)
                     label_element = self.driver.find_element(By.XPATH, "//*[@id='merchantInfoFeature_feature_div']/div[1]/div/span")
                     if label_element:
+                        # text가 빈 경우 textContent, innerText 순으로 시도
                         label_text = label_element.text.strip() if label_element.text else ""
+                        if not label_text:
+                            label_text = (label_element.get_attribute('textContent') or "").strip()
+                        if not label_text:
+                            label_text = (label_element.get_attribute('innerText') or "").strip()
                         logger.info(f"통합 라벨 텍스트: '{label_text}'")
                         if "Shipper" in label_text and "Seller" in label_text:
                             # 통합 라벨 발견 - sold_by 값을 ships_from에도 저장
