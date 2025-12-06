@@ -33,8 +33,8 @@ logger = logging.getLogger(__name__)
 
 # Import database configuration V2
 from config import DB_CONFIG_V2 as DB_CONFIG
-
 from config import FILE_SERVER_CONFIG
+from alert_monitor import monitor_and_alert
 
 class AmazonFRScraper:
     def __init__(self):
@@ -1398,16 +1398,19 @@ def main():
     logger.info("프랑스 전체 크롤링 시작")
     if scraper.db_engine is None:
         logger.error("DB 연결 실패")
+        monitor_and_alert('fr', 0, None, error_message="DB 연결 실패")
         return
-    
+
     urls_data = scraper.get_crawl_targets(limit=max_items)
     if not urls_data:
         logger.warning("프랑스 크롤링 대상 없음")
+        monitor_and_alert('fr', 0, None, error_message="크롤링 대상 없음")
         return
-    
+
     results_df = scraper.scrape_urls(urls_data, max_items)
     if results_df is None or results_df.empty:
         logger.error("크롤링 결과 없음")
+        monitor_and_alert('fr', len(urls_data), None, error_message="크롤링 결과 없음")
         return
     
     scraper.analyze_results(results_df)
@@ -1417,6 +1420,9 @@ def main():
     logger.info(f"DB: {'성공' if save_results['db_saved'] else '실패'}")
     logger.info(f"파일: {'성공' if save_results['server_uploaded'] else '실패'}")
     logger.info("프랑스 크롤링 완료!")
+
+    # 크롤링 결과 모니터링 및 알림
+    monitor_and_alert('fr', len(urls_data), results_df)
 
 if __name__ == "__main__":
     print("필요 패키지:")

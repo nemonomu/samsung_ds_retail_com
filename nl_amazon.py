@@ -33,8 +33,8 @@ logger = logging.getLogger(__name__)
 
 # Import database configuration V2
 from config import DB_CONFIG_V2 as DB_CONFIG
-
 from config import FILE_SERVER_CONFIG
+from alert_monitor import monitor_and_alert
 
 class AmazonNLScraper:
     def __init__(self):
@@ -1561,8 +1561,9 @@ def main():
     
     if scraper.db_engine is None:
         logger.error("DB 연결 실패로 종료합니다.")
+        monitor_and_alert('nl', 0, None, error_message="DB 연결 실패")
         return
-    
+
     if test_mode:
         logger.info("네덜란드 테스트 모드 실행 중...")
         
@@ -1600,6 +1601,7 @@ def main():
     
     if not urls_data:
         logger.warning("네덜란드 크롤링 대상이 없습니다.")
+        monitor_and_alert('nl', 0, None, error_message="크롤링 대상 URL이 없습니다")
         return
     
     logger.info(f"네덜란드 크롤링 대상: {len(urls_data)}개")
@@ -1608,6 +1610,7 @@ def main():
     
     if results_df is None or results_df.empty:
         logger.error("네덜란드 크롤링 결과가 없습니다.")
+        monitor_and_alert('nl', len(urls_data), None, error_message="크롤링 결과가 없습니다")
         return
     
     scraper.analyze_results(results_df)
@@ -1627,6 +1630,9 @@ def main():
     logger.info("=" * 80)
     logger.info("네덜란드 크롤링 프로세스 완료!")
     logger.info("=" * 80)
+
+    # 크롤링 완료 후 알림 (빈 값 50% 이상 시 경고)
+    monitor_and_alert('nl', len(urls_data), results_df)
 
 if __name__ == "__main__":
     required_packages = [

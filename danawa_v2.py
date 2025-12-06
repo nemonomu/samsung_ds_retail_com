@@ -32,8 +32,8 @@ logger = logging.getLogger(__name__)
 
 # Import database configuration V2
 from config import DB_CONFIG_V2 as DB_CONFIG
-
 from config import FILE_SERVER_CONFIG
+from alert_monitor import monitor_and_alert
 
 class DanawaScraper:
     def __init__(self):
@@ -808,28 +808,31 @@ def main():
     
     if scraper.db_engine is None:
         logger.error("DB 연결 실패로 종료합니다.")
+        monitor_and_alert('kr_danawa', 0, None, error_message="DB 연결 실패")
         return
-    
+
     # 최근 크롤링 기록 확인
     get_db_history(scraper.db_engine, 7)
-    
+
     # 1단계: 전체 크롤링 실행
     logger.info("\n📊 1단계: 전체 크롤링 시작")
     urls_data = scraper.get_crawl_targets()
     
     if not urls_data:
         logger.warning("크롤링 대상이 없습니다.")
+        monitor_and_alert('kr_danawa', 0, None, error_message="크롤링 대상 URL이 없습니다")
         return
-    
+
     logger.info(f"✅ 크롤링 대상: {len(urls_data)}개")
-    
+
     # 첫 번째 크롤링 실행
     first_results_df = scraper.scrape_urls(urls_data)
     
     if first_results_df is None or first_results_df.empty:
         logger.error("크롤링 결과가 없습니다.")
+        monitor_and_alert('kr_danawa', len(urls_data), None, error_message="크롤링 결과가 없습니다")
         return
-    
+
     # 첫 번째 결과 분석
     logger.info("\n📊 1단계 결과:")
     first_failed = first_results_df['retailprice'].isna().sum()
@@ -918,6 +921,9 @@ def main():
                 logger.warning(f"  - {row.get('brand', 'N/A')} {row.get('item', 'N/A')}: {str(row.get('producturl', ''))[:50]}...")
     
     logger.info("\n✅ 크롤링 프로세스 완료!")
+
+    # 크롤링 완료 후 알림 (빈 값 50% 이상 시 경고)
+    monitor_and_alert('kr_danawa', len(urls_data), final_results_df)
 
 if __name__ == "__main__":
     # 필요한 패키지 설치 확인
