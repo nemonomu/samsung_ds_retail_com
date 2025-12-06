@@ -1120,15 +1120,35 @@ class AmazonScraper:
                 logger.info("재고 없음 + 가격 없음 -> 가격 None으로 설정")
             
             result['ships_from'] = self.extract_element_text(
-                self.selectors[self.country_code].get('ships_from', []), 
+                self.selectors[self.country_code].get('ships_from', []),
                 "Ships From"
             )
-            
+
             result['sold_by'] = self.extract_element_text(
-                self.selectors[self.country_code].get('sold_by', []), 
+                self.selectors[self.country_code].get('sold_by', []),
                 "Sold By"
             )
-            
+
+            # ships_from이 None이거나 빈 문자열이고 sold_by가 있을 때, 통합 라벨 확인
+            if (not result['ships_from'] or not str(result['ships_from']).strip()) and result['sold_by']:
+                try:
+                    # "Remitente / Vendedor" 라벨이 있는지 확인 (배송자/판매자 통합)
+                    label_element = self.driver.find_element(By.XPATH, "//*[@id='merchantInfoFeature_feature_div']/div[1]/div/span")
+                    if label_element:
+                        # text가 빈 경우 textContent, innerText 순으로 시도
+                        label_text = label_element.text.strip() if label_element.text else ""
+                        if not label_text:
+                            label_text = (label_element.get_attribute('textContent') or "").strip()
+                        if not label_text:
+                            label_text = (label_element.get_attribute('innerText') or "").strip()
+                        logger.info(f"통합 라벨 텍스트: '{label_text}'")
+                        if "Remitente" in label_text and "Vendedor" in label_text:
+                            # 통합 라벨 발견 - sold_by 값을 ships_from에도 저장
+                            result['ships_from'] = result['sold_by']
+                            logger.info(f"Remitente / Vendedor 통합 라벨 발견 - ships_from에 sold_by 값 복사: {result['ships_from']}")
+                except Exception as e:
+                    logger.info(f"통합 라벨 확인 중 오류: {e}")
+
             for selector in self.selectors[self.country_code].get('imageurl', []):
                 try:
                     if selector.startswith('//'):
