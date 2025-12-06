@@ -951,6 +951,37 @@ class AmazonScraper:
                 "배송지"
             )
 
+            # 통합 라벨 확인 (Shipper / Seller 또는 出荷元 / 販売元)
+            # ships_from이 없고 sold_by가 있을 때, 통합 라벨인지 확인
+            if not result['ships_from'] and result['sold_by']:
+                try:
+                    combined_label_selectors = [
+                        "//*[@id='merchantInfoFeature_feature_div']/div[1]/div/span",
+                        "//*[@id='merchantInfoFeature_feature_div']//span[contains(@class, 'a-color-tertiary')]"
+                    ]
+                    for selector in combined_label_selectors:
+                        try:
+                            label_element = self.driver.find_element(By.XPATH, selector)
+                            label_text = label_element.text.strip().lower() if label_element else ""
+                            logger.info(f"🏷️ 라벨 텍스트: '{label_text}'")
+
+                            # 통합 라벨 패턴 확인
+                            combined_patterns = [
+                                'shipper / seller',
+                                'shipper/seller',
+                                '出荷元 / 販売元',
+                                '出荷元/販売元',
+                                '出荷元・販売元'
+                            ]
+                            if any(pattern in label_text for pattern in combined_patterns):
+                                result['ships_from'] = result['sold_by']
+                                logger.info(f"✅ 통합 라벨 감지 - ships_from을 sold_by와 동일하게 설정: {result['ships_from']}")
+                                break
+                        except:
+                            continue
+                except Exception as e:
+                    logger.debug(f"통합 라벨 확인 중 오류: {e}")
+
             # "Fulfilled by Amazon"이면 "Amazon"으로 변환
             if result['ships_from'] and 'Fulfilled by Amazon' in result['ships_from']:
                 result['ships_from'] = 'Amazon'
