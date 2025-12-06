@@ -28,8 +28,8 @@ logger = logging.getLogger(__name__)
 
 # Import database configuration V2
 from config import DB_CONFIG_V2 as DB_CONFIG
-
 from config import FILE_SERVER_CONFIG
+from alert_monitor import monitor_and_alert
 
 class BestBuyScraper:
     def __init__(self):
@@ -969,8 +969,9 @@ def main():
     
     if scraper.db_engine is None:
         logger.error("DB 연결 실패로 종료합니다.")
+        monitor_and_alert('usa_bestbuy', 0, None, error_message="DB 연결 실패")
         return
-    
+
     # 최근 크롤링 기록 확인
     get_db_history(scraper.db_engine, 7)
     
@@ -988,17 +989,19 @@ def main():
         
         if not urls_data:
             logger.warning("크롤링 대상이 없습니다.")
+            monitor_and_alert('usa_bestbuy', 0, None, error_message="크롤링 대상 URL이 없습니다")
             return
-        
+
         logger.info(f"✅ 크롤링 대상: {len(urls_data)}개")
-        
+
         # 크롤링 실행
         results_df = scraper.scrape_urls(urls_data)
         
         if results_df is None or results_df.empty:
             logger.error("크롤링 결과가 없습니다.")
+            monitor_and_alert('usa_bestbuy', len(urls_data), None, error_message="크롤링 결과가 없습니다")
             return
-        
+
         # 결과 분석
         failed_count = results_df['retailprice'].isna().sum()
         success_count = results_df['retailprice'].notna().sum()
@@ -1034,7 +1037,10 @@ def main():
                 logger.warning(f"  - {row['brand']} {row['item']}: {row['producturl'][:50]}...")
         
         logger.info("\n✅ 크롤링 프로세스 완료!")
-        
+
+        # 크롤링 완료 후 알림 (빈 값 50% 이상 시 경고)
+        monitor_and_alert('usa_bestbuy', len(urls_data), results_df)
+
     finally:
         # 드라이버 종료
         if scraper.driver:

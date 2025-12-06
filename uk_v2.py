@@ -33,8 +33,8 @@ logger = logging.getLogger(__name__)
 
 # Import database configuration V2
 from config import DB_CONFIG_V2 as DB_CONFIG
-
 from config import FILE_SERVER_CONFIG
+from alert_monitor import monitor_and_alert
 
 class AmazonUKScraper:
     def __init__(self):
@@ -616,7 +616,29 @@ class AmazonUKScraper:
             # 판매자 정보 추출 (수정된 함수 사용)
             result['ships_from'] = self.extract_ships_from(self.selectors.get('ships_from', []))
             result['sold_by'] = self.extract_element_text(self.selectors.get('sold_by', []), "Sold By")
-            
+
+            # ships_from이 None이고 sold_by가 있을 때, 통합 라벨 확인
+            if not result['ships_from'] and result['sold_by']:
+                try:
+                    # "Shipper / Seller" 라벨이 있는지 확인 (배송자/판매자 통합)
+                    combined_label_selectors = [
+                        "//span[contains(text(), 'Shipper / Seller')]",
+                        "//span[contains(text(), 'Shipper/Seller')]",
+                        "//*[@id='merchantInfoFeature_feature_div']//span[contains(@class, 'a-color-tertiary')][contains(text(), 'Shipper')]"
+                    ]
+                    for label_selector in combined_label_selectors:
+                        try:
+                            label_element = self.driver.find_element(By.XPATH, label_selector)
+                            if label_element and label_element.is_displayed():
+                                # 통합 라벨 발견 - sold_by 값을 ships_from에도 저장
+                                result['ships_from'] = result['sold_by']
+                                logger.info(f"Shipper / Seller 통합 라벨 발견 - ships_from에 sold_by 값 복사: {result['ships_from']}")
+                                break
+                        except:
+                            continue
+                except Exception as e:
+                    logger.debug(f"통합 라벨 확인 중 오류: {e}")
+
             # 이미지 URL 추출
             for selector in self.selectors.get('imageurl', []):
                 try:
@@ -936,16 +958,19 @@ def main():
     logger.info("크롤링 시작")
     if scraper.db_engine is None:
         logger.error("DB 연결 실패")
+        monitor_and_alert('gb', 0, None, error_message="DB 연결 실패")
         return
-    
+
     urls_data = scraper.get_uk_crawl_targets(limit=max_items)
     if not urls_data:
         logger.warning("크롤링 대상 없음")
+        monitor_and_alert('gb', 0, None, error_message="크롤링 대상 없음")
         return
-    
+
     results_df = scraper.scrape_urls(urls_data, max_items)
     if results_df is None or results_df.empty:
         logger.error("크롤링 결과 없음")
+        monitor_and_alert('gb', len(urls_data), None, error_message="크롤링 결과 없음")
         return
     
     scraper.analyze_results(results_df)
@@ -955,6 +980,9 @@ def main():
     logger.info(f"DB: {'성공' if save_results['db_saved'] else '실패'}")
     logger.info(f"파일: {'성공' if save_results['server_uploaded'] else '실패'}")
     logger.info("크롤링 완료!")
+
+    # 크롤링 결과 모니터링 및 알림
+    monitor_and_alert('gb', len(urls_data), results_df)
 
 if __name__ == "__main__":
     main()

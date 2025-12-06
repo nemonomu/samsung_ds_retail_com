@@ -30,8 +30,8 @@ logger = logging.getLogger(__name__)
 
 # Import database configuration V2
 from config import DB_CONFIG_V2 as DB_CONFIG
-
 from config import FILE_SERVER_CONFIG
+from alert_monitor import monitor_and_alert
 
 class AmazonScraper:
     def __init__(self, country_code='usa'):
@@ -854,7 +854,29 @@ class AmazonScraper:
                 self.selectors[self.country_code].get('sold_by', []),
                 "Sold By"
             )
-            
+
+            # ships_from이 None이고 sold_by가 있을 때, 통합 라벨 확인
+            if not result['ships_from'] and result['sold_by']:
+                try:
+                    # "Shipper / Seller" 라벨이 있는지 확인 (배송자/판매자 통합)
+                    combined_label_selectors = [
+                        "//span[contains(text(), 'Shipper / Seller')]",
+                        "//span[contains(text(), 'Shipper/Seller')]",
+                        "//*[@id='merchantInfoFeature_feature_div']//span[contains(@class, 'a-color-tertiary')][contains(text(), 'Shipper')]"
+                    ]
+                    for label_selector in combined_label_selectors:
+                        try:
+                            label_element = self.driver.find_element(By.XPATH, label_selector)
+                            if label_element and label_element.is_displayed():
+                                # 통합 라벨 발견 - sold_by 값을 ships_from에도 저장
+                                result['ships_from'] = result['sold_by']
+                                logger.info(f"Shipper / Seller 통합 라벨 발견 - ships_from에 sold_by 값 복사: {result['ships_from']}")
+                                break
+                        except:
+                            continue
+                except Exception as e:
+                    logger.debug(f"통합 라벨 확인 중 오류: {e}")
+
             # ships_from과 sold_by가 모두 빈값이면 price도 빈값으로 설정
             if (not result['ships_from'] and not result['sold_by']):
                 logger.warning("ships_from과 sold_by가 모두 빈값 -> retailprice를 빈값으로 설정")
@@ -1247,8 +1269,9 @@ def main():
     
     if scraper.db_engine is None:
         logger.error("DB 연결 실패로 종료합니다.")
+        monitor_and_alert(country_code, 0, None, error_message="DB 연결 실패")
         return
-    
+
     if test_mode:
         logger.info("테스트 모드 실행 중...")
         test_data = [{
@@ -1276,16 +1299,18 @@ def main():
     
     if not urls_data:
         logger.warning("크롤링 대상이 없습니다.")
+        monitor_and_alert(country_code, 0, None, error_message="크롤링 대상 없음")
         return
-    
+
     logger.info(f"크롤링 대상: {len(urls_data)}개")
     
     results_df = scraper.scrape_urls(urls_data, max_items)
     
     if results_df is None or results_df.empty:
         logger.error("크롤링 결과가 없습니다.")
+        monitor_and_alert(country_code, len(urls_data), None, error_message="크롤링 결과 없음")
         return
-    
+
     scraper.analyze_results(results_df)
     
     save_results = scraper.save_results(
@@ -1303,6 +1328,9 @@ def main():
     logger.info("=" * 80)
     logger.info("크롤링 프로세스 완료!")
     logger.info("=" * 80)
+
+    # 크롤링 결과 모니터링 및 알림
+    monitor_and_alert(country_code, len(urls_data), results_df)
 
 if __name__ == "__main__":
     required_packages = [

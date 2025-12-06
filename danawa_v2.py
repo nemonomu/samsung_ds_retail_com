@@ -32,8 +32,8 @@ logger = logging.getLogger(__name__)
 
 # Import database configuration V2
 from config import DB_CONFIG_V2 as DB_CONFIG
-
 from config import FILE_SERVER_CONFIG
+from alert_monitor import monitor_and_alert
 
 class DanawaScraper:
     def __init__(self):
@@ -602,11 +602,14 @@ class DanawaScraper:
 
         if upload_server:
             try:
+                # DataFrame 복사본 생성 (원본 보호)
+                df_copy = df.copy()
+
                 # 1. CSV 파일 생성
                 csv_filename = f'{base_filename}.csv'
                 # Header를 대문자로 변환
-                df.columns = df.columns.str.upper()
-                df.to_csv(csv_filename, index=False, encoding='utf-8', lineterminator='\r\n')
+                df_copy.columns = df_copy.columns.str.upper()
+                df_copy.to_csv(csv_filename, index=False, encoding='utf-8', lineterminator='\r\n')
 
                 # 2. CSV를 ZIP으로 압축
                 zip_filename = f'{base_filename}.zip'
@@ -805,28 +808,31 @@ def main():
     
     if scraper.db_engine is None:
         logger.error("DB 연결 실패로 종료합니다.")
+        monitor_and_alert('kr_danawa', 0, None, error_message="DB 연결 실패")
         return
-    
+
     # 최근 크롤링 기록 확인
     get_db_history(scraper.db_engine, 7)
-    
+
     # 1단계: 전체 크롤링 실행
     logger.info("\n📊 1단계: 전체 크롤링 시작")
     urls_data = scraper.get_crawl_targets()
     
     if not urls_data:
         logger.warning("크롤링 대상이 없습니다.")
+        monitor_and_alert('kr_danawa', 0, None, error_message="크롤링 대상 URL이 없습니다")
         return
-    
+
     logger.info(f"✅ 크롤링 대상: {len(urls_data)}개")
-    
+
     # 첫 번째 크롤링 실행
     first_results_df = scraper.scrape_urls(urls_data)
     
     if first_results_df is None or first_results_df.empty:
         logger.error("크롤링 결과가 없습니다.")
+        monitor_and_alert('kr_danawa', len(urls_data), None, error_message="크롤링 결과가 없습니다")
         return
-    
+
     # 첫 번째 결과 분석
     logger.info("\n📊 1단계 결과:")
     first_failed = first_results_df['retailprice'].isna().sum()
@@ -908,12 +914,16 @@ def main():
     # 여전히 실패한 URL 로그
     if final_failed > 0:
         logger.warning(f"\n⚠️ 최종적으로 {final_failed}개 URL에서 가격 추출 실패")
-        failed_items = final_results_df[final_results_df['retailprice'].isna()]
-        logger.warning("실패 목록 (상위 5개):")
-        for idx, row in failed_items.head().iterrows():
-            logger.warning(f"  - {row['brand']} {row['item']}: {row['producturl'][:50]}...")
+        if 'retailprice' in final_results_df.columns:
+            failed_items = final_results_df[final_results_df['retailprice'].isna()]
+            logger.warning("실패 목록 (상위 5개):")
+            for idx, row in failed_items.head().iterrows():
+                logger.warning(f"  - {row.get('brand', 'N/A')} {row.get('item', 'N/A')}: {str(row.get('producturl', ''))[:50]}...")
     
     logger.info("\n✅ 크롤링 프로세스 완료!")
+
+    # 크롤링 완료 후 알림 (빈 값 50% 이상 시 경고)
+    monitor_and_alert('kr_danawa', len(urls_data), final_results_df)
 
 if __name__ == "__main__":
     # 필요한 패키지 설치 확인

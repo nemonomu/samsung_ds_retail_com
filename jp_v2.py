@@ -33,8 +33,8 @@ logger = logging.getLogger(__name__)
 
 # Import database configuration V2
 from config import DB_CONFIG_V2 as DB_CONFIG
-
 from config import FILE_SERVER_CONFIG
+from alert_monitor import monitor_and_alert
 
 class AmazonScraper:
     def __init__(self, country_code='usa'):
@@ -951,6 +951,37 @@ class AmazonScraper:
                 "배송지"
             )
 
+            # 통합 라벨 확인 (Shipper / Seller 또는 出荷元 / 販売元)
+            # ships_from이 없고 sold_by가 있을 때, 통합 라벨인지 확인
+            if not result['ships_from'] and result['sold_by']:
+                try:
+                    combined_label_selectors = [
+                        "//*[@id='merchantInfoFeature_feature_div']/div[1]/div/span",
+                        "//*[@id='merchantInfoFeature_feature_div']//span[contains(@class, 'a-color-tertiary')]"
+                    ]
+                    for selector in combined_label_selectors:
+                        try:
+                            label_element = self.driver.find_element(By.XPATH, selector)
+                            label_text = label_element.text.strip().lower() if label_element else ""
+                            logger.info(f"🏷️ 라벨 텍스트: '{label_text}'")
+
+                            # 통합 라벨 패턴 확인
+                            combined_patterns = [
+                                'shipper / seller',
+                                'shipper/seller',
+                                '出荷元 / 販売元',
+                                '出荷元/販売元',
+                                '出荷元・販売元'
+                            ]
+                            if any(pattern in label_text for pattern in combined_patterns):
+                                result['ships_from'] = result['sold_by']
+                                logger.info(f"✅ 통합 라벨 감지 - ships_from을 sold_by와 동일하게 설정: {result['ships_from']}")
+                                break
+                        except:
+                            continue
+                except Exception as e:
+                    logger.debug(f"통합 라벨 확인 중 오류: {e}")
+
             # "Fulfilled by Amazon"이면 "Amazon"으로 변환
             if result['ships_from'] and 'Fulfilled by Amazon' in result['ships_from']:
                 result['ships_from'] = 'Amazon'
@@ -1384,9 +1415,10 @@ def main():
     
     # 스크래퍼 초기화
     scraper = AmazonScraper(country_code)
-    
+
     if scraper.db_engine is None:
         logger.error("DB 연결 실패로 종료합니다.")
+        monitor_and_alert(country_code, 0, None, error_message="DB 연결 실패")
         return
     
     # 테스트 모드
@@ -1420,6 +1452,7 @@ def main():
     
     if not urls_data:
         logger.warning("크롤링 대상이 없습니다.")
+        monitor_and_alert(country_code, 0, None, error_message="크롤링 대상 없음")
         return
     
     logger.info(f"✅ 크롤링 대상: {len(urls_data)}개")
@@ -1429,6 +1462,7 @@ def main():
     
     if results_df is None or results_df.empty:
         logger.error("크롤링 결과가 없습니다.")
+        monitor_and_alert(country_code, len(urls_data), None, error_message="크롤링 결과 없음")
         return
     
     # 결과 분석
@@ -1453,6 +1487,9 @@ def main():
     logger.info(f"   🔄 원래 URL 자동 재시도 기능")
     logger.info(f"   🛡️ 향상된 일본 아마존 호환성")
     logger.info(f"{'='*80}\n")
+
+    # 크롤링 결과 모니터링 및 알림
+    monitor_and_alert(country_code, len(urls_data), results_df)
 
 if __name__ == "__main__":
     # 필요한 패키지 설치 확인

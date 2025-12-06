@@ -33,8 +33,8 @@ logger = logging.getLogger(__name__)
 
 # Import database configuration V2
 from config import DB_CONFIG_V2 as DB_CONFIG
-
 from config import FILE_SERVER_CONFIG
+from alert_monitor import monitor_and_alert
 
 class AmazonFRScraper:
     def __init__(self):
@@ -1002,10 +1002,30 @@ class AmazonFRScraper:
             
             # Sold By 추출 (기본 추출만, 추가 필터링 없음)
             result['sold_by'] = self.extract_element_text(
-                self.selectors.get('sold_by', []), 
+                self.selectors.get('sold_by', []),
                 "Sold By"
             )
-            
+
+            # ships_from이 None이거나 빈 문자열이고 sold_by가 있을 때, 통합 라벨 확인
+            if (not result['ships_from'] or not str(result['ships_from']).strip()) and result['sold_by']:
+                try:
+                    # "Expéditeur / Vendeur" 라벨이 있는지 확인 (배송자/판매자 통합)
+                    label_element = self.driver.find_element(By.XPATH, "//*[@id='merchantInfoFeature_feature_div']/div[1]/div/span")
+                    if label_element:
+                        # text가 빈 경우 textContent, innerText 순으로 시도
+                        label_text = label_element.text.strip() if label_element.text else ""
+                        if not label_text:
+                            label_text = (label_element.get_attribute('textContent') or "").strip()
+                        if not label_text:
+                            label_text = (label_element.get_attribute('innerText') or "").strip()
+                        logger.info(f"통합 라벨 텍스트: '{label_text}'")
+                        if "Expéditeur" in label_text and "Vendeur" in label_text:
+                            # 통합 라벨 발견 - sold_by 값을 ships_from에도 저장
+                            result['ships_from'] = result['sold_by']
+                            logger.info(f"Expéditeur / Vendeur 통합 라벨 발견 - ships_from에 sold_by 값 복사: {result['ships_from']}")
+                except Exception as e:
+                    logger.info(f"통합 라벨 확인 중 오류: {e}")
+
             # Ships From과 Sold By가 모두 없으면 가격도 빈 값으로 처리
             if not result['ships_from'] and not result['sold_by']:
                 logger.warning("Ships From과 Sold By가 모두 없음 - 가격을 빈 값으로 설정")
@@ -1378,16 +1398,19 @@ def main():
     logger.info("프랑스 전체 크롤링 시작")
     if scraper.db_engine is None:
         logger.error("DB 연결 실패")
+        monitor_and_alert('fr', 0, None, error_message="DB 연결 실패")
         return
-    
+
     urls_data = scraper.get_crawl_targets(limit=max_items)
     if not urls_data:
         logger.warning("프랑스 크롤링 대상 없음")
+        monitor_and_alert('fr', 0, None, error_message="크롤링 대상 없음")
         return
-    
+
     results_df = scraper.scrape_urls(urls_data, max_items)
     if results_df is None or results_df.empty:
         logger.error("크롤링 결과 없음")
+        monitor_and_alert('fr', len(urls_data), None, error_message="크롤링 결과 없음")
         return
     
     scraper.analyze_results(results_df)
@@ -1397,6 +1420,9 @@ def main():
     logger.info(f"DB: {'성공' if save_results['db_saved'] else '실패'}")
     logger.info(f"파일: {'성공' if save_results['server_uploaded'] else '실패'}")
     logger.info("프랑스 크롤링 완료!")
+
+    # 크롤링 결과 모니터링 및 알림
+    monitor_and_alert('fr', len(urls_data), results_df)
 
 if __name__ == "__main__":
     print("필요 패키지:")

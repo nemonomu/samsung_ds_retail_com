@@ -26,6 +26,7 @@ import hashlib
 
 # Import configuration V2
 from config import DB_CONFIG_V2 as DB_CONFIG, FILE_SERVER_CONFIG
+from alert_monitor import monitor_and_alert
 
 # 로깅 설정
 logging.basicConfig(
@@ -898,8 +899,9 @@ def main():
     
     if scraper.db_engine is None:
         logger.error("DB 연결 실패로 종료합니다.")
+        monitor_and_alert('de_mediamarkt', 0, None, error_message="DB 연결 실패")
         return
-    
+
     # 시작
     scraper.start()
 

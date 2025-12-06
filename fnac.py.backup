@@ -1,20 +1,13 @@
 """
-Fnac 가격 추출 시스템 - Playwright 기반 버전
+Fnac 가격 추출 시스템 - Undetected Chromedriver 기반 버전
 DB에서 URL 읽어와서 크롤링 후 결과 저장
 파일명 형식: {수집일자}{수집시간}_{국가코드}_{쇼핑몰}.csv
 """
-import os
-import tempfile
-
-# Playwright 임시 디렉토리 문제 해결: 환경변수를 import 전에 설정
-temp_dir = os.path.join(os.getcwd(), 'temp_playwright')
-os.makedirs(temp_dir, exist_ok=True)
-os.environ['TMPDIR'] = temp_dir
-os.environ['TEMP'] = temp_dir
-os.environ['TMP'] = temp_dir
-tempfile.tempdir = temp_dir
-
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
+import undetected_chromedriver as uc
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
 import pandas as pd
 import pymysql
 from sqlalchemy import create_engine
@@ -25,6 +18,7 @@ import re
 from datetime import datetime
 import pytz
 import logging
+import os
 import json
 from io import StringIO
 import zipfile
@@ -36,15 +30,13 @@ logger = logging.getLogger(__name__)
 
 # Import database configuration V2
 from config import DB_CONFIG_V2 as DB_CONFIG
+
 from config import FILE_SERVER_CONFIG
-from alert_monitor import monitor_and_alert
 
 class FnacScraper:
     def __init__(self):
-        self.playwright = None
-        self.browser = None
-        self.context = None
-        self.page = None
+        self.driver = None
+        self.wait = None
         self.db_engine = None
         self.sftp_client = None
         self.country_code = 'fr'
@@ -219,62 +211,27 @@ class FnacScraper:
             return []
 
     def setup_browser(self):
-        """Playwright 브라우저 설정"""
-        logger.info("🔧 Playwright 브라우저 설정 중...")
+        """Chrome 드라이버 설정"""
+        logger.info("🔧 Chrome 드라이버 설정 중...")
 
         try:
-            self.playwright = sync_playwright().start()
+            options = uc.ChromeOptions()
 
-            # Chromium 브라우저 시작 (headless=False로 더 자연스럽게)
-            self.browser = self.playwright.chromium.launch(
-                headless=False,  # GUI 모드
-                args=[
-                    '--disable-blink-features=AutomationControlled',
-                    '--disable-dev-shm-usage',
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-web-security',
-                    '--disable-features=IsolateOrigins,site-per-process'
-                ]
-            )
+            options.add_argument('--disable-blink-features=AutomationControlled')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-setuid-sandbox')
 
-            # 컨텍스트 생성 (프랑스 사용자 시뮬레이션)
-            self.context = self.browser.new_context(
-                viewport={'width': 1920, 'height': 1080},
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                locale='fr-FR',
-                timezone_id='Europe/Paris',
-                geolocation={'latitude': 48.8566, 'longitude': 2.3522},  # Paris
-                permissions=['geolocation']
-            )
+            self.driver = uc.Chrome(options=options)
+            self.driver.maximize_window()
 
-            # 페이지 생성
-            self.page = self.context.new_page()
+            self.wait = WebDriverWait(self.driver, 20)
 
-            # 추가 스텔스 설정
-            self.page.add_init_script("""
-                Object.defineProperty(navigator, 'webdriver', {
-                    get: () => undefined
-                });
-
-                Object.defineProperty(navigator, 'plugins', {
-                    get: () => [1, 2, 3, 4, 5]
-                });
-
-                Object.defineProperty(navigator, 'languages', {
-                    get: () => ['fr-FR', 'fr', 'en-US', 'en']
-                });
-
-                window.chrome = {
-                    runtime: {}
-                };
-            """)
-
-            logger.info("✅ Playwright 브라우저 설정 완료")
+            logger.info("✅ 드라이버 설정 완료")
             return True
 
         except Exception as e:
-            logger.error(f"❌ 브라우저 설정 실패: {e}")
+            logger.error(f"❌ 드라이버 설정 실패: {e}")
             return False
 
     def wait_for_manual_captcha_solve(self, max_wait_seconds=300):
@@ -1257,16 +1214,6 @@ class FnacScraper:
         """결과 분석"""
         logger.info("\n📊 === 결과 분석 ===")
 
-        # DataFrame이 비어있거나 컬럼이 없는 경우 처리
-        if df is None or df.empty:
-            logger.warning("⚠️ 분석할 데이터가 없습니다.")
-            return
-
-        if 'retailprice' not in df.columns:
-            logger.warning("⚠️ 'retailprice' 컬럼이 없습니다.")
-            logger.info(f"사용 가능한 컬럼: {list(df.columns)}")
-            return
-
         total = len(df)
         with_price = df['retailprice'].notna().sum()
         without_price = df['retailprice'].isna().sum()
@@ -1296,7 +1243,6 @@ def main():
 
     if scraper.db_engine is None:
         logger.error("DB 연결 실패로 종료합니다.")
-        monitor_and_alert('fr_fnac', 0, None, error_message="DB 연결 실패")
         return
 
     # 테스트 모드
@@ -1327,7 +1273,6 @@ def main():
 
     if not urls_data:
         logger.warning("크롤링 대상이 없습니다.")
-        monitor_and_alert('fr_fnac', 0, None, error_message="크롤링 대상 URL이 없습니다")
         return
 
     logger.info(f"✅ 크롤링 대상: {len(urls_data)}개")
@@ -1337,7 +1282,6 @@ def main():
 
     if results_df is None or results_df.empty:
         logger.error("크롤링 결과가 없습니다.")
-        monitor_and_alert('fr_fnac', len(urls_data), None, error_message="크롤링 결과가 없습니다")
         return
 
     end_time = datetime.now(scraper.korea_tz)
@@ -1368,9 +1312,6 @@ def main():
     logger.info(f"파일서버 업로드: {'✅ 성공' if save_results['server_uploaded'] else '❌ 실패'}")
 
     logger.info("\n✅ 크롤링 프로세스 완료!")
-
-    # 크롤링 완료 후 알림 (빈 값 50% 이상 시 경고)
-    monitor_and_alert('fr_fnac', len(urls_data), results_df)
 
 if __name__ == "__main__":
     print("📦 필요한 패키지:")
