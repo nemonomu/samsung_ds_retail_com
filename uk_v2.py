@@ -616,7 +616,29 @@ class AmazonUKScraper:
             # 판매자 정보 추출 (수정된 함수 사용)
             result['ships_from'] = self.extract_ships_from(self.selectors.get('ships_from', []))
             result['sold_by'] = self.extract_element_text(self.selectors.get('sold_by', []), "Sold By")
-            
+
+            # ships_from이 None이고 sold_by가 있을 때, 통합 라벨 확인
+            if not result['ships_from'] and result['sold_by']:
+                try:
+                    # "Shipper / Seller" 라벨이 있는지 확인 (배송자/판매자 통합)
+                    combined_label_selectors = [
+                        "//span[contains(text(), 'Shipper / Seller')]",
+                        "//span[contains(text(), 'Shipper/Seller')]",
+                        "//*[@id='merchantInfoFeature_feature_div']//span[contains(@class, 'a-color-tertiary')][contains(text(), 'Shipper')]"
+                    ]
+                    for label_selector in combined_label_selectors:
+                        try:
+                            label_element = self.driver.find_element(By.XPATH, label_selector)
+                            if label_element and label_element.is_displayed():
+                                # 통합 라벨 발견 - sold_by 값을 ships_from에도 저장
+                                result['ships_from'] = result['sold_by']
+                                logger.info(f"Shipper / Seller 통합 라벨 발견 - ships_from에 sold_by 값 복사: {result['ships_from']}")
+                                break
+                        except:
+                            continue
+                except Exception as e:
+                    logger.debug(f"통합 라벨 확인 중 오류: {e}")
+
             # 이미지 URL 추출
             for selector in self.selectors.get('imageurl', []):
                 try:
