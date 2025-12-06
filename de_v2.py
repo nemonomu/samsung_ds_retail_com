@@ -1008,10 +1008,10 @@ class AmazonDEScraper:
 
                         logger.info(f"통합 라벨 텍스트: '{label_text}'")
 
-                        if 'Shipper' in label_text and 'Seller' in label_text:
+                        if ('Versender' in label_text and 'Verkäufer' in label_text) or ('Shipper' in label_text and 'Seller' in label_text):
                             # 통합 라벨 발견 - sold_by 값을 ships_from에도 저장
                             result['ships_from'] = result['sold_by']
-                            logger.info(f"Shipper / Seller 통합 라벨 발견 - ships_from에 sold_by 값 복사: {result['ships_from']}")
+                            logger.info(f"Versender / Verkäufer 통합 라벨 발견 - ships_from에 sold_by 값 복사: {result['ships_from']}")
                 except Exception as e:
                     logger.debug(f"통합 라벨 확인 중 오류: {e}")
 
