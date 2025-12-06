@@ -1009,11 +1009,11 @@ class AmazonFRScraper:
             # ships_from이 None이고 sold_by가 있을 때, 통합 라벨 확인
             if not result['ships_from'] and result['sold_by']:
                 try:
-                    # "Shipper / Seller" 라벨이 있는지 확인 (배송자/판매자 통합)
+                    # "Expéditeur / Vendeur" 라벨이 있는지 확인 (배송자/판매자 통합)
                     combined_label_selectors = [
-                        "//span[contains(text(), 'Shipper / Seller')]",
-                        "//span[contains(text(), 'Shipper/Seller')]",
-                        "//*[@id='merchantInfoFeature_feature_div']//span[contains(@class, 'a-color-tertiary')][contains(text(), 'Shipper')]"
+                        "//span[contains(text(), 'Expéditeur / Vendeur')]",
+                        "//span[contains(text(), 'Expéditeur/Vendeur')]",
+                        "//*[@id='merchantInfoFeature_feature_div']//span[contains(@class, 'a-color-tertiary')][contains(text(), 'Expéditeur')]"
                     ]
                     for label_selector in combined_label_selectors:
                         try:
