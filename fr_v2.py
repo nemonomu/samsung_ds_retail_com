@@ -1010,21 +1010,13 @@ class AmazonFRScraper:
             if not result['ships_from'] and result['sold_by']:
                 try:
                     # "Expéditeur / Vendeur" 라벨이 있는지 확인 (배송자/판매자 통합)
-                    combined_label_selectors = [
-                        "//span[contains(text(), 'Expéditeur / Vendeur')]",
-                        "//span[contains(text(), 'Expéditeur/Vendeur')]",
-                        "//*[@id='merchantInfoFeature_feature_div']//span[contains(@class, 'a-color-tertiary')][contains(text(), 'Expéditeur')]"
-                    ]
-                    for label_selector in combined_label_selectors:
-                        try:
-                            label_element = self.driver.find_element(By.XPATH, label_selector)
-                            if label_element and label_element.is_displayed():
-                                # 통합 라벨 발견 - sold_by 값을 ships_from에도 저장
-                                result['ships_from'] = result['sold_by']
-                                logger.info(f"Shipper / Seller 통합 라벨 발견 - ships_from에 sold_by 값 복사: {result['ships_from']}")
-                                break
-                        except:
-                            continue
+                    label_element = self.driver.find_element(By.XPATH, "//*[@id='merchantInfoFeature_feature_div']/div[1]/div/span")
+                    if label_element:
+                        label_text = label_element.text.strip() if label_element.text else ""
+                        if "Expéditeur" in label_text and "Vendeur" in label_text:
+                            # 통합 라벨 발견 - sold_by 값을 ships_from에도 저장
+                            result['ships_from'] = result['sold_by']
+                            logger.info(f"Expéditeur / Vendeur 통합 라벨 발견 - ships_from에 sold_by 값 복사: {result['ships_from']}")
                 except Exception as e:
                     logger.debug(f"통합 라벨 확인 중 오류: {e}")
 
