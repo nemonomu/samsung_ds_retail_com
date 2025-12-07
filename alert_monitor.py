@@ -17,14 +17,22 @@ logger = logging.getLogger(__name__)
 
 # 국가별 이름 매핑
 COUNTRY_NAMES = {
-    'usa': '미국 (USA)',
-    'gb': '영국 (GB)',
-    'de': '독일 (DE)',
-    'fr': '프랑스 (FR)',
-    'es': '스페인 (ES)',
-    'it': '이탈리아 (IT)',
-    'jp': '일본 (JP)',
-    'in': '인도 (IN)'
+    'usa': '미국 Amazon (USA)',
+    'gb': '영국 Amazon (GB)',
+    'de': '독일 Amazon (DE)',
+    'fr': '프랑스 Amazon (FR)',
+    'es': '스페인 Amazon (ES)',
+    'it': '이탈리아 Amazon (IT)',
+    'jp': '일본 Amazon (JP)',
+    'in': '인도 Amazon (IN)',
+    'nl': '네덜란드 Amazon (NL)',
+    'usa_bestbuy': '미국 BestBuy',
+    'gb_currys': '영국 Currys',
+    'de_mediamarkt': '독일 MediaMarkt',
+    'nl_coolblue': '네덜란드 Coolblue',
+    'pl_xkom': '폴란드 X-kom',
+    'kr_danawa': '한국 다나와',
+    'fr_fnac': '프랑스 Fnac'
 }
 
 
@@ -65,9 +73,10 @@ def analyze_crawl_results(country_code, target_count, results_df):
     if crawled_count < target_count:
         missing_count = target_count - crawled_count
         analysis['alerts'].append({
-            'type': 'WARNING',
+            'type': 'CRITICAL',
             'message': f'수집 시도 누락: {target_count}개 중 {crawled_count}개만 시도 ({missing_count}개 누락)'
         })
+        analysis['is_critical'] = True
 
     # 각 필드별 빈 값 비율 분석
     fields_to_check = ['retailprice', 'imageurl', 'ships_from', 'sold_by', 'title']
