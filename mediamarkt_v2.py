@@ -793,16 +793,19 @@ class MediaMarktInfiniteScraper:
         if results:
             df = pd.DataFrame(results)
             save_results = self.save_results(df)
-            
+
             # 통계
-            logger.info(f"\n📊 === 크롤링 라운드 {self.crawl_count + 1} 완료 ===")
+            logger.info(f"\n📊 === 크롤링 완료 ===")
             logger.info(f"전체 제품: {len(results)}개")
             logger.info(f"가격 추출 성공: {success_count}개")
             logger.info(f"성공률: {success_count/len(results)*100:.1f}%")
             logger.info(f"DB 저장: {'✅' if save_results['db_saved'] else '❌'}")
             logger.info(f"파일서버 업로드: {'✅' if save_results['server_uploaded'] else '❌'}")
-        
-        self.crawl_count += 1
+
+            self.crawl_count += 1
+            return df
+
+        return None
     
     def run_infinite_crawling(self):
         """무한 크롤링 실행"""
@@ -859,28 +862,53 @@ class MediaMarktInfiniteScraper:
         
         logger.info("무한 크롤링 종료")
     
+    def accept_cookies(self):
+        """쿠키 수락 버튼 클릭"""
+        try:
+            cookie_button = WebDriverWait(self.driver, 10).until(
+                EC.element_to_be_clickable((By.XPATH, "//*[@id='pwa-consent-layer-accept-all-button']"))
+            )
+            cookie_button.click()
+            logger.info("✅ 쿠키 수락 완료")
+            time.sleep(2)
+            return True
+        except Exception as e:
+            logger.debug(f"쿠키 버튼 없음 또는 이미 수락됨: {e}")
+            return False
+
     def start(self):
         """메인 시작 함수"""
-        logger.info("\n🚀 MediaMarkt 무한 크롤러 시작")
+        logger.info("\n🚀 MediaMarkt 크롤러 시작")
         logger.info("="*60)
-        
+
         # 드라이버 설정
         if not self.setup_driver():
             logger.error("드라이버 설정 실패로 종료합니다.")
-            return
-        
+            return None
+
         try:
-            # 초기 수동 로그인
-            if not self.initial_manual_login():
-                logger.error("초기 로그인 실패로 종료합니다.")
-                return
-            
-            # 무한 크롤링 시작
-            self.run_infinite_crawling()
-            
+            # 메인 페이지 접속
+            logger.info("MediaMarkt 접속 중...")
+            self.driver.get("https://www.mediamarkt.de")
+            time.sleep(3)
+
+            # 쿠키 수락
+            self.accept_cookies()
+
+            # Cloudflare 체크
+            if self.check_cloudflare_challenge():
+                logger.error("❌ Cloudflare 챌린지 감지! 수동 통과 필요")
+                return None
+
+            self.is_logged_in = True
+
+            # 단일 크롤링 실행
+            return self.crawl_once()
+
         except Exception as e:
             logger.error(f"치명적 오류: {e}")
             logger.error(traceback.format_exc())
+            return None
         finally:
             if self.driver:
                 self.driver.quit()
@@ -888,22 +916,35 @@ class MediaMarktInfiniteScraper:
 
 def main():
     """메인 실행 함수"""
-    print("\n🚀 MediaMarkt 무한 크롤러")
+    print("\n🚀 MediaMarkt 크롤러")
     print("="*60)
-    print("초기에 수동으로 Cloudflare를 통과한 후")
-    print("자동으로 무한 크롤링이 시작됩니다.")
-    print("="*60)
-    
+
     # 스크래퍼 생성 및 실행
     scraper = MediaMarktInfiniteScraper()
-    
+
     if scraper.db_engine is None:
         logger.error("DB 연결 실패로 종료합니다.")
         monitor_and_alert('de_mediamarkt', 0, None, error_message="DB 연결 실패")
         return
 
-    # 시작
-    scraper.start()
+    # 크롤링 대상 수 조회
+    urls_data = scraper.get_crawl_targets()
+    target_count = len(urls_data) if urls_data else 0
+
+    # 크롤링 실행
+    results_df = scraper.start()
+
+    if results_df is None or results_df.empty:
+        logger.error("크롤링 결과가 없습니다.")
+        monitor_and_alert('de_mediamarkt', target_count, None, error_message="크롤링 결과가 없습니다")
+        return
+
+    logger.info("=" * 60)
+    logger.info("MediaMarkt 크롤링 프로세스 완료!")
+    logger.info("=" * 60)
+
+    # 크롤링 완료 후 알림
+    monitor_and_alert('de_mediamarkt', target_count, results_df)
 
 if __name__ == "__main__":
     # 필요한 패키지 확인
