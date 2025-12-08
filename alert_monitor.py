@@ -36,7 +36,7 @@ COUNTRY_NAMES = {
 }
 
 
-def analyze_crawl_results(country_code, target_count, results_df):
+def analyze_crawl_results(country_code, target_count, results_df, error_logs=None):
     """
     크롤링 결과 분석
 
@@ -44,6 +44,7 @@ def analyze_crawl_results(country_code, target_count, results_df):
         country_code: 국가 코드 (예: 'jp', 'it')
         target_count: tracking list의 총 개수 (수집 시도해야 할 개수)
         results_df: 크롤링 결과 DataFrame
+        error_logs: 크롤링 중 발생한 에러 로그 리스트 (선택)
 
     Returns:
         dict: 분석 결과
@@ -55,7 +56,8 @@ def analyze_crawl_results(country_code, target_count, results_df):
         'crawled_count': len(results_df) if results_df is not None else 0,
         'alerts': [],
         'is_critical': False,
-        'field_stats': {}
+        'field_stats': {},
+        'error_logs': error_logs or []
     }
 
     # 크롤링 자체가 실패한 경우
@@ -127,17 +129,14 @@ def send_alert_email(analysis, error_message=None):
         korea_tz = pytz.timezone('Asia/Seoul')
         now = datetime.now(korea_tz)
 
-        # 알림이 없으면 발송 안함
-        if not analysis['alerts'] and not error_message:
-            logger.info("알림 조건 없음 - 이메일 발송 생략")
-            return True
-
         # 이메일 제목 생성
         country_name = analysis['country_name']
         if analysis['is_critical'] or error_message:
-            subject = f"[긴급] Amazon {country_name} 크롤링 알림 - {now.strftime('%Y-%m-%d %H:%M')}"
+            subject = f"[CRITICAL] {country_name} 크롤링 알림 - {now.strftime('%Y-%m-%d %H:%M')}"
+        elif analysis['alerts']:
+            subject = f"[WARNING] {country_name} 크롤링 알림 - {now.strftime('%Y-%m-%d %H:%M')}"
         else:
-            subject = f"[주의] Amazon {country_name} 크롤링 알림 - {now.strftime('%Y-%m-%d %H:%M')}"
+            subject = f"[OK] {country_name} 크롤링 리포트 - {now.strftime('%Y-%m-%d %H:%M')}"
 
         # 이메일 본문 생성 (HTML)
         html_content = f"""
@@ -232,6 +231,25 @@ def send_alert_email(analysis, error_message=None):
             </div>
             """
 
+        # 에러 로그 섹션
+        if analysis.get('error_logs'):
+            html_content += """
+            <div class="section">
+                <h3>에러 로그</h3>
+                <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 10px; max-height: 300px; overflow-y: auto;">
+                    <pre style="margin: 0; font-size: 12px; white-space: pre-wrap; word-wrap: break-word;">"""
+
+            for error_log in analysis['error_logs'][-20:]:  # 최근 20개만
+                html_content += f"{error_log}\n"
+
+            if len(analysis['error_logs']) > 20:
+                html_content += f"\n... 외 {len(analysis['error_logs']) - 20}개 에러"
+
+            html_content += """</pre>
+                </div>
+            </div>
+            """
+
         html_content += """
             <div class="section">
                 <p style="color: #666; font-size: 12px;">
@@ -268,7 +286,7 @@ def send_alert_email(analysis, error_message=None):
         return False
 
 
-def monitor_and_alert(country_code, target_count, results_df, error_message=None):
+def monitor_and_alert(country_code, target_count, results_df, error_message=None, error_logs=None):
     """
     크롤링 결과 모니터링 및 알림 (메인 함수)
 
@@ -279,6 +297,7 @@ def monitor_and_alert(country_code, target_count, results_df, error_message=None
         target_count: tracking list 총 개수
         results_df: 크롤링 결과 DataFrame (실패 시 None)
         error_message: 추가 에러 메시지 (선택)
+        error_logs: 크롤링 중 발생한 에러 로그 리스트 (선택)
 
     Returns:
         bool: 알림 발송 성공 여부
@@ -291,17 +310,16 @@ def monitor_and_alert(country_code, target_count, results_df, error_message=None
 
         # 에러 발생 시
         monitor_and_alert('jp', len(urls_data), None, error_message="ChromeDriver 초기화 실패")
+
+        # 에러 로그 포함
+        monitor_and_alert('jp', len(urls_data), results_df, error_logs=error_list)
     """
     try:
         # 결과 분석
-        analysis = analyze_crawl_results(country_code, target_count, results_df)
+        analysis = analyze_crawl_results(country_code, target_count, results_df, error_logs)
 
-        # 이메일 발송 (알림이 있거나 에러 메시지가 있는 경우)
-        if analysis['alerts'] or error_message:
-            return send_alert_email(analysis, error_message)
-        else:
-            logger.info(f"{country_code.upper()} 크롤링 정상 완료 - 알림 불필요")
-            return True
+        # 항상 이메일 발송 (일일 리포트)
+        return send_alert_email(analysis, error_message)
 
     except Exception as e:
         logger.error(f"모니터링 중 오류: {e}")
