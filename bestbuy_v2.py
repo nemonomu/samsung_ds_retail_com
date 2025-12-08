@@ -850,18 +850,18 @@ class BestBuyScraper:
         
         results = []
         failed_urls = []
-        
-        try:
-            for idx, row in enumerate(urls_data):
+
+        for idx, row in enumerate(urls_data):
+            try:
                 logger.info(f"\n{'='*50}")
                 logger.info(f"진행률: {idx + 1}/{len(urls_data)} ({(idx + 1)/len(urls_data)*100:.1f}%)")
-                
+
                 # URL 추출
                 url = row.get('url')
-                
+
                 # 제품 정보 추출 (재시도 로직 적용)
                 result = self.extract_with_retry(url, row)
-                
+
                 # 실패 여부 확인
                 if result['retailprice'] is None:
                     failed_urls.append({
@@ -869,43 +869,43 @@ class BestBuyScraper:
                         'item': row.get('item', ''),
                         'brand': row.get('brand', '')
                     })
-                
+
                 results.append(result)
-                
+
                 # 10개마다 DB에 중간 저장
                 if (idx + 1) % 10 == 0:
                     interim_df = pd.DataFrame(results[-10:])
                     if self.db_engine:
                         try:
-                            interim_df.to_sql('bestbuy_price_crawl_tbl_usa_v2', self.db_engine, 
+                            interim_df.to_sql('bestbuy_price_crawl_tbl_usa_v2', self.db_engine,
                                             if_exists='append', index=False)
                             logger.info(f"💾 중간 저장: 10개 레코드 DB 저장")
                         except Exception as e:
                             logger.error(f"중간 저장 실패: {e}")
-                
+
                 # 다음 요청 전 대기
                 if idx < len(urls_data) - 1:
                     wait_time = random.uniform(2, 5)  # BestBuy는 조금 더 빠르게
                     logger.info(f"⏳ {wait_time:.1f}초 대기 중...")
                     time.sleep(wait_time)
-                    
+
                     # 10개마다 긴 휴식
                     if (idx + 1) % 10 == 0:
                         logger.info("☕ 10개 처리 완료, 20초 휴식...")
                         time.sleep(20)
-        
-        except Exception as e:
-            logger.error(f"❌ 스크래핑 중 오류: {e}")
-        
-        finally:
-            # 실패 URL 로그
-            if failed_urls:
-                logger.warning(f"\n⚠️ 가격 추출 실패한 URL {len(failed_urls)}개:")
-                for fail in failed_urls[:5]:
-                    logger.warning(f"  - {fail['brand']} {fail['item']}: {fail['url']}")
-                if len(failed_urls) > 5:
-                    logger.warning(f"  ... 외 {len(failed_urls) - 5}개")
-        
+
+            except Exception as e:
+                logger.error(f"❌ 스크래핑 중 오류 (URL: {row.get('url', 'unknown')}): {e}")
+                continue
+
+        # 정리
+        if failed_urls:
+            logger.warning(f"\n⚠️ 가격 추출 실패한 URL {len(failed_urls)}개:")
+            for fail in failed_urls[:5]:
+                logger.warning(f"  - {fail['brand']} {fail['item']}: {fail['url']}")
+            if len(failed_urls) > 5:
+                logger.warning(f"  ... 외 {len(failed_urls) - 5}개")
+
         return pd.DataFrame(results)
     
     def analyze_results(self, df):

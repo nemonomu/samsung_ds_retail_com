@@ -870,25 +870,25 @@ class AmazonUKScraper:
         
         results = []
         failed_urls = []
-        
-        try:
-            for idx, row in enumerate(urls_data):
+
+        for idx, row in enumerate(urls_data):
+            try:
                 url = row.get('url')
                 item_name = row.get('item', 'Unknown')
-                
+
                 logger.info(f"진행률: {idx + 1}/{len(urls_data)} - {item_name}")
-                
+
                 result = self.extract_product_info(url, row)
-                
+
                 if result['retailprice'] == '0':
                     failed_urls.append({
                         'url': url,
                         'item': row.get('item', ''),
                         'reason': '가격 없음'
                     })
-                
+
                 results.append(result)
-                
+
                 # 중간 저장
                 if (idx + 1) % 10 == 0:
                     interim_df = pd.DataFrame(results[-10:])
@@ -899,28 +899,29 @@ class AmazonUKScraper:
                             logger.info("중간 저장: 10개 레코드")
                         except Exception as e:
                             logger.error(f"중간 저장 실패: {e}")
-                
+
                 if idx < len(urls_data) - 1:
                     wait_time = random.uniform(5, 10)
                     time.sleep(wait_time)
-                    
+
                     if (idx + 1) % 20 == 0:
                         logger.info("20개 처리 완료, 30초 휴식")
                         time.sleep(30)
-        
-        except Exception as e:
-            logger.error(f"스크래핑 중 오류: {e}")
-        
-        finally:
-            if failed_urls:
-                logger.warning(f"실패 URL {len(failed_urls)}개")
-            
-            if self.driver:
-                try:
-                    self.driver.quit()
-                except:
-                    pass
-        
+
+            except Exception as e:
+                logger.error(f"스크래핑 중 오류 (URL: {row.get('url', 'unknown')}): {e}")
+                continue
+
+        # 정리
+        if failed_urls:
+            logger.warning(f"실패 URL {len(failed_urls)}개")
+
+        if self.driver:
+            try:
+                self.driver.quit()
+            except:
+                pass
+
         return pd.DataFrame(results)
     
     def analyze_results(self, df):

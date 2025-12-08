@@ -934,11 +934,18 @@ class AmazonScraper:
             
             # V2: 타임존 분리
 
-            
+
             now_time = datetime.now(self.korea_tz)
 
-            
+
             local_time = datetime.now(self.local_tz)
+
+            # ISO 8601 형식
+            crawl_dt = local_time.strftime("%Y-%m-%dT%H:%M:%S")
+            tz_offset = local_time.strftime("%z")
+            tz_formatted = f"{tz_offset[:3]}:{tz_offset[3:]}" if tz_offset else "+00:00"
+            crawl_datetime_iso = f"{crawl_dt}{tz_formatted}"
+
             return {
                 'retailerid': row_data.get('retailerid', ''),
                 'country_code': self.country_code,
@@ -1142,15 +1149,15 @@ class AmazonScraper:
         
         results = []
         failed_urls = []
-        
-        try:
-            for idx, row in enumerate(urls_data):
+
+        for idx, row in enumerate(urls_data):
+            try:
                 logger.info(f"진행률: {idx + 1}/{len(urls_data)} ({(idx + 1)/len(urls_data)*100:.1f}%)")
-                
+
                 url = row.get('url')
-                
+
                 result = self.extract_product_info(url, row)
-                
+
                 if result['retailprice'] is None and result['title'] is None:
                     failed_urls.append({
                         'url': url,
@@ -1165,44 +1172,45 @@ class AmazonScraper:
                         'brand': row.get('brand', ''),
                         'reason': '가격 없음'
                     })
-                
+
                 results.append(result)
-                
+
                 if (idx + 1) % 10 == 0:
                     interim_df = pd.DataFrame(results[-10:])
                     if self.db_engine:
                         try:
                             table_name = f'amazon_price_crawl_tbl_{self.country_code}_v2'
-                            interim_df.to_sql(table_name, self.db_engine, 
+                            interim_df.to_sql(table_name, self.db_engine,
                                             if_exists='append', index=False)
                             logger.info("중간 저장: 10개 레코드 DB 저장")
                         except Exception as e:
                             logger.error(f"중간 저장 실패: {e}")
-                
+
                 if idx < len(urls_data) - 1:
                     wait_time = random.uniform(5, 10)
                     logger.info(f"{wait_time:.1f}초 대기 중...")
                     time.sleep(wait_time)
-                    
+
                     if (idx + 1) % 20 == 0:
                         logger.info("20개 처리 완료, 30초 휴식...")
                         time.sleep(30)
-        
-        except Exception as e:
-            logger.error(f"스크래핑 중 오류: {e}")
-        
-        finally:
-            if failed_urls:
-                logger.warning(f"문제 발생한 URL {len(failed_urls)}개:")
-                for fail in failed_urls[:5]:
-                    logger.warning(f"  - {fail['brand']} {fail['item']}: {fail.get('reason', '알 수 없음')}")
-                if len(failed_urls) > 5:
-                    logger.warning(f"  ... 외 {len(failed_urls) - 5}개")
-            
-            if self.driver:
-                self.driver.quit()
-                logger.info("드라이버 종료")
-        
+
+            except Exception as e:
+                logger.error(f"스크래핑 중 오류 (URL: {row.get('url', 'unknown')}): {e}")
+                continue
+
+        # 정리
+        if failed_urls:
+            logger.warning(f"문제 발생한 URL {len(failed_urls)}개:")
+            for fail in failed_urls[:5]:
+                logger.warning(f"  - {fail['brand']} {fail['item']}: {fail.get('reason', '알 수 없음')}")
+            if len(failed_urls) > 5:
+                logger.warning(f"  ... 외 {len(failed_urls) - 5}개")
+
+        if self.driver:
+            self.driver.quit()
+            logger.info("드라이버 종료")
+
         return pd.DataFrame(results)
     
     def analyze_results(self, df):
