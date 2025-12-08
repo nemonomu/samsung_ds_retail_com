@@ -234,8 +234,8 @@ class XKomInfiniteScraper:
             logger.info("X-kom 접속 중...")
             self.driver.get("https://www.x-kom.pl")
 
-            # 페이지 로드 대기
-            time.sleep(3)
+            # 페이지 로드 대기 (Cloudflare Turnstile 로드 시간 필요)
+            time.sleep(10)
 
             # 1. 봇 감지 체크박스 클릭
             try:
@@ -257,9 +257,10 @@ class XKomInfiniteScraper:
                 # iframe 찾기 시도 (여러 선택자)
                 iframe = None
                 iframe_selectors = [
+                    (By.CSS_SELECTOR, 'iframe[src*="challenges.cloudflare.com/cdn-cgi"]'),
                     (By.CSS_SELECTOR, 'iframe[src*="challenges.cloudflare.com"]'),
                     (By.CSS_SELECTOR, 'iframe[src*="turnstile"]'),
-                    (By.CSS_SELECTOR, 'iframe[title*="Cloudflare"]'),
+                    (By.CSS_SELECTOR, 'iframe[allow*="cross-origin"]'),
                     (By.TAG_NAME, 'iframe')
                 ]
 
