@@ -237,9 +237,22 @@ class XKomInfiniteScraper:
             # 페이지 로드 대기
             time.sleep(3)
 
-            # 1. 봇 감지 체크박스 클릭 (iframe 내부)
+            # 1. 봇 감지 체크박스 클릭
             try:
                 logger.info("🔍 봇 감지 체크박스 확인 중...")
+
+                # 페이지 소스 저장 (디버깅용)
+                with open('xkom_page_source.html', 'w', encoding='utf-8') as f:
+                    f.write(self.driver.page_source)
+                logger.info("📄 페이지 소스 저장: xkom_page_source.html")
+
+                # iframe 목록 확인
+                iframes = self.driver.find_elements(By.TAG_NAME, 'iframe')
+                logger.info(f"📋 iframe 개수: {len(iframes)}")
+                for i, iframe in enumerate(iframes):
+                    src = iframe.get_attribute('src') or ''
+                    title = iframe.get_attribute('title') or ''
+                    logger.info(f"  iframe[{i}]: src={src[:50]}..., title={title}")
 
                 # iframe 찾기 시도 (여러 선택자)
                 iframe = None
@@ -263,6 +276,11 @@ class XKomInfiniteScraper:
                 if iframe:
                     self.driver.switch_to.frame(iframe)
                     logger.info("✅ iframe 전환 완료")
+
+                    # iframe 내부 소스 저장
+                    with open('xkom_iframe_source.html', 'w', encoding='utf-8') as f:
+                        f.write(self.driver.page_source)
+                    logger.info("📄 iframe 소스 저장: xkom_iframe_source.html")
 
                 # 체크박스 클릭 (여러 선택자 시도)
                 checkbox_selectors = [
