@@ -237,17 +237,31 @@ class XKomInfiniteScraper:
             # 페이지 로드 대기
             time.sleep(3)
 
-            # 1. 봇 감지 체크박스 클릭
+            # 1. 봇 감지 체크박스 클릭 (iframe 내부)
             try:
                 logger.info("🔍 봇 감지 체크박스 확인 중...")
+
+                # iframe 찾기 및 전환
+                iframe = WebDriverWait(self.driver, 10).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, 'iframe[src*="challenges.cloudflare.com"]'))
+                )
+                self.driver.switch_to.frame(iframe)
+                logger.info("✅ iframe 전환 완료")
+
+                # 체크박스 클릭
                 checkbox = WebDriverWait(self.driver, 10).until(
                     EC.element_to_be_clickable((By.XPATH, '//*[@id="tgnx8"]/div/label/input'))
                 )
                 checkbox.click()
                 logger.info("✅ 봇 감지 체크박스 클릭 완료")
+
+                # 기본 프레임으로 복귀
+                self.driver.switch_to.default_content()
                 time.sleep(5)
             except Exception as e:
-                logger.warning(f"봇 감지 체크박스 없음 또는 클릭 실패: {e}")
+                logger.error(f"❌ 봇 감지 체크박스 클릭 실패: {e}")
+                self.driver.switch_to.default_content()
+                return False
 
             # 2. 쿠키 동의 버튼 클릭
             try:
