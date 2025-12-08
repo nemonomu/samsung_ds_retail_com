@@ -224,9 +224,9 @@ class XKomInfiniteScraper:
             return False
     
     def initial_manual_login(self):
-        """초기 로그인 - 봇 감지 체크박스 및 쿠키 동의 자동 클릭"""
+        """초기 수동 로그인 - Cloudflare 통과"""
         logger.info("\n" + "="*60)
-        logger.info("🔐 === 초기 로그인 ===")
+        logger.info("🔐 === 초기 수동 로그인 ===")
         logger.info("="*60)
 
         try:
@@ -234,99 +234,12 @@ class XKomInfiniteScraper:
             logger.info("X-kom 접속 중...")
             self.driver.get("https://www.x-kom.pl")
 
-            # 페이지 로드 대기 (Cloudflare Turnstile 로드 시간 필요)
-            time.sleep(10)
+            logger.info("\n📋 다음 단계를 수행해주세요:")
+            logger.info("1. Cloudflare 챌린지가 나타나면 해결하세요")
+            logger.info("2. 쿠키 동의 팝업이 나타나면 수락하세요")
+            logger.info("3. 사이트가 완전히 로드될 때까지 기다리세요")
 
-            # 1. 봇 감지 체크박스 클릭
-            try:
-                logger.info("🔍 봇 감지 체크박스 확인 중...")
-
-                # 페이지 소스 저장 (디버깅용) - 10초 대기 후 저장
-                time.sleep(10)
-                with open('xkom_page_source.html', 'w', encoding='utf-8') as f:
-                    f.write(self.driver.page_source)
-                logger.info("📄 페이지 소스 저장: xkom_page_source.html")
-
-                # iframe 목록 확인
-                iframes = self.driver.find_elements(By.TAG_NAME, 'iframe')
-                logger.info(f"📋 iframe 개수: {len(iframes)}")
-                for i, iframe in enumerate(iframes):
-                    src = iframe.get_attribute('src') or ''
-                    title = iframe.get_attribute('title') or ''
-                    logger.info(f"  iframe[{i}]: src={src[:50]}..., title={title}")
-
-                # iframe 찾기 시도 (여러 선택자)
-                iframe = None
-                iframe_selectors = [
-                    (By.CSS_SELECTOR, 'iframe[src*="challenges.cloudflare.com/cdn-cgi"]'),
-                    (By.CSS_SELECTOR, 'iframe[src*="challenges.cloudflare.com"]'),
-                    (By.CSS_SELECTOR, 'iframe[src*="turnstile"]'),
-                    (By.CSS_SELECTOR, 'iframe[allow*="cross-origin"]'),
-                    (By.TAG_NAME, 'iframe')
-                ]
-
-                for selector in iframe_selectors:
-                    try:
-                        iframe = WebDriverWait(self.driver, 5).until(
-                            EC.presence_of_element_located(selector)
-                        )
-                        logger.info(f"✅ iframe 발견: {selector}")
-                        break
-                    except:
-                        continue
-
-                if iframe:
-                    self.driver.switch_to.frame(iframe)
-                    logger.info("✅ iframe 전환 완료")
-
-                    # iframe 내부 소스 저장
-                    with open('xkom_iframe_source.html', 'w', encoding='utf-8') as f:
-                        f.write(self.driver.page_source)
-                    logger.info("📄 iframe 소스 저장: xkom_iframe_source.html")
-
-                # 체크박스 클릭 (여러 선택자 시도)
-                checkbox_selectors = [
-                    (By.XPATH, '//*[@id="tgnx8"]/div/label/input'),
-                    (By.CSS_SELECTOR, 'input[type="checkbox"]'),
-                    (By.CSS_SELECTOR, '.cb-lb input'),
-                    (By.XPATH, '//input[@type="checkbox"]')
-                ]
-
-                checkbox_clicked = False
-                for selector in checkbox_selectors:
-                    try:
-                        checkbox = WebDriverWait(self.driver, 3).until(
-                            EC.element_to_be_clickable(selector)
-                        )
-                        checkbox.click()
-                        logger.info(f"✅ 봇 감지 체크박스 클릭 완료: {selector}")
-                        checkbox_clicked = True
-                        break
-                    except:
-                        continue
-
-                if not checkbox_clicked:
-                    raise Exception("체크박스를 찾을 수 없음")
-
-                # 기본 프레임으로 복귀
-                self.driver.switch_to.default_content()
-                time.sleep(5)
-            except Exception as e:
-                logger.error(f"❌ 봇 감지 체크박스 클릭 실패: {e}")
-                self.driver.switch_to.default_content()
-                return False
-
-            # 2. 쿠키 동의 버튼 클릭
-            try:
-                logger.info("🔍 쿠키 동의 버튼 확인 중...")
-                cookie_btn = WebDriverWait(self.driver, 10).until(
-                    EC.element_to_be_clickable((By.XPATH, '//*[@id="react-portals"]/div[3]/div/div/div/div[3]/button[2]'))
-                )
-                cookie_btn.click()
-                logger.info("✅ 쿠키 동의 버튼 클릭 완료")
-                time.sleep(2)
-            except Exception as e:
-                logger.warning(f"쿠키 동의 버튼 없음 또는 클릭 실패: {e}")
+            input("\n✅ 모든 작업이 완료되면 Enter를 누르세요...")
             
             # 현재 상태 확인
             current_url = self.driver.current_url
