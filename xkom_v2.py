@@ -241,7 +241,8 @@ class XKomInfiniteScraper:
             try:
                 logger.info("🔍 봇 감지 체크박스 확인 중...")
 
-                # 페이지 소스 저장 (디버깅용)
+                # 페이지 소스 저장 (디버깅용) - 10초 대기 후 저장
+                time.sleep(10)
                 with open('xkom_page_source.html', 'w', encoding='utf-8') as f:
                     f.write(self.driver.page_source)
                 logger.info("📄 페이지 소스 저장: xkom_page_source.html")
