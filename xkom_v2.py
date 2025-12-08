@@ -465,12 +465,40 @@ Python 버전: {os.sys.version.split()[0]}
     
     def extract_product_info(self, url, row_data):
         """제품 정보 추출"""
+        max_retries = 3
+
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"🔍 페이지 접속: {url}" + (f" (재시도 {attempt + 1}/{max_retries})" if attempt > 0 else ""))
+                self.driver.get(url)
+
+                # 페이지 로드 대기
+                time.sleep(random.uniform(3, 5))
+                break  # 성공 시 루프 탈출
+
+            except Exception as e:
+                error_msg = str(e).lower()
+                if "timeout" in error_msg or "renderer" in error_msg:
+                    logger.warning(f"⚠️ 타임아웃 발생 (시도 {attempt + 1}/{max_retries}): {e}")
+
+                    if attempt < max_retries - 1:
+                        # 브라우저 새로고침 시도
+                        try:
+                            logger.info("🔄 브라우저 새로고침 시도...")
+                            self.driver.refresh()
+                            time.sleep(5)
+                        except:
+                            pass
+                        continue
+                    else:
+                        logger.error(f"❌ 최대 재시도 횟수 초과: {url}")
+                        return None
+                else:
+                    # 타임아웃이 아닌 다른 에러
+                    logger.error(f"❌ 페이지 접속 오류: {e}")
+                    return None
+
         try:
-            logger.info(f"🔍 페이지 접속: {url}")
-            self.driver.get(url)
-            
-            # 페이지 로드 대기
-            time.sleep(random.uniform(3, 5))
             
             # Cloudflare 체크
             if self.check_cloudflare_challenge():
