@@ -241,19 +241,52 @@ class XKomInfiniteScraper:
             try:
                 logger.info("🔍 봇 감지 체크박스 확인 중...")
 
-                # iframe 찾기 및 전환
-                iframe = WebDriverWait(self.driver, 10).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, 'iframe[src*="challenges.cloudflare.com"]'))
-                )
-                self.driver.switch_to.frame(iframe)
-                logger.info("✅ iframe 전환 완료")
+                # iframe 찾기 시도 (여러 선택자)
+                iframe = None
+                iframe_selectors = [
+                    (By.CSS_SELECTOR, 'iframe[src*="challenges.cloudflare.com"]'),
+                    (By.CSS_SELECTOR, 'iframe[src*="turnstile"]'),
+                    (By.CSS_SELECTOR, 'iframe[title*="Cloudflare"]'),
+                    (By.TAG_NAME, 'iframe')
+                ]
 
-                # 체크박스 클릭
-                checkbox = WebDriverWait(self.driver, 10).until(
-                    EC.element_to_be_clickable((By.XPATH, '//*[@id="tgnx8"]/div/label/input'))
-                )
-                checkbox.click()
-                logger.info("✅ 봇 감지 체크박스 클릭 완료")
+                for selector in iframe_selectors:
+                    try:
+                        iframe = WebDriverWait(self.driver, 5).until(
+                            EC.presence_of_element_located(selector)
+                        )
+                        logger.info(f"✅ iframe 발견: {selector}")
+                        break
+                    except:
+                        continue
+
+                if iframe:
+                    self.driver.switch_to.frame(iframe)
+                    logger.info("✅ iframe 전환 완료")
+
+                # 체크박스 클릭 (여러 선택자 시도)
+                checkbox_selectors = [
+                    (By.XPATH, '//*[@id="tgnx8"]/div/label/input'),
+                    (By.CSS_SELECTOR, 'input[type="checkbox"]'),
+                    (By.CSS_SELECTOR, '.cb-lb input'),
+                    (By.XPATH, '//input[@type="checkbox"]')
+                ]
+
+                checkbox_clicked = False
+                for selector in checkbox_selectors:
+                    try:
+                        checkbox = WebDriverWait(self.driver, 3).until(
+                            EC.element_to_be_clickable(selector)
+                        )
+                        checkbox.click()
+                        logger.info(f"✅ 봇 감지 체크박스 클릭 완료: {selector}")
+                        checkbox_clicked = True
+                        break
+                    except:
+                        continue
+
+                if not checkbox_clicked:
+                    raise Exception("체크박스를 찾을 수 없음")
 
                 # 기본 프레임으로 복귀
                 self.driver.switch_to.default_content()
