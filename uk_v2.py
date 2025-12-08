@@ -685,6 +685,13 @@ class AmazonUKScraper:
             now_time = datetime.now(self.korea_tz)
 
             local_time = datetime.now(self.local_tz)
+
+            # ISO 8601 형식 (에러 시에도 필요)
+            crawl_dt = local_time.strftime("%Y-%m-%dT%H:%M:%S")
+            tz_offset = local_time.strftime("%z")
+            tz_formatted = f"{tz_offset[:3]}:{tz_offset[3:]}" if tz_offset else "+00:00"
+            crawl_datetime_iso = f"{crawl_dt}{tz_formatted}"
+
             return {
                 'retailerid': row_data.get('retailerid', ''),
                 'country_code': 'gb',  # 항상 gb로 고정
