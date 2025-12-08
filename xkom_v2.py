@@ -224,23 +224,42 @@ class XKomInfiniteScraper:
             return False
     
     def initial_manual_login(self):
-        """초기 수동 로그인 - Cloudflare 통과"""
+        """초기 로그인 - 봇 감지 체크박스 및 쿠키 동의 자동 클릭"""
         logger.info("\n" + "="*60)
-        logger.info("🔐 === 초기 수동 로그인 ===")
+        logger.info("🔐 === 초기 로그인 ===")
         logger.info("="*60)
-        
+
         try:
             # X-kom 메인 페이지 접속
             logger.info("X-kom 접속 중...")
             self.driver.get("https://www.x-kom.pl")
-            
-            logger.info("\n📋 다음 단계를 수행해주세요:")
-            logger.info("1. Cloudflare 챌린지가 나타나면 해결하세요")
-            logger.info("2. 쿠키 동의 팝업이 나타나면 수락하세요")
-            logger.info("3. 사이트가 완전히 로드될 때까지 기다리세요")
-            logger.info("4. (선택) 로그인이 필요하다면 로그인하세요")
-            
-            input("\n✅ 모든 작업이 완료되면 Enter를 누르세요...")
+
+            # 페이지 로드 대기
+            time.sleep(3)
+
+            # 1. 봇 감지 체크박스 클릭
+            try:
+                logger.info("🔍 봇 감지 체크박스 확인 중...")
+                checkbox = WebDriverWait(self.driver, 10).until(
+                    EC.element_to_be_clickable((By.XPATH, '//*[@id="tgnx8"]/div/label/input'))
+                )
+                checkbox.click()
+                logger.info("✅ 봇 감지 체크박스 클릭 완료")
+                time.sleep(5)
+            except Exception as e:
+                logger.warning(f"봇 감지 체크박스 없음 또는 클릭 실패: {e}")
+
+            # 2. 쿠키 동의 버튼 클릭
+            try:
+                logger.info("🔍 쿠키 동의 버튼 확인 중...")
+                cookie_btn = WebDriverWait(self.driver, 10).until(
+                    EC.element_to_be_clickable((By.XPATH, '//*[@id="react-portals"]/div[3]/div/div/div/div[3]/button[2]'))
+                )
+                cookie_btn.click()
+                logger.info("✅ 쿠키 동의 버튼 클릭 완료")
+                time.sleep(2)
+            except Exception as e:
+                logger.warning(f"쿠키 동의 버튼 없음 또는 클릭 실패: {e}")
             
             # 현재 상태 확인
             current_url = self.driver.current_url
