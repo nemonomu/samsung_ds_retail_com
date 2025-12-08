@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 from config import DB_CONFIG_V2 as DB_CONFIG
 
 from config import FILE_SERVER_CONFIG
+from alert_monitor import monitor_and_alert
 
 class CentrecomScraper:
     def __init__(self, country_code='au'):
@@ -745,6 +746,7 @@ def main():
 
     if scraper.db_engine is None:
         logger.error("DB 연결 실패로 종료합니다.")
+        monitor_and_alert('au_centrecom', 0, None, error_message="DB 연결 실패")
         return
 
     if test_mode:
@@ -774,6 +776,7 @@ def main():
 
     if not urls_data:
         logger.warning("크롤링 대상이 없습니다.")
+        monitor_and_alert('au_centrecom', 0, None, error_message="크롤링 대상 URL이 없습니다")
         return
 
     logger.info(f"크롤링 대상: {len(urls_data)}개")
@@ -782,6 +785,7 @@ def main():
 
     if results_df is None or results_df.empty:
         logger.error("크롤링 결과가 없습니다.")
+        monitor_and_alert('au_centrecom', len(urls_data), None, error_message="크롤링 결과가 없습니다")
         return
 
     scraper.analyze_results(results_df)
@@ -801,6 +805,9 @@ def main():
     logger.info("=" * 80)
     logger.info("크롤링 프로세스 완료!")
     logger.info("=" * 80)
+
+    # 알림 발송
+    monitor_and_alert('au_centrecom', len(urls_data), results_df)
 
 if __name__ == "__main__":
     required_packages = [
