@@ -734,21 +734,40 @@ class AmazonIndiaScraper:
     
     def extract_ships_from_india(self):
         """인도 전용 ships_from 추출"""
+
+        # 1. Shipper/Seller가 같이 있는 경우 확인
+        try:
+            shipper_seller_element = self.driver.find_element(
+                By.XPATH, "//*[@id='merchantInfoFeature_feature_div']/div[1]/div/span"
+            )
+            if shipper_seller_element and "Shipper" in shipper_seller_element.text:
+                logger.info("      Shipper/Seller 케이스 감지")
+                # sellerProfileTriggerId에서 값 가져오기
+                seller_element = self.driver.find_element(By.XPATH, "//*[@id='sellerProfileTriggerId']")
+                if seller_element and seller_element.is_displayed():
+                    text = seller_element.text.strip()
+                    if text:
+                        logger.info(f"      Ships From 추출 성공 (Shipper/Seller): '{text}'")
+                        return text
+        except:
+            pass
+
+        # 2. 기존 선택자로 시도
         ships_from_selectors = self.selectors['in']['ships_from']
-        
+
         logger.info(f"\nShips From 추출 시작 - 선택자: {len(ships_from_selectors)}개")
-        
+
         for idx, selector in enumerate(ships_from_selectors, 1):
             try:
                 logger.info(f"\n  [{idx}/{len(ships_from_selectors)}] Ships From 선택자 시도: {selector}")
-                
+
                 if selector.startswith('//'):
                     elements = self.driver.find_elements(By.XPATH, selector)
                 else:
                     elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                
+
                 logger.info(f"      발견된 요소: {len(elements)}개")
-                
+
                 for i, element in enumerate(elements):
                     try:
                         if element.is_displayed():
@@ -758,10 +777,10 @@ class AmazonIndiaScraper:
                                 return text
                     except Exception as e:
                         logger.error(f"      요소 처리 오류: {e}")
-                
+
             except Exception as e:
                 logger.error(f"      오류: {str(e)}")
-        
+
         logger.error("\nShips From 추출 실패")
         return None
     
