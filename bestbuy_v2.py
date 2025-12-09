@@ -42,6 +42,9 @@ class BestBuyScraper:
         self.korea_tz = pytz.timezone('Asia/Seoul')
         self.local_tz = pytz.timezone('America/New_York')  # BestBuy 현지 시간 (워싱턴)
 
+        # 에러 로그 수집용 리스트
+        self.error_logs = []
+
         # DB 연결 설정
         self.setup_db_connection()
         
@@ -389,6 +392,7 @@ class BestBuyScraper:
             for pattern in blocked_patterns:
                 if pattern.lower() in title.lower():
                     logger.warning(f"⚠️ 차단 감지: {pattern}")
+                    self.error_logs.append(f"[차단 감지] URL: {url} | 패턴: {pattern}")
                     raise Exception(f"Blocked: {pattern}")
             
             # 현재 시간
@@ -496,6 +500,7 @@ class BestBuyScraper:
             
             if not price_found:
                 logger.warning("모든 가격 추출 방법 실패")
+                self.error_logs.append(f"[가격 추출 실패] URL: {url}")
             
             # 제목 추출
             try:
@@ -545,7 +550,8 @@ class BestBuyScraper:
             
         except Exception as e:
             logger.error(f"❌ 페이지 처리 오류: {e}")
-            
+            self.error_logs.append(f"[페이지 처리 오류] URL: {url} | 오류: {str(e)}")
+
             # 기본값 반환
             # V2: 타임존 분리
 
@@ -911,6 +917,7 @@ class BestBuyScraper:
 
             except Exception as e:
                 logger.error(f"❌ 스크래핑 중 오류 (URL: {row.get('url', 'unknown')}): {e}")
+                self.error_logs.append(f"[스크래핑 오류] URL: {row.get('url', 'unknown')} | 오류: {str(e)}")
                 continue
 
         # 정리
@@ -1065,8 +1072,8 @@ def main():
         
         logger.info("\n✅ 크롤링 프로세스 완료!")
 
-        # 크롤링 완료 후 알림 (빈 값 50% 이상 시 경고)
-        monitor_and_alert('usa_bestbuy', len(urls_data), results_df)
+        # 크롤링 완료 후 알림 (빈 값 50% 이상 시 경고, 에러 로그 포함)
+        monitor_and_alert('usa_bestbuy', len(urls_data), results_df, error_logs=scraper.error_logs)
 
     finally:
         # 드라이버 종료
