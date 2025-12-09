@@ -86,7 +86,15 @@ class BestBuyScraper:
             
             logger.info(f"✅ DB에서 선택자 로드 완료: {len(df)}개")
             
-            # price 선택자는 항상 하드코딩된 값 사용 (DB 무시)
+            # price, imageurl 선택자는 항상 하드코딩된 값 사용 (DB 무시)
+            self.XPATHS['imageurl'] = [
+                '/html/body/div[5]/div[4]/div[2]/div/div[2]/div[2]/div/div[2]/div/button/img',
+                '/html/body/div[5]/div[4]/div[2]/div/div[2]/div[2]/div/div[2]/div/button[1]/img',
+                '/html/body/div[5]/div[4]/div[1]/div/div[2]/div[2]/div/div[2]/div/button/img',
+                '/html/body/div[5]/div[4]/div[1]/div/div[2]/div[2]/div/div[2]/div/button[1]/img',
+                '//img[@class="primary-image"]',
+                '//div[@class="media-gallery"]//img'
+            ]
             self.XPATHS['price'] = [
                 '/html/body/div[5]/div[4]/div[1]/div/div[5]/div/div/div[1]/div/div[1]/div[2]/div[1]/div/div/div/div[1]/span',
                 '/html/body/div[5]/div[4]/div[1]/div/div[4]/div/div/div[1]/div/div[1]/div[2]/div[1]/div/div/div/div[1]/span',
@@ -113,10 +121,12 @@ class BestBuyScraper:
                         '//div[@class="sku-title"]//h1'
                     ],
                     'imageurl': [
+                        '/html/body/div[5]/div[4]/div[2]/div/div[2]/div[2]/div/div[2]/div/button/img',
                         '/html/body/div[5]/div[4]/div[2]/div/div[2]/div[2]/div/div[2]/div/button[1]/img',
+                        '/html/body/div[5]/div[4]/div[1]/div/div[2]/div[2]/div/div[2]/div/button/img',
                         '/html/body/div[5]/div[4]/div[1]/div/div[2]/div[2]/div/div[2]/div/button[1]/img',
                         '//img[@class="primary-image"]',
-                        '//div[@class="media-gallery"]//img'                        
+                        '//div[@class="media-gallery"]//img'
                     ],
                     'imageurl_fallback': [
                         '/html/body/div[5]/div[3]/div[1]/div/div[1]/img'
@@ -497,9 +507,18 @@ class BestBuyScraper:
                         break
                     except:
                         continue
+
+                # 제목 추출 실패 시 품절 상품용 fallback 시도
+                if not result['title']:
+                    try:
+                        title_element = self.driver.find_element(By.XPATH, '/html/body/div[5]/div[3]/div[1]/div/div[2]/h1')
+                        result['title'] = title_element.text.strip()
+                        logger.info(f"제목 (품절 fallback): {result['title'][:50]}...")
+                    except:
+                        pass
             except Exception as e:
                 logger.warning(f"제목 추출 실패: {e}")
-            
+
             # 이미지 URL 추출
             try:
                 for xpath in self.XPATHS.get('imageurl', []):
@@ -510,19 +529,15 @@ class BestBuyScraper:
                         break
                     except:
                         continue
-                
-                # 가격이 없고 이미지도 추출되지 않은 경우 fallback 선택자 시도
-                if result['retailprice'] is None and result['imageurl'] is None:
-                    logger.info("💡 가격이 없어 fallback 이미지 선택자로 시도 중...")
-                    for xpath in self.XPATHS.get('imageurl_fallback', []):
-                        try:
-                            image_element = self.driver.find_element(By.XPATH, xpath)
-                            result['imageurl'] = image_element.get_attribute('src')
-                            logger.info(f"✅ Fallback 이미지 URL: {result['imageurl'][:50]}...")
-                            break
-                        except Exception as xe:
-                            logger.info(f"❌ Fallback 선택자 실행 실패: {xe}")
-                            continue
+
+                # 이미지 추출 실패 시 품절 상품용 fallback 시도
+                if not result['imageurl']:
+                    try:
+                        image_element = self.driver.find_element(By.XPATH, '/html/body/div[5]/div[3]/div[1]/div/div[1]/img')
+                        result['imageurl'] = image_element.get_attribute('src')
+                        logger.info(f"이미지 URL (품절 fallback): {result['imageurl'][:50]}...")
+                    except:
+                        pass
             except Exception as e:
                 logger.warning(f"이미지 URL 추출 실패: {e}")
             
