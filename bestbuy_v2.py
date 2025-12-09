@@ -1075,6 +1075,16 @@ def main():
         # 크롤링 완료 후 알림 (빈 값 50% 이상 시 경고, 에러 로그 포함)
         monitor_and_alert('usa_bestbuy', len(urls_data), results_df, error_logs=scraper.error_logs)
 
+    except Exception as e:
+        # 예외 발생 시 알림
+        logger.error(f"크롤링 중 예외 발생: {e}")
+        import traceback
+        error_detail = traceback.format_exc()
+        scraper.error_logs.append(f"[치명적 오류] {str(e)}\n{error_detail}")
+        monitor_and_alert('usa_bestbuy', len(urls_data) if 'urls_data' in locals() else 0,
+                         results_df if 'results_df' in locals() else None,
+                         error_message=str(e), error_logs=scraper.error_logs)
+
     finally:
         # 드라이버 종료
         if scraper.driver:
