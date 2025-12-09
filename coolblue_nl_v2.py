@@ -1027,80 +1027,100 @@ def main():
     
     # 실제 크롤링
     logger.info("\n📊 실제 크롤링 시작")
-    
+
     # 연결 테스트
     if not scraper.test_connection():
         logger.error("연결 테스트 실패로 종료합니다.")
         return
-    
-    # 크롤링 대상 조회
-    urls_data = scraper.get_crawl_targets()
-    
-    if not urls_data:
-        logger.warning("크롤링 대상이 없습니다.")
-        monitor_and_alert('nl_coolblue', 0, None, error_message="크롤링 대상 URL이 없습니다")
-        return
 
-    logger.info(f"✅ 크롤링 대상: {len(urls_data)}개")
+    # 변수 초기화 (except 블록에서 사용하기 위해)
+    urls_data = []
+    results_df = None
 
-    # 시작 시간
-    start_time = datetime.now(scraper.korea_tz)
-    
-    # 크롤링 실행
-    results_df = scraper.scrape_urls(urls_data)
-    
-    if results_df is None or results_df.empty:
-        logger.error("크롤링 결과가 없습니다.")
-        monitor_and_alert('nl_coolblue', len(urls_data), None, error_message="크롤링 결과가 없습니다")
-        return
+    try:
+        # 크롤링 대상 조회
+        urls_data = scraper.get_crawl_targets()
 
-    # 종료 시간
-    end_time = datetime.now(scraper.korea_tz)
-    
-    # 최종 결과 저장
-    logger.info("\n💾 최종 결과 저장")
-    
-    # 최종 통계
-    success_count = results_df['retailprice'].notna().sum()
-    failed_count = results_df['retailprice'].isna().sum()
-    success_rate = (success_count / len(results_df) * 100) if len(results_df) > 0 else 0
-    
-    logger.info(f"\n📊 === 최종 결과 ===")
-    logger.info(f"전체: {len(results_df)}개")
-    logger.info(f"성공: {success_count}개")
-    logger.info(f"실패: {failed_count}개")
-    logger.info(f"성공률: {success_rate:.1f}%")
-    logger.info(f"소요 시간: {round((end_time - start_time).total_seconds() / 60, 2)} 분")
-    
-    # DB와 파일서버에 최종 결과 저장
-    save_results = scraper.save_results(
-        results_df,
-        save_db=True,
-        upload_server=True
-    )
-    
-    # 상세 분석
-    scraper.analyze_results(results_df)
-    
-    # 저장 결과 출력
-    logger.info("\n📊 저장 결과:")
-    logger.info(f"DB 저장: {'✅ 성공' if save_results['db_saved'] else '❌ 실패'}")
-    logger.info(f"파일서버 업로드: {'✅ 성공' if save_results['server_uploaded'] else '❌ 실패'}")
-    
-    # 실패한 URL 로그
-    if failed_count > 0:
-        logger.warning(f"\n⚠️ {failed_count}개 URL에서 크롤링 실패")
-        failed_items = results_df[results_df['retailprice'].isna()]    # retailprice로 판단
-        logger.warning("실패 목록 (상위 5개):")
-        for idx, row in failed_items.head().iterrows():
-            logger.warning(f"  - {row['brand']} {row['item']}: {row['producturl'][:50]}...")
-    
-    logger.info("\n✅ 크롤링 프로세스 완료!")
-    logger.info(f"📁 모든 결과 파일이 파일서버에 업로드되었습니다.")
-    logger.info(f"📍 업로드 위치: {FILE_SERVER_CONFIG['host']}:{FILE_SERVER_CONFIG['upload_path']}/")
+        if not urls_data:
+            logger.warning("크롤링 대상이 없습니다.")
+            monitor_and_alert('nl_coolblue', 0, None, error_message="크롤링 대상 URL이 없습니다")
+            return
 
-    # 크롤링 완료 후 알림 (빈 값 50% 이상 시 경고)
-    monitor_and_alert('nl_coolblue', len(urls_data), results_df)
+        logger.info(f"✅ 크롤링 대상: {len(urls_data)}개")
+
+        # 시작 시간
+        start_time = datetime.now(scraper.korea_tz)
+
+        # 크롤링 실행
+        results_df = scraper.scrape_urls(urls_data)
+
+        if results_df is None or results_df.empty:
+            logger.error("크롤링 결과가 없습니다.")
+            monitor_and_alert('nl_coolblue', len(urls_data), None, error_message="크롤링 결과가 없습니다")
+            return
+
+        # 종료 시간
+        end_time = datetime.now(scraper.korea_tz)
+
+        # 최종 결과 저장
+        logger.info("\n💾 최종 결과 저장")
+
+        # 최종 통계
+        success_count = results_df['retailprice'].notna().sum()
+        failed_count = results_df['retailprice'].isna().sum()
+        success_rate = (success_count / len(results_df) * 100) if len(results_df) > 0 else 0
+
+        logger.info(f"\n📊 === 최종 결과 ===")
+        logger.info(f"전체: {len(results_df)}개")
+        logger.info(f"성공: {success_count}개")
+        logger.info(f"실패: {failed_count}개")
+        logger.info(f"성공률: {success_rate:.1f}%")
+        logger.info(f"소요 시간: {round((end_time - start_time).total_seconds() / 60, 2)} 분")
+
+        # DB와 파일서버에 최종 결과 저장
+        save_results = scraper.save_results(
+            results_df,
+            save_db=True,
+            upload_server=True
+        )
+
+        # 상세 분석
+        scraper.analyze_results(results_df)
+
+        # 저장 결과 출력
+        logger.info("\n📊 저장 결과:")
+        logger.info(f"DB 저장: {'✅ 성공' if save_results['db_saved'] else '❌ 실패'}")
+        logger.info(f"파일서버 업로드: {'✅ 성공' if save_results['server_uploaded'] else '❌ 실패'}")
+
+        # 실패한 URL 로그
+        if failed_count > 0:
+            logger.warning(f"\n⚠️ {failed_count}개 URL에서 크롤링 실패")
+            failed_items = results_df[results_df['retailprice'].isna()]
+            logger.warning("실패 목록 (상위 5개):")
+            for idx, row in failed_items.head().iterrows():
+                logger.warning(f"  - {row['brand']} {row['item']}: {row['producturl'][:50]}...")
+
+        logger.info("\n✅ 크롤링 프로세스 완료!")
+        logger.info(f"📁 모든 결과 파일이 파일서버에 업로드되었습니다.")
+        logger.info(f"📍 업로드 위치: {FILE_SERVER_CONFIG['host']}:{FILE_SERVER_CONFIG['upload_path']}/")
+
+        # 크롤링 완료 후 알림 (빈 값 50% 이상 시 경고)
+        monitor_and_alert('nl_coolblue', len(urls_data), results_df)
+
+    except Exception as e:
+        # 예외 발생 시 알림
+        logger.error(f"크롤링 중 예외 발생: {e}")
+        import traceback
+        error_detail = traceback.format_exc()
+        logger.error(error_detail)
+        monitor_and_alert('nl_coolblue', len(urls_data), results_df,
+                         error_message=str(e))
+
+    finally:
+        # 드라이버 종료
+        if scraper.driver:
+            scraper.driver.quit()
+            logger.info("🔧 드라이버 종료")
 
 if __name__ == "__main__":
     # 필요한 패키지 설치 확인
