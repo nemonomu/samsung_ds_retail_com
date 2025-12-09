@@ -753,11 +753,11 @@ class BestBuyScraper:
 
         if upload_server:
             try:
-                # 1. CSV 파일 생성
+                # 1. CSV 파일 생성 (복사본 사용하여 원본 컬럼명 유지)
                 csv_filename = f'{base_filename}.csv'
-                # Header를 대문자로 변환
-                df.columns = df.columns.str.upper()
-                df.to_csv(csv_filename, index=False, encoding='utf-8', lineterminator='\r\n')
+                df_csv = df.copy()
+                df_csv.columns = df_csv.columns.str.upper()
+                df_csv.to_csv(csv_filename, index=False, encoding='utf-8', lineterminator='\r\n')
 
                 # 2. CSV를 ZIP으로 압축
                 zip_filename = f'{base_filename}.zip'
@@ -1062,13 +1062,13 @@ def main():
         logger.info(f"DB 저장: {'✅ 성공' if save_results['db_saved'] else '❌ 실패'}")
         logger.info(f"파일서버 업로드: {'✅ 성공' if save_results['server_uploaded'] else '❌ 실패'}")
         
-        # 실패한 URL 로그 (컬럼명이 대문자로 변환되었으므로 대문자 사용)
+        # 실패한 URL 로그
         if failed_count > 0:
             logger.warning(f"\n⚠️ {failed_count}개 URL에서 가격 추출 실패")
-            failed_items = results_df[results_df['RETAILPRICE'].isna()]
+            failed_items = results_df[results_df['retailprice'].isna()]
             logger.warning("실패 목록 (상위 5개):")
             for idx, row in failed_items.head().iterrows():
-                logger.warning(f"  - {row['BRAND']} {row['ITEM']}: {row['PRODUCTURL'][:50]}...")
+                logger.warning(f"  - {row['brand']} {row['item']}: {row['producturl'][:50]}...")
         
         logger.info("\n✅ 크롤링 프로세스 완료!")
 
