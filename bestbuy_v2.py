@@ -1016,6 +1016,10 @@ def main():
             scraper.driver.quit()
         return
     
+    # 변수 초기화 (except 블록에서 사용하기 위해)
+    urls_data = []
+    results_df = None
+
     try:
         # 전체 크롤링 실행
         logger.info("\n📊 전체 크롤링 시작")
@@ -1081,8 +1085,7 @@ def main():
         import traceback
         error_detail = traceback.format_exc()
         scraper.error_logs.append(f"[치명적 오류] {str(e)}\n{error_detail}")
-        monitor_and_alert('usa_bestbuy', len(urls_data) if 'urls_data' in locals() else 0,
-                         results_df if 'results_df' in locals() else None,
+        monitor_and_alert('usa_bestbuy', len(urls_data), results_df,
                          error_message=str(e), error_logs=scraper.error_logs)
 
     finally:
