@@ -1047,6 +1047,9 @@ def main():
         logger.info(f"실패: {failed_count}개")
         logger.info(f"성공률: {success_rate:.1f}%")
         
+        # 상세 분석 (save_results 전에 실행 - 컬럼명 대문자 변환 전)
+        scraper.analyze_results(results_df)
+
         # DB와 파일서버에 결과 저장
         save_results = scraper.save_results(
             results_df,
@@ -1054,21 +1057,18 @@ def main():
             upload_server=True
         )
         
-        # 상세 분석
-        scraper.analyze_results(results_df)
-        
         # 저장 결과 출력
         logger.info("\n📊 저장 결과:")
         logger.info(f"DB 저장: {'✅ 성공' if save_results['db_saved'] else '❌ 실패'}")
         logger.info(f"파일서버 업로드: {'✅ 성공' if save_results['server_uploaded'] else '❌ 실패'}")
         
-        # 실패한 URL 로그
+        # 실패한 URL 로그 (컬럼명이 대문자로 변환되었으므로 대문자 사용)
         if failed_count > 0:
             logger.warning(f"\n⚠️ {failed_count}개 URL에서 가격 추출 실패")
-            failed_items = results_df[results_df['retailprice'].isna()]
+            failed_items = results_df[results_df['RETAILPRICE'].isna()]
             logger.warning("실패 목록 (상위 5개):")
             for idx, row in failed_items.head().iterrows():
-                logger.warning(f"  - {row['brand']} {row['item']}: {row['producturl'][:50]}...")
+                logger.warning(f"  - {row['BRAND']} {row['ITEM']}: {row['PRODUCTURL'][:50]}...")
         
         logger.info("\n✅ 크롤링 프로세스 완료!")
 
