@@ -93,7 +93,15 @@ def analyze_crawl_results(country_code, target_count, results_df, error_logs=Non
     for field in fields_to_check:
         if field in results_df.columns:
             # None, NaN, 빈 문자열 모두 빈 값으로 처리
-            empty_count = results_df[field].isna().sum() + (results_df[field] == '').sum()
+            try:
+                # 숫자 타입인 경우 isna()만 사용
+                if results_df[field].dtype in ['float64', 'int64', 'float', 'int']:
+                    empty_count = results_df[field].isna().sum()
+                else:
+                    # 문자열 타입인 경우 빈 문자열도 체크
+                    empty_count = results_df[field].isna().sum() + (results_df[field] == '').sum()
+            except Exception:
+                empty_count = results_df[field].isna().sum()
             empty_rate = (empty_count / crawled_count) * 100 if crawled_count > 0 else 0
 
             analysis['field_stats'][field] = {
