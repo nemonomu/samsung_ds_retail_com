@@ -139,8 +139,14 @@ def send_alert_email(analysis, error_message=None):
 
         # 이메일 제목 생성
         country_name = analysis['country_name']
+
+        # 가격 미수집 개수 확인 (2개 이상이면 ERROR)
+        price_empty_count = analysis['field_stats'].get('retailprice', {}).get('empty_count', 0)
+
         if analysis['is_critical'] or error_message:
             subject = f"[CRITICAL] {country_name} 크롤링 알림 - {now.strftime('%Y-%m-%d %H:%M')}"
+        elif price_empty_count >= 2:
+            subject = f"[ERROR] {country_name} 크롤링 알림 - {now.strftime('%Y-%m-%d %H:%M')} (가격 미수집 {price_empty_count}개)"
         elif analysis['alerts']:
             subject = f"[WARNING] {country_name} 크롤링 알림 - {now.strftime('%Y-%m-%d %H:%M')}"
         else:
