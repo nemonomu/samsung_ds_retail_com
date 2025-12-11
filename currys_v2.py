@@ -521,11 +521,11 @@ class CurrysScraper:
 
         if upload_server:
             try:
-                # 1. CSV 파일 생성
+                # 1. CSV 파일 생성 (복사본 사용하여 원본 컬럼명 유지)
                 csv_filename = f'{base_filename}.csv'
-                # Header를 대문자로 변환
-                df.columns = df.columns.str.upper()
-                df.to_csv(csv_filename, index=False, encoding='utf-8', lineterminator='\r\n')
+                df_csv = df.copy()
+                df_csv.columns = df_csv.columns.str.upper()
+                df_csv.to_csv(csv_filename, index=False, encoding='utf-8', lineterminator='\r\n')
 
                 # 2. CSV를 ZIP으로 압축
                 zip_filename = f'{base_filename}.zip'
