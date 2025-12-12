@@ -881,7 +881,19 @@ class AmazonScraper:
             if (not result['ships_from'] and not result['sold_by']):
                 logger.warning("ships_from과 sold_by가 모두 빈값 -> retailprice를 빈값으로 설정")
                 result['retailprice'] = None
-            
+
+            # ships_from 또는 sold_by가 있는데 price가 없으면 새로고침 후 재시도
+            if result['retailprice'] is None and (result['ships_from'] or result['sold_by']):
+                logger.warning("ships_from/sold_by 있는데 price 없음 - 새로고침 후 재시도")
+                self.driver.refresh()
+                time.sleep(3)
+                self.wait_for_page_load()
+                result['retailprice'] = self.extract_price(self.country_code)
+                if result['retailprice']:
+                    logger.info(f"새로고침 후 가격 추출 성공: {result['retailprice']}")
+                else:
+                    logger.warning("새로고침 후에도 가격 추출 실패")
+
             for selector in self.selectors[self.country_code].get('imageurl', []):
                 try:
                     if selector.startswith('//'):

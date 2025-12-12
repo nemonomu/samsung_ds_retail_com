@@ -10,6 +10,7 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 import pytz
 import logging
+import pandas as pd
 
 from config import EMAIL_CONFIG
 
@@ -56,6 +57,7 @@ def analyze_crawl_results(country_code, target_count, results_df, error_logs=Non
         'crawled_count': len(results_df) if results_df is not None else 0,
         'alerts': [],
         'is_critical': False,
+        'has_price_error': False,  # ships_from/sold_by 있는데 price 없는 경우
         'field_stats': {},
         'error_logs': error_logs or []
     }
@@ -119,6 +121,26 @@ def analyze_crawl_results(country_code, target_count, results_df, error_logs=Non
                 })
                 analysis['is_critical'] = True
 
+    # ships_from 또는 sold_by가 있는데 retailprice가 없는 경우 감지
+    if results_df is not None and len(results_df) > 0:
+        if 'retailprice' in results_df.columns and ('ships_from' in results_df.columns or 'sold_by' in results_df.columns):
+            for idx, row in results_df.iterrows():
+                # retailprice가 None, NaN, 또는 빈 문자열인지 확인
+                price_val = row['retailprice'] if 'retailprice' in row.index else None
+                price_is_empty = price_val is None or pd.isna(price_val) or (isinstance(price_val, str) and price_val == '')
+
+                # ships_from이 유효한 값인지 확인
+                ships_from_val = row['ships_from'] if 'ships_from' in row.index else None
+                ships_from_exists = ships_from_val is not None and not pd.isna(ships_from_val) and ships_from_val != ''
+
+                # sold_by가 유효한 값인지 확인
+                sold_by_val = row['sold_by'] if 'sold_by' in row.index else None
+                sold_by_exists = sold_by_val is not None and not pd.isna(sold_by_val) and sold_by_val != ''
+
+                if price_is_empty and (ships_from_exists or sold_by_exists):
+                    analysis['has_price_error'] = True
+                    break
+
     return analysis
 
 
@@ -143,14 +165,17 @@ def send_alert_email(analysis, error_message=None):
         # 가격 미수집 개수 확인 (2개 이상이면 ERROR)
         price_empty_count = analysis['field_stats'].get('retailprice', {}).get('empty_count', 0)
 
+        # price error 접두사 (ships_from/sold_by 있는데 price 없는 경우)
+        price_error_prefix = "price error " if analysis.get('has_price_error', False) else ""
+
         if analysis['is_critical'] or error_message:
-            subject = f"[CRITICAL] {country_name} 크롤링 알림 - {now.strftime('%Y-%m-%d %H:%M')}"
+            subject = f"{price_error_prefix}[CRITICAL] {country_name} 크롤링 알림 - {now.strftime('%Y-%m-%d %H:%M')}"
         elif price_empty_count >= 2:
-            subject = f"[ERROR] {country_name} 크롤링 알림 - {now.strftime('%Y-%m-%d %H:%M')} (가격 미수집 {price_empty_count}개)"
+            subject = f"{price_error_prefix}[ERROR] {country_name} 크롤링 알림 - {now.strftime('%Y-%m-%d %H:%M')} (가격 미수집 {price_empty_count}개)"
         elif analysis['alerts']:
-            subject = f"[WARNING] {country_name} 크롤링 알림 - {now.strftime('%Y-%m-%d %H:%M')}"
+            subject = f"{price_error_prefix}[WARNING] {country_name} 크롤링 알림 - {now.strftime('%Y-%m-%d %H:%M')}"
         else:
-            subject = f"[OK] {country_name} 크롤링 리포트 - {now.strftime('%Y-%m-%d %H:%M')}"
+            subject = f"{price_error_prefix}[OK] {country_name} 크롤링 리포트 - {now.strftime('%Y-%m-%d %H:%M')}"
 
         # 이메일 본문 생성 (HTML)
         html_content = f"""
