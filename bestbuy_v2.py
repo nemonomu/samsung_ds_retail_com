@@ -503,6 +503,7 @@ class BestBuyScraper:
                 self.error_logs.append(f"[가격 추출 실패] URL: {url}")
             
             # 제목 추출
+            is_soldout_fallback = False  # 품절 fallback 여부 플래그
             try:
                 for xpath in self.XPATHS.get('title', []):
                     try:
@@ -519,6 +520,7 @@ class BestBuyScraper:
                         title_element = self.driver.find_element(By.XPATH, '/html/body/div[5]/div[3]/div[1]/div/div[2]/h1')
                         result['title'] = title_element.text.strip()
                         logger.info(f"제목 (품절 fallback): {result['title'][:50]}...")
+                        is_soldout_fallback = True  # 품절 fallback으로 제목 추출됨
                     except:
                         pass
             except Exception as e:
@@ -547,7 +549,8 @@ class BestBuyScraper:
                 logger.warning(f"이미지 URL 추출 실패: {e}")
 
             # 가격 추출 실패 시 재시도 (exception 없이 price가 None인 경우)
-            if result['retailprice'] is None and retry_count < max_retries:
+            # 단, 품절 fallback으로 제목을 추출한 경우 재시도하지 않음 (품절 상품은 가격 없는 것이 정상)
+            if result['retailprice'] is None and retry_count < max_retries and not is_soldout_fallback:
                 wait_time = (retry_count + 1) * 10
                 logger.warning(f"⚠️ 가격 추출 실패, {wait_time}초 후 재시도... (재시도 {retry_count + 1}/{max_retries})")
                 time.sleep(wait_time)
@@ -566,6 +569,10 @@ class BestBuyScraper:
                     self.initialize_session()
 
                 return self.extract_product_info(url, row_data, retry_count + 1, max_retries)
+
+            # 품절 fallback으로 제목 추출된 경우 로그 출력
+            if is_soldout_fallback and result['retailprice'] is None:
+                logger.info("ℹ️ 품절 상품으로 판단, 가격 재시도 생략")
 
             return result
 
