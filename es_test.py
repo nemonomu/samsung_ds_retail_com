@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Amazon ES 테스트 스크립트 - title, imageurl, sold_by, ships_from 추출 테스트
+Amazon ES 테스트 스크립트 - title, imageurl, sold_by, ships_from, retailprice 추출 테스트
 DB 저장 없음
 """
 import undetected_chromedriver as uc
@@ -10,6 +10,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 import time
 import random
+import re
 import logging
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -173,6 +174,130 @@ class AmazonTestScraper:
         logger.warning(f"[ImageURL] 추출 실패")
         return None
 
+    def is_excluded_price_element(self, element):
+        """추천상품/관련상품 영역 제외 필터링"""
+        try:
+            is_in_lpo = self.driver.execute_script("""
+                var el = arguments[0];
+                while (el && el !== document.body) {
+                    var id = el.id || '';
+                    if (id.indexOf('desktop-dp-lpo') !== -1) {
+                        return true;
+                    }
+                    el = el.parentElement;
+                }
+                return false;
+            """, element)
+            return is_in_lpo
+        except:
+            return False
+
+    def parse_price(self, price_text):
+        """스페인 가격 파싱"""
+        try:
+            price_text = price_text.strip()
+            cleaned = re.sub(r'[€\s]', '', price_text)
+
+            if ',' in cleaned and '.' not in cleaned:
+                cleaned = cleaned.replace(',', '.')
+            elif ',' in cleaned and '.' in cleaned:
+                parts = cleaned.rsplit(',', 1)
+                if len(parts) == 2 and len(parts[1]) <= 2:
+                    integer_part = parts[0].replace('.', '')
+                    decimal_part = parts[1]
+                    cleaned = f"{integer_part}.{decimal_part}"
+
+            if re.match(r'^\d+(\.\d{1,2})?$', cleaned):
+                price_value = float(cleaned)
+                if 10 <= price_value <= 10000:
+                    return cleaned
+        except:
+            pass
+        return None
+
+    def extract_price(self):
+        """가격 추출"""
+        logger.info("[RetailPrice] 추출 시작")
+
+        # 1단계: a-offscreen 가격
+        logger.info("  1단계: centerCol 내 a-offscreen 가격")
+        offscreen_selectors = [
+            "//*[@id='centerCol']//span[@class='a-price']//span[@class='a-offscreen']",
+            "//*[@id='centerCol']//*[@id='apex_desktop']//span[@class='a-price']//span[@class='a-offscreen']",
+            "//*[@id='centerCol']//*[@id='corePrice_feature_div']//span[@class='a-offscreen']",
+            "//*[@id='apex_desktop']//span[@class='a-price']//span[@class='a-offscreen']",
+            "//*[@id='corePrice_feature_div']//span[@class='a-offscreen']",
+            "(//span[@class='a-price']//span[@class='a-offscreen'])[1]"
+        ]
+
+        for idx, selector in enumerate(offscreen_selectors, 1):
+            try:
+                elements = self.driver.find_elements(By.XPATH, selector)
+                logger.info(f"    [{idx}/{len(offscreen_selectors)}] {selector[:50]}... -> {len(elements)}개")
+
+                for element in elements:
+                    if element.is_displayed():
+                        if self.is_excluded_price_element(element):
+                            logger.info(f"      추천상품 영역 스킵")
+                            continue
+
+                        text = element.get_attribute('textContent') or element.text
+                        if text:
+                            text = text.strip()
+                            logger.info(f"      원본: '{text}'")
+                            price = self.parse_price(text)
+                            if price:
+                                logger.info(f"[RetailPrice] 추출 성공: {price}")
+                                return price
+            except:
+                continue
+
+        # 2단계: whole + fraction 조합
+        logger.info("  2단계: whole + fraction 조합")
+        combos = [
+            {
+                'whole': "//*[@id='corePrice_feature_div']//span[@class='a-price-whole']",
+                'fraction': "//*[@id='corePrice_feature_div']//span[@class='a-price-fraction']"
+            },
+            {
+                'whole': "//*[@id='apex_desktop']//span[@class='a-price-whole']",
+                'fraction': "//*[@id='apex_desktop']//span[@class='a-price-fraction']"
+            },
+            {
+                'whole': "(//span[@class='a-price-whole'])[1]",
+                'fraction': "(//span[@class='a-price-fraction'])[1]"
+            }
+        ]
+
+        for idx, combo in enumerate(combos, 1):
+            try:
+                whole_elem = self.driver.find_element(By.XPATH, combo['whole'])
+                fraction_elem = self.driver.find_element(By.XPATH, combo['fraction'])
+
+                if whole_elem.is_displayed() and fraction_elem.is_displayed():
+                    if self.is_excluded_price_element(whole_elem):
+                        logger.info(f"    [{idx}] 추천상품 영역 스킵")
+                        continue
+
+                    whole_text = whole_elem.text.strip()
+                    fraction_text = fraction_elem.text.strip()
+                    logger.info(f"    [{idx}] whole: '{whole_text}', fraction: '{fraction_text}'")
+
+                    if whole_text and fraction_text:
+                        fraction_clean = re.sub(r'[^\d]', '', fraction_text)
+                        if fraction_clean:
+                            combined = f"{whole_text}.{fraction_clean}"
+                            logger.info(f"      조합: '{combined}'")
+                            price = self.parse_price(combined)
+                            if price:
+                                logger.info(f"[RetailPrice] 추출 성공: {price}")
+                                return price
+            except:
+                continue
+
+        logger.warning("[RetailPrice] 추출 실패")
+        return None
+
     def extract_product_info(self, url):
         try:
             logger.info(f"URL 접속: {url}")
@@ -182,6 +307,7 @@ class AmazonTestScraper:
             result = {
                 'url': url,
                 'title': None,
+                'retailprice': None,
                 'imageurl': None,
                 'sold_by': None,
                 'ships_from': None
@@ -189,6 +315,9 @@ class AmazonTestScraper:
 
             # Title 추출
             result['title'] = self.extract_element_text(self.selectors['title'], "Title")
+
+            # RetailPrice 추출
+            result['retailprice'] = self.extract_price()
 
             # ImageURL 추출
             result['imageurl'] = self.extract_imageurl()
@@ -220,6 +349,7 @@ class AmazonTestScraper:
             return {
                 'url': url,
                 'title': None,
+                'retailprice': None,
                 'imageurl': None,
                 'sold_by': None,
                 'ships_from': None
@@ -243,6 +373,7 @@ class AmazonTestScraper:
                 print(f"\n결과:")
                 print(f"  URL: {result['url']}")
                 print(f"  Title: {result['title'][:60] + '...' if result['title'] and len(result['title']) > 60 else result['title']}")
+                print(f"  RetailPrice: {result['retailprice']}")
                 print(f"  ImageURL: {'있음' if result['imageurl'] else 'None'}")
                 print(f"  Sold By: {result['sold_by']}")
                 print(f"  Ships From: {result['ships_from']}")
@@ -264,6 +395,7 @@ class AmazonTestScraper:
         for i, r in enumerate(results, 1):
             print(f"\n[{i}] {r['url']}")
             print(f"    Title: {r['title'][:50] + '...' if r['title'] and len(r['title']) > 50 else r['title']}")
+            print(f"    RetailPrice: {r['retailprice']}")
             print(f"    ImageURL: {'O' if r['imageurl'] else 'X'}")
             print(f"    Sold By: {r['sold_by']}")
             print(f"    Ships From: {r['ships_from']}")
@@ -274,6 +406,7 @@ class AmazonTestScraper:
         print(f"{'='*80}")
         print(f"전체: {len(results)}")
         print(f"Title 성공: {sum(1 for r in results if r['title'])}")
+        print(f"RetailPrice 성공: {sum(1 for r in results if r['retailprice'])}")
         print(f"ImageURL 성공: {sum(1 for r in results if r['imageurl'])}")
         print(f"Sold By 성공: {sum(1 for r in results if r['sold_by'])}")
         print(f"Ships From 성공: {sum(1 for r in results if r['ships_from'])}")
