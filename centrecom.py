@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 from config import DB_CONFIG_V2 as DB_CONFIG
 
 from config import FILE_SERVER_CONFIG
+from alert_monitor import monitor_and_alert
 
 class CentrecomScraper:
     def __init__(self, country_code='au'):
@@ -745,6 +746,7 @@ def main():
 
     if scraper.db_engine is None:
         logger.error("DB 연결 실패로 종료합니다.")
+        monitor_and_alert('au_centrecom', 0, None, error_message="DB 연결 실패")
         return
 
     if test_mode:
@@ -770,37 +772,63 @@ def main():
         return
 
     logger.info("전체 크롤링 시작")
-    urls_data = scraper.get_crawl_targets(limit=max_items)
 
-    if not urls_data:
-        logger.warning("크롤링 대상이 없습니다.")
-        return
+    # 변수 초기화 (except 블록에서 사용하기 위해)
+    urls_data = []
+    results_df = None
 
-    logger.info(f"크롤링 대상: {len(urls_data)}개")
+    try:
+        urls_data = scraper.get_crawl_targets(limit=max_items)
 
-    results_df = scraper.scrape_urls(urls_data, max_items)
+        if not urls_data:
+            logger.warning("크롤링 대상이 없습니다.")
+            monitor_and_alert('au_centrecom', 0, None, error_message="크롤링 대상 URL이 없습니다")
+            return
 
-    if results_df is None or results_df.empty:
-        logger.error("크롤링 결과가 없습니다.")
-        return
+        logger.info(f"크롤링 대상: {len(urls_data)}개")
 
-    scraper.analyze_results(results_df)
+        results_df = scraper.scrape_urls(urls_data, max_items)
 
-    save_results = scraper.save_results(
-        results_df,
-        save_db=True,
-        upload_server=True
-    )
+        if results_df is None or results_df.empty:
+            logger.error("크롤링 결과가 없습니다.")
+            monitor_and_alert('au_centrecom', len(urls_data), None, error_message="크롤링 결과가 없습니다")
+            return
 
-    logger.info("=" * 80)
-    logger.info("저장 결과")
-    logger.info("=" * 80)
-    logger.info(f"DB 저장: {'성공' if save_results['db_saved'] else '실패'}")
-    logger.info(f"파일서버 업로드: {'성공' if save_results['server_uploaded'] else '실패'}")
+        scraper.analyze_results(results_df)
 
-    logger.info("=" * 80)
-    logger.info("크롤링 프로세스 완료!")
-    logger.info("=" * 80)
+        save_results = scraper.save_results(
+            results_df,
+            save_db=True,
+            upload_server=True
+        )
+
+        logger.info("=" * 80)
+        logger.info("저장 결과")
+        logger.info("=" * 80)
+        logger.info(f"DB 저장: {'성공' if save_results['db_saved'] else '실패'}")
+        logger.info(f"파일서버 업로드: {'성공' if save_results['server_uploaded'] else '실패'}")
+
+        logger.info("=" * 80)
+        logger.info("크롤링 프로세스 완료!")
+        logger.info("=" * 80)
+
+        # 알림 발송
+        monitor_and_alert('au_centrecom', len(urls_data), results_df)
+
+    except Exception as e:
+        # 예외 발생 시 알림
+        logger.error(f"크롤링 중 예외 발생: {e}")
+        import traceback
+        error_detail = traceback.format_exc()
+        logger.error(error_detail)
+        monitor_and_alert('au_centrecom', len(urls_data), results_df,
+                         error_message=str(e))
+
+    finally:
+        # 드라이버 종료
+        if scraper.driver:
+            scraper.driver.quit()
+            logger.info("🔧 드라이버 종료")
 
 if __name__ == "__main__":
     required_packages = [

@@ -10,6 +10,7 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 import pytz
 import logging
+import pandas as pd
 
 from config import EMAIL_CONFIG
 
@@ -56,6 +57,7 @@ def analyze_crawl_results(country_code, target_count, results_df, error_logs=Non
         'crawled_count': len(results_df) if results_df is not None else 0,
         'alerts': [],
         'is_critical': False,
+        'has_price_error': False,  # ships_from/sold_by 있는데 price 없는 경우
         'field_stats': {},
         'error_logs': error_logs or []
     }
@@ -93,7 +95,15 @@ def analyze_crawl_results(country_code, target_count, results_df, error_logs=Non
     for field in fields_to_check:
         if field in results_df.columns:
             # None, NaN, 빈 문자열 모두 빈 값으로 처리
-            empty_count = results_df[field].isna().sum() + (results_df[field] == '').sum()
+            try:
+                # 숫자 타입인 경우 isna()만 사용
+                if results_df[field].dtype in ['float64', 'int64', 'float', 'int']:
+                    empty_count = results_df[field].isna().sum()
+                else:
+                    # 문자열 타입인 경우 빈 문자열도 체크
+                    empty_count = results_df[field].isna().sum() + (results_df[field] == '').sum()
+            except Exception:
+                empty_count = results_df[field].isna().sum()
             empty_rate = (empty_count / crawled_count) * 100 if crawled_count > 0 else 0
 
             analysis['field_stats'][field] = {
@@ -110,6 +120,26 @@ def analyze_crawl_results(country_code, target_count, results_df, error_logs=Non
                     'message': f'{field_names.get(field, field)} 빈 값 {empty_rate:.1f}% ({empty_count}/{crawled_count})'
                 })
                 analysis['is_critical'] = True
+
+    # ships_from 또는 sold_by가 있는데 retailprice가 없는 경우 감지
+    if results_df is not None and len(results_df) > 0:
+        if 'retailprice' in results_df.columns and ('ships_from' in results_df.columns or 'sold_by' in results_df.columns):
+            for idx, row in results_df.iterrows():
+                # retailprice가 None, NaN, 또는 빈 문자열인지 확인
+                price_val = row['retailprice'] if 'retailprice' in row.index else None
+                price_is_empty = price_val is None or pd.isna(price_val) or (isinstance(price_val, str) and price_val == '')
+
+                # ships_from이 유효한 값인지 확인
+                ships_from_val = row['ships_from'] if 'ships_from' in row.index else None
+                ships_from_exists = ships_from_val is not None and not pd.isna(ships_from_val) and ships_from_val != ''
+
+                # sold_by가 유효한 값인지 확인
+                sold_by_val = row['sold_by'] if 'sold_by' in row.index else None
+                sold_by_exists = sold_by_val is not None and not pd.isna(sold_by_val) and sold_by_val != ''
+
+                if price_is_empty and (ships_from_exists or sold_by_exists):
+                    analysis['has_price_error'] = True
+                    break
 
     return analysis
 
@@ -131,12 +161,26 @@ def send_alert_email(analysis, error_message=None):
 
         # 이메일 제목 생성
         country_name = analysis['country_name']
+
+        # 가격 미수집 개수 및 비율 확인
+        price_stats = analysis['field_stats'].get('retailprice', {})
+        price_empty_count = price_stats.get('empty_count', 0)
+        price_empty_rate = price_stats.get('empty_rate', 0)
+
+        # price error 접두사 (ships_from/sold_by 있는데 price 없는 경우)
+        price_error_prefix = "price error " if analysis.get('has_price_error', False) else ""
+
+        # Failed 접두사 (retailprice 빈 값 비율이 20% 이상인 경우)
+        failed_prefix = "Failed " if price_empty_rate >= 20 else ""
+
         if analysis['is_critical'] or error_message:
-            subject = f"[CRITICAL] {country_name} 크롤링 알림 - {now.strftime('%Y-%m-%d %H:%M')}"
+            subject = f"{failed_prefix}{price_error_prefix}[CRITICAL] {country_name} 크롤링 알림 - {now.strftime('%Y-%m-%d %H:%M')}"
+        elif price_empty_count >= 2:
+            subject = f"{failed_prefix}{price_error_prefix}[ERROR] {country_name} 크롤링 알림 - {now.strftime('%Y-%m-%d %H:%M')} (가격 미수집 {price_empty_count}개)"
         elif analysis['alerts']:
-            subject = f"[WARNING] {country_name} 크롤링 알림 - {now.strftime('%Y-%m-%d %H:%M')}"
+            subject = f"{failed_prefix}{price_error_prefix}[WARNING] {country_name} 크롤링 알림 - {now.strftime('%Y-%m-%d %H:%M')}"
         else:
-            subject = f"[OK] {country_name} 크롤링 리포트 - {now.strftime('%Y-%m-%d %H:%M')}"
+            subject = f"{failed_prefix}{price_error_prefix}[OK] {country_name} 크롤링 리포트 - {now.strftime('%Y-%m-%d %H:%M')}"
 
         # 이메일 본문 생성 (HTML)
         html_content = f"""
@@ -199,14 +243,14 @@ def send_alert_email(analysis, error_message=None):
             </div>
             """
 
-        # 필드별 통계 섹션
+        # 필드별 통계 섹션 (가격, 제목만 표시)
         if analysis['field_stats']:
             html_content += """
             <div class="section">
                 <h3>필드별 빈 값 현황</h3>
                 <table>
                     <tr>
-                        <th>필드</th>
+                        <th>필드명</th>
                         <th>빈 값 개수</th>
                         <th>총 개수</th>
                         <th>빈 값 비율</th>
@@ -214,9 +258,17 @@ def send_alert_email(analysis, error_message=None):
                     </tr>
             """
 
-            for field, stats in analysis['field_stats'].items():
-                status = '<span class="critical">위험</span>' if stats['empty_rate'] >= 50 else '정상'
-                html_content += f"""
+            # 가격, 제목 필드만 표시 (순서대로)
+            priority_fields = ['retailprice', 'title']
+            for field in priority_fields:
+                if field in analysis['field_stats']:
+                    stats = analysis['field_stats'][field]
+                    # 20% 이상이면 ERROR, 그렇지 않으면 정상
+                    if stats['empty_rate'] >= 20:
+                        status = '<span class="critical">ERROR</span>'
+                    else:
+                        status = '<span style="color: #28a745;">정상</span>'
+                    html_content += f"""
                     <tr>
                         <td>{stats['name']}</td>
                         <td>{stats['empty_count']}</td>

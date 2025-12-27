@@ -228,18 +228,17 @@ class XKomInfiniteScraper:
         logger.info("\n" + "="*60)
         logger.info("🔐 === 초기 수동 로그인 ===")
         logger.info("="*60)
-        
+
         try:
             # X-kom 메인 페이지 접속
             logger.info("X-kom 접속 중...")
             self.driver.get("https://www.x-kom.pl")
-            
+
             logger.info("\n📋 다음 단계를 수행해주세요:")
             logger.info("1. Cloudflare 챌린지가 나타나면 해결하세요")
             logger.info("2. 쿠키 동의 팝업이 나타나면 수락하세요")
             logger.info("3. 사이트가 완전히 로드될 때까지 기다리세요")
-            logger.info("4. (선택) 로그인이 필요하다면 로그인하세요")
-            
+
             input("\n✅ 모든 작업이 완료되면 Enter를 누르세요...")
             
             # 현재 상태 확인
@@ -465,12 +464,40 @@ Python 버전: {os.sys.version.split()[0]}
     
     def extract_product_info(self, url, row_data):
         """제품 정보 추출"""
+        max_retries = 3
+
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"🔍 페이지 접속: {url}" + (f" (재시도 {attempt + 1}/{max_retries})" if attempt > 0 else ""))
+                self.driver.get(url)
+
+                # 페이지 로드 대기
+                time.sleep(random.uniform(3, 5))
+                break  # 성공 시 루프 탈출
+
+            except Exception as e:
+                error_msg = str(e).lower()
+                if "timeout" in error_msg or "renderer" in error_msg:
+                    logger.warning(f"⚠️ 타임아웃 발생 (시도 {attempt + 1}/{max_retries}): {e}")
+
+                    if attempt < max_retries - 1:
+                        # 브라우저 새로고침 시도
+                        try:
+                            logger.info("🔄 브라우저 새로고침 시도...")
+                            self.driver.refresh()
+                            time.sleep(5)
+                        except:
+                            pass
+                        continue
+                    else:
+                        logger.error(f"❌ 최대 재시도 횟수 초과: {url}")
+                        return None
+                else:
+                    # 타임아웃이 아닌 다른 에러
+                    logger.error(f"❌ 페이지 접속 오류: {e}")
+                    return None
+
         try:
-            logger.info(f"🔍 페이지 접속: {url}")
-            self.driver.get(url)
-            
-            # 페이지 로드 대기
-            time.sleep(random.uniform(3, 5))
             
             # Cloudflare 체크
             if self.check_cloudflare_challenge():
@@ -845,7 +872,7 @@ Python 버전: {os.sys.version.split()[0]}
         if results:
             df = pd.DataFrame(results)
             save_results = self.save_results(df)
-            
+
             # 통계
             logger.info(f"\n📊 === 크롤링 라운드 {self.crawl_count + 1} 완료 ===")
             logger.info(f"전체 제품: {len(results)}개")
@@ -853,7 +880,13 @@ Python 버전: {os.sys.version.split()[0]}
             logger.info(f"성공률: {success_count/len(results)*100:.1f}%")
             logger.info(f"DB 저장: {'✅' if save_results['db_saved'] else '❌'}")
             logger.info(f"파일서버 업로드: {'✅' if save_results['server_uploaded'] else '❌'}")
-        
+
+            # 알림 발송
+            monitor_and_alert('pl_xkom', len(urls_data), df)
+        else:
+            # 결과 없음
+            monitor_and_alert('pl_xkom', len(urls_data), None, error_message="크롤링 결과 없음")
+
         self.crawl_count += 1
     
     def run_infinite_crawling(self):
@@ -986,7 +1019,7 @@ Python 버전: {os.sys.version.split()[0]}
     
     def start(self):
         """메인 시작 함수"""
-        logger.info("\n🚀 X-kom 무한 크롤러 시작")
+        logger.info("\n🚀 X-kom 크롤러 시작")
         logger.info("="*60)
         
         # 드라이버 설정
@@ -1000,8 +1033,8 @@ Python 버전: {os.sys.version.split()[0]}
                 logger.error("초기 로그인 실패로 종료합니다.")
                 return
             
-            # 무한 크롤링 시작
-            self.run_infinite_crawling()
+            # 1회 크롤링 실행
+            self.crawl_once()
             
         except Exception as e:
             logger.error(f"치명적 오류: {e}")
@@ -1013,10 +1046,10 @@ Python 버전: {os.sys.version.split()[0]}
 
 def main():
     """메인 실행 함수"""
-    print("\n🚀 X-kom 무한 크롤러")
+    print("\n🚀 X-kom 크롤러")
     print("="*60)
     print("초기에 수동으로 Cloudflare를 통과한 후")
-    print("자동으로 무한 크롤링이 시작됩니다.")
+    print("1회 크롤링이 시작됩니다.")
     print("="*60)
     
     # 스크래퍼 생성 및 실행

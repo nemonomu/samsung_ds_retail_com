@@ -42,6 +42,9 @@ class BestBuyScraper:
         self.korea_tz = pytz.timezone('Asia/Seoul')
         self.local_tz = pytz.timezone('America/New_York')  # BestBuy 현지 시간 (워싱턴)
 
+        # 에러 로그 수집용 리스트
+        self.error_logs = []
+
         # DB 연결 설정
         self.setup_db_connection()
         
@@ -86,7 +89,15 @@ class BestBuyScraper:
             
             logger.info(f"✅ DB에서 선택자 로드 완료: {len(df)}개")
             
-            # price 선택자는 항상 하드코딩된 값 사용 (DB 무시)
+            # price, imageurl 선택자는 항상 하드코딩된 값 사용 (DB 무시)
+            self.XPATHS['imageurl'] = [
+                '/html/body/div[5]/div[4]/div[2]/div/div[2]/div[2]/div/div[2]/div/button/img',
+                '/html/body/div[5]/div[4]/div[2]/div/div[2]/div[2]/div/div[2]/div/button[1]/img',
+                '/html/body/div[5]/div[4]/div[1]/div/div[2]/div[2]/div/div[2]/div/button/img',
+                '/html/body/div[5]/div[4]/div[1]/div/div[2]/div[2]/div/div[2]/div/button[1]/img',
+                '//img[@class="primary-image"]',
+                '//div[@class="media-gallery"]//img'
+            ]
             self.XPATHS['price'] = [
                 '/html/body/div[5]/div[4]/div[1]/div/div[5]/div/div/div[1]/div/div[1]/div[2]/div[1]/div/div/div/div[1]/span',
                 '/html/body/div[5]/div[4]/div[1]/div/div[4]/div/div/div[1]/div/div[1]/div[2]/div[1]/div/div/div/div[1]/span',
@@ -113,10 +124,12 @@ class BestBuyScraper:
                         '//div[@class="sku-title"]//h1'
                     ],
                     'imageurl': [
+                        '/html/body/div[5]/div[4]/div[2]/div/div[2]/div[2]/div/div[2]/div/button/img',
                         '/html/body/div[5]/div[4]/div[2]/div/div[2]/div[2]/div/div[2]/div/button[1]/img',
+                        '/html/body/div[5]/div[4]/div[1]/div/div[2]/div[2]/div/div[2]/div/button/img',
                         '/html/body/div[5]/div[4]/div[1]/div/div[2]/div[2]/div/div[2]/div/button[1]/img',
                         '//img[@class="primary-image"]',
-                        '//div[@class="media-gallery"]//img'                        
+                        '//div[@class="media-gallery"]//img'
                     ],
                     'imageurl_fallback': [
                         '/html/body/div[5]/div[3]/div[1]/div/div[1]/img'
@@ -346,10 +359,10 @@ class BestBuyScraper:
             pass
         return False
 
-    def extract_product_info(self, url, row_data):
-        """제품 정보 추출 (스마트 대기 로직 추가)"""
+    def extract_product_info(self, url, row_data, retry_count=0, max_retries=3):
+        """제품 정보 추출 (재시도 로직 포함)"""
         try:
-            logger.info(f"🔍 페이지 접속: {url}")
+            logger.info(f"🔍 페이지 접속: {url} (시도: {retry_count + 1}/{max_retries + 1})")
             
             # 세션 초기화 확인
             if not self.session_initialized:
@@ -379,6 +392,7 @@ class BestBuyScraper:
             for pattern in blocked_patterns:
                 if pattern.lower() in title.lower():
                     logger.warning(f"⚠️ 차단 감지: {pattern}")
+                    self.error_logs.append(f"[차단 감지] URL: {url} | 패턴: {pattern}")
                     raise Exception(f"Blocked: {pattern}")
             
             # 현재 시간
@@ -486,8 +500,10 @@ class BestBuyScraper:
             
             if not price_found:
                 logger.warning("모든 가격 추출 방법 실패")
+                self.error_logs.append(f"[가격 추출 실패] URL: {url}")
             
             # 제목 추출
+            is_soldout_fallback = False  # 품절 fallback 여부 플래그
             try:
                 for xpath in self.XPATHS.get('title', []):
                     try:
@@ -497,9 +513,19 @@ class BestBuyScraper:
                         break
                     except:
                         continue
+
+                # 제목 추출 실패 시 품절 상품용 fallback 시도
+                if not result['title']:
+                    try:
+                        title_element = self.driver.find_element(By.XPATH, '/html/body/div[5]/div[3]/div[1]/div/div[2]/h1')
+                        result['title'] = title_element.text.strip()
+                        logger.info(f"제목 (품절 fallback): {result['title'][:50]}...")
+                        is_soldout_fallback = True  # 품절 fallback으로 제목 추출됨
+                    except:
+                        pass
             except Exception as e:
                 logger.warning(f"제목 추출 실패: {e}")
-            
+
             # 이미지 URL 추출
             try:
                 for xpath in self.XPATHS.get('imageurl', []):
@@ -510,33 +536,86 @@ class BestBuyScraper:
                         break
                     except:
                         continue
-                
-                # 가격이 없고 이미지도 추출되지 않은 경우 fallback 선택자 시도
-                if result['retailprice'] is None and result['imageurl'] is None:
-                    logger.info("💡 가격이 없어 fallback 이미지 선택자로 시도 중...")
-                    for xpath in self.XPATHS.get('imageurl_fallback', []):
-                        try:
-                            image_element = self.driver.find_element(By.XPATH, xpath)
-                            result['imageurl'] = image_element.get_attribute('src')
-                            logger.info(f"✅ Fallback 이미지 URL: {result['imageurl'][:50]}...")
-                            break
-                        except Exception as xe:
-                            logger.info(f"❌ Fallback 선택자 실행 실패: {xe}")
-                            continue
+
+                # 이미지 추출 실패 시 품절 상품용 fallback 시도
+                if not result['imageurl']:
+                    try:
+                        image_element = self.driver.find_element(By.XPATH, '/html/body/div[5]/div[3]/div[1]/div/div[1]/img')
+                        result['imageurl'] = image_element.get_attribute('src')
+                        logger.info(f"이미지 URL (품절 fallback): {result['imageurl'][:50]}...")
+                    except:
+                        pass
             except Exception as e:
                 logger.warning(f"이미지 URL 추출 실패: {e}")
-            
+
+            # 가격 추출 실패 시 재시도 (exception 없이 price가 None인 경우)
+            # 단, 품절 fallback으로 제목을 추출한 경우 재시도하지 않음 (품절 상품은 가격 없는 것이 정상)
+            if result['retailprice'] is None and retry_count < max_retries and not is_soldout_fallback:
+                wait_time = (retry_count + 1) * 10
+                logger.warning(f"⚠️ 가격 추출 실패, {wait_time}초 후 재시도... (재시도 {retry_count + 1}/{max_retries})")
+                time.sleep(wait_time)
+
+                # 드라이버 새로고침
+                try:
+                    self.driver.refresh()
+                except:
+                    logger.info("🔧 드라이버 재시작 중...")
+                    try:
+                        self.driver.quit()
+                    except:
+                        pass
+                    self.setup_driver()
+                    self.session_initialized = False
+                    self.initialize_session()
+
+                return self.extract_product_info(url, row_data, retry_count + 1, max_retries)
+
+            # 품절 fallback으로 제목 추출된 경우 로그 출력
+            if is_soldout_fallback and result['retailprice'] is None:
+                logger.info("ℹ️ 품절 상품으로 판단, 가격 재시도 생략")
+
             return result
-            
+
         except Exception as e:
             logger.error(f"❌ 페이지 처리 오류: {e}")
-            
-            # 기본값 반환
+            self.error_logs.append(f"[페이지 처리 오류] URL: {url} | 오류: {str(e)}")
+
+            # 재시도 로직
+            if retry_count < max_retries:
+                wait_time = (retry_count + 1) * 10  # 재시도마다 대기 시간 증가 (10초, 20초, 30초)
+                logger.info(f"🔄 {wait_time}초 후 재시도합니다... (재시도 {retry_count + 1}/{max_retries})")
+                time.sleep(wait_time)
+
+                # 드라이버 새로고침 또는 재시작
+                try:
+                    self.driver.refresh()
+                except:
+                    # 드라이버가 죽었으면 재시작
+                    logger.info("🔧 드라이버 재시작 중...")
+                    try:
+                        self.driver.quit()
+                    except:
+                        pass
+                    self.setup_driver()
+                    self.session_initialized = False
+                    self.initialize_session()
+
+                # 재귀 호출로 재시도
+                return self.extract_product_info(url, row_data, retry_count + 1, max_retries)
+
+            # 최대 재시도 횟수 초과 시 기본값 반환
+            logger.error(f"❌ 최대 재시도 횟수 초과: {url}")
             # V2: 타임존 분리
 
             now_time = datetime.now(self.korea_tz)
 
             local_time = datetime.now(self.local_tz)
+
+            # ISO 8601 형식
+            crawl_dt = local_time.strftime("%Y-%m-%dT%H:%M:%S")
+            tz_offset = local_time.strftime("%z")
+            tz_formatted = f"{tz_offset[:3]}:{tz_offset[3:]}" if tz_offset else "+00:00"
+            crawl_datetime_iso = f"{crawl_dt}{tz_formatted}"
 
             return {
                 'retailerid': row_data.get('retailerid', ''),
@@ -565,58 +644,9 @@ class BestBuyScraper:
                 'vat': row_data.get('vat', 'x')
             }
 
-    def extract_with_retry(self, url, row_data, max_retries=2):
-        """재시도 로직이 포함된 추출"""
-        for attempt in range(max_retries + 1):
-            try:
-                if attempt > 0:
-                    logger.info(f"🔄 재시도 {attempt}/{max_retries}")
-                    time.sleep(random.uniform(5, 10))  # 재시도 전 대기
-                
-                result = self.extract_product_info(url, row_data)
-                
-                # 성공 조건: 가격이 추출되었거나 제목이라도 추출됨
-                if result['retailprice'] is not None or result['title']:
-                    return result
-                    
-            except Exception as e:
-                logger.warning(f"시도 {attempt + 1} 실패: {e}")
-                if attempt == max_retries:
-                    break
-        
-        # 모든 시도 실패 시 기본값 반환
-        # V2: 타임존 분리
-
-        now_time = datetime.now(self.korea_tz)
-
-        local_time = datetime.now(self.local_tz)
-
-        return {
-            'retailerid': row_data.get('retailerid', ''),
-            'country_code': row_data.get('country', 'usa'),
-            'ships_from': 'usa',
-            'channel_name': 'bestbuy',
-            'channel': row_data.get('channel', 'Online'),
-            'retailersku': row_data.get('retailersku', ''),
-            'brand': row_data.get('brand', ''),
-            'brand_eng': row_data.get('brand_eng', row_data.get('brand', '')),
-            'form_factor': row_data.get('form_factor', ''),
-            'segment_lv1': row_data.get('seg_lv1', ''),
-            'segment_lv2': row_data.get('seg_lv2', ''),
-            'segment_lv3': row_data.get('seg_lv3', ''),
-            'capacity': row_data.get('capacity', ''),
-            'item': row_data.get('item', ''),
-            'retailprice': None,
-            'sold_by': 'BestBuy',
-            'imageurl': None,
-            'producturl': url,
-            'crawl_datetime': crawl_datetime_iso,
-            'crawl_strdatetime': local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4],
-            'kr_crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),
-            'kr_crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4],
-            'title': None,
-            'vat': row_data.get('vat', 'x')
-        }
+    def extract_with_retry(self, url, row_data):
+        """제품 정보 추출 (extract_product_info 내부에 재시도 로직 포함)"""
+        return self.extract_product_info(url, row_data)
     
     def save_to_db(self, df):
         """DB에 결과 저장"""
@@ -707,10 +737,10 @@ class BestBuyScraper:
             logger.error(f"❌ 파일서버 업로드 실패: {e}")
             return False
     def save_results(self, df, save_db=True, upload_server=True):
-        """결과 저장"""
-        now = datetime.now(self.korea_tz)
-        date_str = now.strftime('%Y%m%d')
-        time_str = now.strftime('%H%M%S')
+        """결과 저장 (파일명은 미국 현지 시간 기준)"""
+        local_time = datetime.now(self.local_tz)  # 미국 현지 시간 (crawl_datetime 기준)
+        date_str = local_time.strftime('%Y%m%d')
+        time_str = local_time.strftime('%H%M%S')
         base_filename = f"{date_str}_{time_str}_usa_bestbuy"
 
         results = {'db_saved': False, 'server_uploaded': False}
@@ -720,11 +750,11 @@ class BestBuyScraper:
 
         if upload_server:
             try:
-                # 1. CSV 파일 생성
+                # 1. CSV 파일 생성 (복사본 사용하여 원본 컬럼명 유지)
                 csv_filename = f'{base_filename}.csv'
-                # Header를 대문자로 변환
-                df.columns = df.columns.str.upper()
-                df.to_csv(csv_filename, index=False, encoding='utf-8', lineterminator='\r\n')
+                df_csv = df.copy()
+                df_csv.columns = df_csv.columns.str.upper()
+                df_csv.to_csv(csv_filename, index=False, encoding='utf-8', lineterminator='\r\n')
 
                 # 2. CSV를 ZIP으로 압축
                 zip_filename = f'{base_filename}.zip'
@@ -829,27 +859,33 @@ class BestBuyScraper:
             logger.error(f"❌ 테스트 실패: {e}")
             return False
     
-    def scrape_urls(self, urls_data, max_items=None):
-        """여러 URL 스크래핑"""
+    def scrape_urls(self, urls_data, max_items=None, save_interim=True):
+        """여러 URL 스크래핑
+
+        Args:
+            urls_data: 크롤링 대상 URL 목록
+            max_items: 최대 처리 개수 (None이면 전체)
+            save_interim: 중간 저장 여부 (재시도 시에는 False로 설정)
+        """
         if max_items:
             urls_data = urls_data[:max_items]
-        
+
         logger.info(f"📊 총 {len(urls_data)}개 제품 처리 시작")
-        
+
         results = []
         failed_urls = []
-        
-        try:
-            for idx, row in enumerate(urls_data):
+
+        for idx, row in enumerate(urls_data):
+            try:
                 logger.info(f"\n{'='*50}")
                 logger.info(f"진행률: {idx + 1}/{len(urls_data)} ({(idx + 1)/len(urls_data)*100:.1f}%)")
-                
+
                 # URL 추출
                 url = row.get('url')
-                
+
                 # 제품 정보 추출 (재시도 로직 적용)
                 result = self.extract_with_retry(url, row)
-                
+
                 # 실패 여부 확인
                 if result['retailprice'] is None:
                     failed_urls.append({
@@ -857,43 +893,44 @@ class BestBuyScraper:
                         'item': row.get('item', ''),
                         'brand': row.get('brand', '')
                     })
-                
+
                 results.append(result)
-                
-                # 10개마다 DB에 중간 저장
-                if (idx + 1) % 10 == 0:
+
+                # 10개마다 DB에 중간 저장 (save_interim=True일 때만)
+                if save_interim and (idx + 1) % 10 == 0:
                     interim_df = pd.DataFrame(results[-10:])
                     if self.db_engine:
                         try:
-                            interim_df.to_sql('bestbuy_price_crawl_tbl_usa_v2', self.db_engine, 
+                            interim_df.to_sql('bestbuy_price_crawl_tbl_usa_v2', self.db_engine,
                                             if_exists='append', index=False)
                             logger.info(f"💾 중간 저장: 10개 레코드 DB 저장")
                         except Exception as e:
                             logger.error(f"중간 저장 실패: {e}")
-                
+
                 # 다음 요청 전 대기
                 if idx < len(urls_data) - 1:
                     wait_time = random.uniform(2, 5)  # BestBuy는 조금 더 빠르게
                     logger.info(f"⏳ {wait_time:.1f}초 대기 중...")
                     time.sleep(wait_time)
-                    
+
                     # 10개마다 긴 휴식
                     if (idx + 1) % 10 == 0:
                         logger.info("☕ 10개 처리 완료, 20초 휴식...")
                         time.sleep(20)
-        
-        except Exception as e:
-            logger.error(f"❌ 스크래핑 중 오류: {e}")
-        
-        finally:
-            # 실패 URL 로그
-            if failed_urls:
-                logger.warning(f"\n⚠️ 가격 추출 실패한 URL {len(failed_urls)}개:")
-                for fail in failed_urls[:5]:
-                    logger.warning(f"  - {fail['brand']} {fail['item']}: {fail['url']}")
-                if len(failed_urls) > 5:
-                    logger.warning(f"  ... 외 {len(failed_urls) - 5}개")
-        
+
+            except Exception as e:
+                logger.error(f"❌ 스크래핑 중 오류 (URL: {row.get('url', 'unknown')}): {e}")
+                self.error_logs.append(f"[스크래핑 오류] URL: {row.get('url', 'unknown')} | 오류: {str(e)}")
+                continue
+
+        # 정리
+        if failed_urls:
+            logger.warning(f"\n⚠️ 가격 추출 실패한 URL {len(failed_urls)}개:")
+            for fail in failed_urls[:5]:
+                logger.warning(f"  - {fail['brand']} {fail['item']}: {fail['url']}")
+            if len(failed_urls) > 5:
+                logger.warning(f"  ... 외 {len(failed_urls) - 5}개")
+
         return pd.DataFrame(results)
     
     def analyze_results(self, df):
@@ -982,11 +1019,15 @@ def main():
             scraper.driver.quit()
         return
     
+    # 변수 초기화 (except 블록에서 사용하기 위해)
+    urls_data = []
+    results_df = None
+
     try:
-        # 전체 크롤링 실행
-        logger.info("\n📊 전체 크롤링 시작")
+        # 1단계: 전체 크롤링 실행
+        logger.info("\n📊 1단계: 전체 크롤링 시작")
         urls_data = scraper.get_crawl_targets()
-        
+
         if not urls_data:
             logger.warning("크롤링 대상이 없습니다.")
             monitor_and_alert('usa_bestbuy', 0, None, error_message="크롤링 대상 URL이 없습니다")
@@ -994,52 +1035,126 @@ def main():
 
         logger.info(f"✅ 크롤링 대상: {len(urls_data)}개")
 
-        # 크롤링 실행
-        results_df = scraper.scrape_urls(urls_data)
-        
-        if results_df is None or results_df.empty:
+        # 크롤링 실행 (중간 저장 비활성화 - 최종 결과만 한번에 저장)
+        first_results_df = scraper.scrape_urls(urls_data, save_interim=False)
+
+        if first_results_df is None or first_results_df.empty:
             logger.error("크롤링 결과가 없습니다.")
             monitor_and_alert('usa_bestbuy', len(urls_data), None, error_message="크롤링 결과가 없습니다")
             return
 
-        # 결과 분석
-        failed_count = results_df['retailprice'].isna().sum()
-        success_count = results_df['retailprice'].notna().sum()
-        success_rate = (success_count / len(results_df) * 100) if len(results_df) > 0 else 0
-        
+        # 1단계 결과 분석
+        logger.info("\n📊 1단계 결과:")
+        first_failed = first_results_df['retailprice'].isna().sum()
+        first_success = first_results_df['retailprice'].notna().sum()
+        logger.info(f"성공: {first_success}개, 실패: {first_failed}개")
+
+        # 2단계: 실패한 URL 재시도 (실패가 있는 경우만)
+        final_results_df = first_results_df.copy()
+
+        if first_failed > 0:
+            logger.info(f"\n🔄 2단계: 실패한 {first_failed}개 URL 재시도")
+            logger.info("60초 대기 후 재시도합니다...")
+            time.sleep(60)
+
+            # 실패한 URL들만 추출 (원본 urls_data에서)
+            failed_product_urls = first_results_df[first_results_df['retailprice'].isna()]['producturl'].tolist()
+
+            # 원본 urls_data에서 실패한 URL에 해당하는 데이터만 추출
+            failed_urls_data = [
+                row for row in urls_data
+                if row.get('url') in failed_product_urls
+            ]
+
+            if failed_urls_data:
+                logger.info(f"재시도 대상: {len(failed_urls_data)}개 (실패한 URL만)")
+
+                # 새 드라이버로 재시도
+                if scraper.driver:
+                    try:
+                        scraper.driver.quit()
+                    except:
+                        pass
+                scraper.driver = None
+                scraper.session_initialized = False
+
+                retry_results_df = scraper.scrape_urls(failed_urls_data, save_interim=False)
+
+                if retry_results_df is not None and not retry_results_df.empty:
+                    # 재시도 결과 분석
+                    retry_success = retry_results_df['retailprice'].notna().sum()
+                    retry_failed = retry_results_df['retailprice'].isna().sum()
+                    logger.info(f"\n📊 재시도 결과: 성공 {retry_success}개, 실패 {retry_failed}개")
+
+                    # 기존 실패한 결과를 재시도 결과로 업데이트
+                    for _, retry_row in retry_results_df.iterrows():
+                        if retry_row['retailprice'] is not None:
+                            # 성공한 경우 기존 데이터 업데이트
+                            mask = final_results_df['producturl'] == retry_row['producturl']
+                            if mask.any():
+                                final_results_df.loc[mask, 'retailprice'] = retry_row['retailprice']
+                                final_results_df.loc[mask, 'title'] = retry_row['title']
+                                final_results_df.loc[mask, 'imageurl'] = retry_row['imageurl']
+                                final_results_df.loc[mask, 'crawl_datetime'] = retry_row['crawl_datetime']
+                                final_results_df.loc[mask, 'crawl_strdatetime'] = retry_row['crawl_strdatetime']
+
+        # 3단계: 최종 결과 저장
+        logger.info("\n💾 3단계: 최종 결과 저장")
+
+        # 최종 통계
+        final_success = final_results_df['retailprice'].notna().sum()
+        final_failed = final_results_df['retailprice'].isna().sum()
+        success_rate = (final_success / len(final_results_df) * 100) if len(final_results_df) > 0 else 0
+
         logger.info(f"\n📊 === 최종 결과 ===")
-        logger.info(f"전체: {len(results_df)}개")
-        logger.info(f"성공: {success_count}개")
-        logger.info(f"실패: {failed_count}개")
+        logger.info(f"전체: {len(final_results_df)}개")
+        logger.info(f"성공: {final_success}개")
+        logger.info(f"실패: {final_failed}개")
         logger.info(f"성공률: {success_rate:.1f}%")
-        
-        # DB와 파일서버에 결과 저장
+
+        # 개선율 표시
+        if first_failed > 0 and first_failed > final_failed:
+            improvement = first_failed - final_failed
+            logger.info(f"✨ 재시도로 {improvement}개 추가 성공!")
+
+        # 상세 분석 (save_results 전에 실행 - 컬럼명 대문자 변환 전)
+        scraper.analyze_results(final_results_df)
+
+        # DB와 파일서버에 최종 결과 저장
         save_results = scraper.save_results(
-            results_df,
+            final_results_df,
             save_db=True,
             upload_server=True
         )
-        
-        # 상세 분석
-        scraper.analyze_results(results_df)
-        
+
         # 저장 결과 출력
         logger.info("\n📊 저장 결과:")
         logger.info(f"DB 저장: {'✅ 성공' if save_results['db_saved'] else '❌ 실패'}")
         logger.info(f"파일서버 업로드: {'✅ 성공' if save_results['server_uploaded'] else '❌ 실패'}")
-        
+
         # 실패한 URL 로그
-        if failed_count > 0:
-            logger.warning(f"\n⚠️ {failed_count}개 URL에서 가격 추출 실패")
-            failed_items = results_df[results_df['retailprice'].isna()]
+        if final_failed > 0:
+            logger.warning(f"\n⚠️ {final_failed}개 URL에서 가격 추출 실패")
+            failed_items = final_results_df[final_results_df['retailprice'].isna()]
             logger.warning("실패 목록 (상위 5개):")
             for idx, row in failed_items.head().iterrows():
                 logger.warning(f"  - {row['brand']} {row['item']}: {row['producturl'][:50]}...")
-        
+
         logger.info("\n✅ 크롤링 프로세스 완료!")
 
-        # 크롤링 완료 후 알림 (빈 값 50% 이상 시 경고)
-        monitor_and_alert('usa_bestbuy', len(urls_data), results_df)
+        # 크롤링 완료 후 알림 (빈 값 50% 이상 시 경고, 에러 로그 포함)
+        # 최종 결과로 알림 발송
+        results_df = final_results_df
+        monitor_and_alert('usa_bestbuy', len(urls_data), final_results_df, error_logs=scraper.error_logs)
+
+    except Exception as e:
+        # 예외 발생 시 알림
+        logger.error(f"크롤링 중 예외 발생: {e}")
+        import traceback
+        error_detail = traceback.format_exc()
+        scraper.error_logs.append(f"[치명적 오류] {str(e)}\n{error_detail}")
+        monitor_and_alert('usa_bestbuy', len(urls_data), results_df,
+                         error_message=str(e), error_logs=scraper.error_logs)
 
     finally:
         # 드라이버 종료
