@@ -162,20 +162,25 @@ def send_alert_email(analysis, error_message=None):
         # 이메일 제목 생성
         country_name = analysis['country_name']
 
-        # 가격 미수집 개수 확인 (2개 이상이면 ERROR)
-        price_empty_count = analysis['field_stats'].get('retailprice', {}).get('empty_count', 0)
+        # 가격 미수집 개수 및 비율 확인
+        price_stats = analysis['field_stats'].get('retailprice', {})
+        price_empty_count = price_stats.get('empty_count', 0)
+        price_empty_rate = price_stats.get('empty_rate', 0)
 
         # price error 접두사 (ships_from/sold_by 있는데 price 없는 경우)
         price_error_prefix = "price error " if analysis.get('has_price_error', False) else ""
 
+        # Failed 접두사 (retailprice 빈 값 비율이 20% 이상인 경우)
+        failed_prefix = "Failed " if price_empty_rate >= 20 else ""
+
         if analysis['is_critical'] or error_message:
-            subject = f"{price_error_prefix}[CRITICAL] {country_name} 크롤링 알림 - {now.strftime('%Y-%m-%d %H:%M')}"
+            subject = f"{failed_prefix}{price_error_prefix}[CRITICAL] {country_name} 크롤링 알림 - {now.strftime('%Y-%m-%d %H:%M')}"
         elif price_empty_count >= 2:
-            subject = f"{price_error_prefix}[ERROR] {country_name} 크롤링 알림 - {now.strftime('%Y-%m-%d %H:%M')} (가격 미수집 {price_empty_count}개)"
+            subject = f"{failed_prefix}{price_error_prefix}[ERROR] {country_name} 크롤링 알림 - {now.strftime('%Y-%m-%d %H:%M')} (가격 미수집 {price_empty_count}개)"
         elif analysis['alerts']:
-            subject = f"{price_error_prefix}[WARNING] {country_name} 크롤링 알림 - {now.strftime('%Y-%m-%d %H:%M')}"
+            subject = f"{failed_prefix}{price_error_prefix}[WARNING] {country_name} 크롤링 알림 - {now.strftime('%Y-%m-%d %H:%M')}"
         else:
-            subject = f"{price_error_prefix}[OK] {country_name} 크롤링 리포트 - {now.strftime('%Y-%m-%d %H:%M')}"
+            subject = f"{failed_prefix}{price_error_prefix}[OK] {country_name} 크롤링 리포트 - {now.strftime('%Y-%m-%d %H:%M')}"
 
         # 이메일 본문 생성 (HTML)
         html_content = f"""
@@ -238,14 +243,14 @@ def send_alert_email(analysis, error_message=None):
             </div>
             """
 
-        # 필드별 통계 섹션
+        # 필드별 통계 섹션 (가격, 제목만 표시)
         if analysis['field_stats']:
             html_content += """
             <div class="section">
                 <h3>필드별 빈 값 현황</h3>
                 <table>
                     <tr>
-                        <th>필드</th>
+                        <th>필드명</th>
                         <th>빈 값 개수</th>
                         <th>총 개수</th>
                         <th>빈 값 비율</th>
@@ -253,9 +258,17 @@ def send_alert_email(analysis, error_message=None):
                     </tr>
             """
 
-            for field, stats in analysis['field_stats'].items():
-                status = '<span class="critical">위험</span>' if stats['empty_rate'] >= 50 else '정상'
-                html_content += f"""
+            # 가격, 제목 필드만 표시 (순서대로)
+            priority_fields = ['retailprice', 'title']
+            for field in priority_fields:
+                if field in analysis['field_stats']:
+                    stats = analysis['field_stats'][field]
+                    # 20% 이상이면 ERROR, 그렇지 않으면 정상
+                    if stats['empty_rate'] >= 20:
+                        status = '<span class="critical">ERROR</span>'
+                    else:
+                        status = '<span style="color: #28a745;">정상</span>'
+                    html_content += f"""
                     <tr>
                         <td>{stats['name']}</td>
                         <td>{stats['empty_count']}</td>
