@@ -16,7 +16,7 @@ from config import EMAIL_CONFIG
 
 logger = logging.getLogger(__name__)
 
-# 국가별 이름 매핑
+# 국가별 이름 매핑 (본문용)
 COUNTRY_NAMES = {
     'usa': '미국 Amazon (USA)',
     'gb': '영국 Amazon (GB)',
@@ -33,7 +33,29 @@ COUNTRY_NAMES = {
     'nl_coolblue': '네덜란드 Coolblue',
     'pl_xkom': '폴란드 X-kom',
     'kr_danawa': '한국 다나와',
-    'fr_fnac': '프랑스 Fnac'
+    'fr_fnac': '프랑스 Fnac',
+    'au_centrecom': '호주 Centrecom'
+}
+
+# 제목용 간결한 이름 매핑
+COUNTRY_SHORT_NAMES = {
+    'usa': 'usa_amazon',
+    'gb': 'uk_amazon',
+    'de': 'de_amazon',
+    'fr': 'fr_amazon',
+    'es': 'es_amazon',
+    'it': 'it_amazon',
+    'jp': 'jp_amazon',
+    'in': 'in_amazon',
+    'nl': 'nl_amazon',
+    'usa_bestbuy': 'bestbuy',
+    'gb_currys': 'currys',
+    'de_mediamarkt': 'mediamarkt',
+    'nl_coolblue': 'coolblue',
+    'pl_xkom': 'xkom',
+    'kr_danawa': 'danawa',
+    'fr_fnac': 'fnac',
+    'au_centrecom': 'centrecom'
 }
 
 
@@ -170,17 +192,21 @@ def send_alert_email(analysis, error_message=None):
         # price error 접두사 (ships_from/sold_by 있는데 price 없는 경우)
         price_error_prefix = "price error " if analysis.get('has_price_error', False) else ""
 
-        # Failed 접두사 (retailprice 빈 값 비율이 20% 이상인 경우)
-        failed_prefix = "Failed " if price_empty_rate >= 20 else ""
+        # title 누락 개수 확인
+        title_stats = analysis['field_stats'].get('title', {})
+        title_empty_count = title_stats.get('empty_count', 0)
 
-        if analysis['is_critical'] or error_message:
-            subject = f"{failed_prefix}{price_error_prefix}[CRITICAL] {country_name} 크롤링 알림 - {now.strftime('%Y-%m-%d %H:%M')}"
-        elif price_empty_count >= 2:
-            subject = f"{failed_prefix}{price_error_prefix}[ERROR] {country_name} 크롤링 알림 - {now.strftime('%Y-%m-%d %H:%M')} (가격 미수집 {price_empty_count}개)"
-        elif analysis['alerts']:
-            subject = f"{failed_prefix}{price_error_prefix}[WARNING] {country_name} 크롤링 알림 - {now.strftime('%Y-%m-%d %H:%M')}"
+        # Failed 접두사 (title 누락이 있으면 "Failed X sku" 형식)
+        if title_empty_count > 0:
+            failed_prefix = f"Failed {title_empty_count} sku "
+        elif price_empty_rate >= 20:
+            failed_prefix = "Failed "
         else:
-            subject = f"{failed_prefix}{price_error_prefix}[OK] {country_name} 크롤링 리포트 - {now.strftime('%Y-%m-%d %H:%M')}"
+            failed_prefix = ""
+
+        # 제목 생성 (간결하게: [DS] + Failed X sku + 사이트명)
+        short_name = COUNTRY_SHORT_NAMES.get(analysis['country_code'], analysis['country_code'])
+        subject = f"[DS] {failed_prefix}{price_error_prefix}{short_name}"
 
         # 이메일 본문 생성 (HTML)
         html_content = f"""
