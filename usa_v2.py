@@ -833,10 +833,26 @@ class AmazonScraper:
             }
             
             result['title'] = self.extract_element_text(
-                self.selectors[self.country_code].get('title', []), 
+                self.selectors[self.country_code].get('title', []),
                 "제목"
             )
-            
+
+            # title 미수집 시 재시도 (최대 10회)
+            if result['title'] is None:
+                for title_retry in range(10):
+                    logger.warning(f"title 미수집 - 재시도 {title_retry + 1}/10")
+                    self.driver.refresh()
+                    time.sleep(3)
+                    self.wait_for_page_load()
+
+                    result['title'] = self.extract_element_text(
+                        self.selectors[self.country_code].get('title', []),
+                        "제목"
+                    )
+                    if result['title']:
+                        logger.info(f"title 재시도 성공: {result['title'][:50]}...")
+                        break
+
             has_stock = self.check_stock_availability()
             
             logger.info("가격 추출 시도")
