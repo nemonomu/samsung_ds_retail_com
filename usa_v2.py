@@ -574,7 +574,8 @@ class AmazonScraper:
             else:
                 cleaned = re.sub(r'[$£\s]', '', price_text)
                 if re.match(r'^\d{1,3}(,\d{3})*(\.\d{1,2})?$', cleaned) or re.match(r'^\d+(\.\d{1,2})?$', cleaned):
-                    return cleaned
+                    # 콤마 제거하여 반환 (1,099.99 -> 1099.99)
+                    return cleaned.replace(',', '')
                     
         except Exception as e:
             logger.debug(f"가격 파싱 오류: {price_text} - {e}")
@@ -832,10 +833,26 @@ class AmazonScraper:
             }
             
             result['title'] = self.extract_element_text(
-                self.selectors[self.country_code].get('title', []), 
+                self.selectors[self.country_code].get('title', []),
                 "제목"
             )
-            
+
+            # title 미수집 시 재시도 (최대 10회)
+            if result['title'] is None:
+                for title_retry in range(10):
+                    logger.warning(f"title 미수집 - 재시도 {title_retry + 1}/10")
+                    self.driver.refresh()
+                    time.sleep(3)
+                    self.wait_for_page_load()
+
+                    result['title'] = self.extract_element_text(
+                        self.selectors[self.country_code].get('title', []),
+                        "제목"
+                    )
+                    if result['title']:
+                        logger.info(f"title 재시도 성공: {result['title'][:50]}...")
+                        break
+
             has_stock = self.check_stock_availability()
             
             logger.info("가격 추출 시도")

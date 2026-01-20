@@ -402,10 +402,13 @@ class MediaMarktInfiniteScraper:
         try:
             logger.info(f"🔍 페이지 접속: {url}")
             self.driver.get(url)
-            
+
             # 페이지 로드 대기
             time.sleep(random.uniform(3, 5))
-            
+
+            # 쿠키 팝업 처리 (페이지 이동 후 다시 뜰 수 있음)
+            self.accept_cookies()
+
             # Cloudflare 체크
             if self.check_cloudflare_challenge():
                 logger.error("❌ Cloudflare 챌린지 감지! 세션이 만료되었습니다.")

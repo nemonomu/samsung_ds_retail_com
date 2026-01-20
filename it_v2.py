@@ -1020,11 +1020,11 @@ class AmazonITScraper:
             logger.warning(f"이탈리아 재고 확인 중 오류: {e}")
             return True
 
-    def extract_product_info(self, url, row_data, retry_count=0, max_retries=3):
+    def extract_product_info(self, url, row_data, retry_count=0, max_retries=10):
         """이탈리아 제품 정보 추출"""
         try:
             logger.info("=" * 60)
-            logger.info("이탈리아 제품 정보 추출 시작")
+            logger.info(f"이탈리아 제품 정보 추출 시작 (시도 {retry_count + 1}/{max_retries})")
             logger.info(f"URL: {url}")
             logger.info(f"브랜드: {row_data.get('brand', 'N/A')}")
             logger.info(f"제품: {row_data.get('item', 'N/A')}")
@@ -1212,26 +1212,31 @@ class AmazonITScraper:
         except Exception as e:
             logger.error(f"이탈리아 페이지 처리 오류: {e}")
             
-            if retry_count < max_retries:
-                wait_time = (retry_count + 1) * 10
-                logger.info(f"이탈리아 {wait_time}초 후 재시도... ({retry_count + 1}/{max_retries})")
+            if retry_count < max_retries - 1:
+                wait_time = 10  # 고정 10초 대기
+                logger.info(f"이탈리아 {wait_time}초 후 재시도... ({retry_count + 2}/{max_retries})")
                 time.sleep(wait_time)
-                
+
                 try:
                     self.driver.refresh()
                 except:
                     logger.info("이탈리아 드라이버 재시작 중...")
                     self.driver.quit()
                     self.setup_driver()
-                
+
                 return self.extract_product_info(url, row_data, retry_count + 1, max_retries)
             
             # 실패 시 기본 결과 반환
             # V2: 타임존 분리
-
             now_time = datetime.now(self.korea_tz)
-
             local_time = datetime.now(self.local_tz)
+
+            # ISO 8601 형식
+            crawl_dt = local_time.strftime("%Y-%m-%dT%H:%M:%S")
+            tz_offset = local_time.strftime("%z")
+            tz_formatted = f"{tz_offset[:3]}:{tz_offset[3:]}" if tz_offset else "+00:00"
+            crawl_datetime_iso = f"{crawl_dt}{tz_formatted}"
+
             return {
                 'retailerid': row_data.get('retailerid', ''),
                 'country_code': 'it',
@@ -1405,35 +1410,39 @@ class AmazonITScraper:
         """이탈리아 URL 스크래핑"""
         if max_items:
             urls_data = urls_data[:max_items]
-        
+
         logger.info("=" * 80)
         logger.info("이탈리아 Amazon 크롤링 시작")
         logger.info(f"대상: {len(urls_data)}개 제품")
         logger.info("특화 기능: 쉼표 소수점 가격 파싱, 추천상품 영역 필터링 강화")
         logger.info("=" * 80)
-        
+
         if not self.setup_driver():
             logger.error("이탈리아 드라이버 설정 실패")
-            return None
-        
+            return None, []
+
         results = []
         failed_urls = []
-        
+        blocked_page_failures = []  # 차단 페이지로 인한 실패 목록
+
         try:
             for idx, row in enumerate(urls_data):
                 logger.info(f"이탈리아 진행률: {idx + 1}/{len(urls_data)} ({(idx + 1)/len(urls_data)*100:.1f}%)")
-                
+
                 url = row.get('url')
-                
+
                 result = self.extract_product_info(url, row)
-                
+
+                # 차단 페이지로 인한 실패 감지 (title과 price 모두 없음)
                 if result['retailprice'] is None and result['title'] is None:
-                    failed_urls.append({
+                    blocked_page_failures.append({
                         'url': url,
+                        'row_data': row,
                         'item': row.get('item', ''),
                         'brand': row.get('brand', ''),
-                        'reason': '가격과 제목 모두 없음'
+                        'reason': '차단 페이지로 인한 실패 (가격과 제목 모두 없음)'
                     })
+                    logger.warning(f"차단 페이지 실패 - 나중에 재시도 예정: {url}")
                 elif result['retailprice'] is None:
                     failed_urls.append({
                         'url': url,
@@ -1441,47 +1450,112 @@ class AmazonITScraper:
                         'brand': row.get('brand', ''),
                         'reason': '가격 없음'
                     })
-                
+
                 results.append(result)
-                
+
                 # 중간 저장 (10개마다)
                 if (idx + 1) % 10 == 0:
                     interim_df = pd.DataFrame(results[-10:])
                     if self.db_engine:
                         try:
-                            interim_df.to_sql('amazon_price_crawl_tbl_it_v2', self.db_engine, 
+                            interim_df.to_sql('amazon_price_crawl_tbl_it_v2', self.db_engine,
                                             if_exists='append', index=False)
                             logger.info("이탈리아 중간 저장: 10개 레코드 DB 저장")
                         except Exception as e:
                             logger.error(f"이탈리아 중간 저장 실패: {e}")
-                
+
                 # 대기 시간
                 if idx < len(urls_data) - 1:
                     wait_time = random.uniform(5, 10)
                     logger.info(f"이탈리아 {wait_time:.1f}초 대기 중...")
                     time.sleep(wait_time)
-                    
+
                     # 20개마다 긴 휴식
                     if (idx + 1) % 20 == 0:
                         logger.info("이탈리아 20개 처리 완료, 30초 휴식...")
                         time.sleep(30)
-        
+
+            # 마지막으로 저장되지 않은 나머지 데이터 저장 (10의 배수가 아닌 경우)
+            remainder = len(results) % 10
+            if remainder > 0 and self.db_engine:
+                try:
+                    remainder_df = pd.DataFrame(results[-remainder:])
+                    remainder_df.to_sql('amazon_price_crawl_tbl_it_v2', self.db_engine, if_exists='append', index=False)
+                    logger.info(f"이탈리아 마지막 저장: {remainder}개 레코드")
+                except Exception as e:
+                    logger.error(f"이탈리아 마지막 저장 실패: {e}")
+
+            # 차단 페이지로 인한 실패 목록 재시도 (10회씩)
+            if blocked_page_failures:
+                logger.info("=" * 60)
+                logger.info(f"차단 페이지 실패 {len(blocked_page_failures)}개 재시도 시작")
+                logger.info("=" * 60)
+
+                final_blocked_failures = []  # 최종 실패 목록
+
+                for fail_idx, fail_item in enumerate(blocked_page_failures):
+                    url = fail_item['url']
+                    row_data = fail_item['row_data']
+                    logger.info(f"재시도 진행: {fail_idx + 1}/{len(blocked_page_failures)} - {fail_item['item']}")
+
+                    # 10회 재시도
+                    retry_success = False
+                    for retry in range(10):
+                        logger.info(f"차단 페이지 재시도 {retry + 1}/10: {url}")
+                        result = self.extract_product_info(url, row_data, retry_count=0, max_retries=1)
+
+                        # 성공 여부 확인 (title이나 price가 있으면 성공)
+                        if result['title'] is not None or result['retailprice'] is not None:
+                            logger.info(f"재시도 성공! title={result['title']}, price={result['retailprice']}")
+                            # 기존 결과에서 해당 URL 결과를 업데이트
+                            for i, r in enumerate(results):
+                                if r['producturl'] == url:
+                                    results[i] = result
+                                    break
+                            retry_success = True
+                            break
+                        else:
+                            logger.warning(f"재시도 {retry + 1}/10 실패")
+                            if retry < 9:  # 마지막 시도가 아니면 10초 대기
+                                time.sleep(10)
+
+                    if not retry_success:
+                        logger.error(f"최종 실패 (10회 재시도 후에도 실패): {url}")
+                        final_blocked_failures.append({
+                            'url': url,
+                            'item': fail_item['item'],
+                            'reason': '차단 페이지로 인한 최종 실패 (10회 재시도 후)'
+                        })
+
+                if final_blocked_failures:
+                    logger.warning(f"차단 페이지 최종 실패 {len(final_blocked_failures)}개:")
+                    for fail in final_blocked_failures:
+                        logger.warning(f"  - {fail['item']}: {fail['reason']}")
+                else:
+                    logger.info("모든 차단 페이지 실패 항목 재시도 성공!")
+
+                # 최종 실패 목록을 failed_urls에 추가
+                failed_urls.extend(final_blocked_failures)
+                # blocked_page_failures를 final로 업데이트
+                blocked_page_failures = final_blocked_failures
+
         except Exception as e:
             logger.error(f"이탈리아 스크래핑 중 오류: {e}")
-        
+
         finally:
             if failed_urls:
-                logger.warning(f"이탈리아 문제 발생한 URL {len(failed_urls)}개:")
+                logger.warning(f"이탈리아 총 실패 URL {len(failed_urls)}개:")
                 for fail in failed_urls[:5]:
-                    logger.warning(f"  - {fail['brand']} {fail['item']}: {fail.get('reason', '알 수 없음')}")
+                    logger.warning(f"  - {fail.get('brand', '')} {fail['item']}: {fail.get('reason', '알 수 없음')}")
                 if len(failed_urls) > 5:
                     logger.warning(f"  ... 외 {len(failed_urls) - 5}개")
-            
+
             if self.driver:
                 self.driver.quit()
                 logger.info("이탈리아 드라이버 종료")
-        
-        return pd.DataFrame(results)
+
+        # 차단 페이지 최종 실패 개수 반환
+        return pd.DataFrame(results), blocked_page_failures
     
     def analyze_results(self, df):
         """이탈리아 결과 분석"""
@@ -1579,49 +1653,52 @@ def main():
                 'form_factor': 'External'
             })
         
-        results_df = scraper.scrape_urls(test_data)
+        results_df, blocked_failures = scraper.scrape_urls(test_data)
         if results_df is not None and not results_df.empty:
             scraper.analyze_results(results_df)
             scraper.save_results(results_df, save_db=False, upload_server=True)
+            if blocked_failures:
+                logger.warning(f"테스트 모드 차단 페이지 최종 실패: {len(blocked_failures)}개")
         return
-    
+
     logger.info("이탈리아 전체 크롤링 시작")
     urls_data = scraper.get_crawl_targets(limit=max_items)
-    
+
     if not urls_data:
         logger.warning("이탈리아 크롤링 대상이 없습니다.")
         monitor_and_alert('it', 0, None, error_message="크롤링 대상 URL이 없습니다")
         return
-    
+
     logger.info(f"이탈리아 크롤링 대상: {len(urls_data)}개")
-    
-    results_df = scraper.scrape_urls(urls_data, max_items)
-    
+
+    results_df, blocked_failures = scraper.scrape_urls(urls_data, max_items)
+
     if results_df is None or results_df.empty:
         logger.error("이탈리아 크롤링 결과가 없습니다.")
         monitor_and_alert('it', len(urls_data), None, error_message="크롤링 결과가 없습니다")
         return
-    
+
     scraper.analyze_results(results_df)
-    
+
+    # 중간 저장(10개마다)에서 이미 DB 저장했으므로, 여기서는 파일 업로드만 수행
     save_results = scraper.save_results(
         results_df,
-        save_db=True,
+        save_db=False,
         upload_server=True
     )
-    
+
     logger.info("=" * 80)
     logger.info("이탈리아 저장 결과")
     logger.info("=" * 80)
     logger.info(f"DB 저장: {'성공' if save_results['db_saved'] else '실패'}")
     logger.info(f"파일서버 업로드: {'성공' if save_results['server_uploaded'] else '실패'}")
-    
+
     logger.info("=" * 80)
     logger.info("이탈리아 크롤링 프로세스 완료!")
     logger.info("=" * 80)
 
-    # 크롤링 완료 후 알림 (빈 값 50% 이상 시 경고)
-    monitor_and_alert('it', len(urls_data), results_df)
+    # 크롤링 완료 후 알림 (차단 페이지 실패 개수 전달)
+    monitor_and_alert('it', len(urls_data), results_df, blocked_page_failures=len(blocked_failures))
 
 if __name__ == "__main__":
     required_packages = [
