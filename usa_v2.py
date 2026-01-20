@@ -1106,9 +1106,9 @@ class AmazonScraper:
             return False
     def save_results(self, df, save_db=True, upload_server=True):
         """결과 저장"""
-        now = datetime.now(self.korea_tz)
-        date_str = now.strftime('%Y%m%d')
-        time_str = now.strftime('%H%M%S')
+        local_time = datetime.now(self.local_tz)  # 미국 현지 시간 기준
+        date_str = local_time.strftime('%Y%m%d')
+        time_str = local_time.strftime('%H%M%S')
         base_filename = f"{date_str}_{time_str}_usa_amazon"
 
         results = {'db_saved': False, 'server_uploaded': False}
