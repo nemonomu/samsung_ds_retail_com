@@ -103,11 +103,11 @@ class CurrysScraper:
             ]
 
             self.XPATHS['imageurl'] = [
-                '//*[starts-with(@id, "pdpCarousel-")]/div[1]/div/div/div[1]/div/div/a/img',  # 최우선순위 - 범용 ID 기반
+                '//*[starts-with(@id, "pdpCarousel-")]/div[1]/div/div/div/div[2]/div/div/a/img',  # 최우선순위 - 신규 구조
+                '//*[starts-with(@id, "pdpCarousel-")]/div[1]/div/div/div[1]/div/div/a/img',  # 구 구조
+                '//img[@itemprop="image"]',  # itemprop 기반 (범용)
                 '/html/body/div[1]/div[4]/div[3]/div[4]/div[1]/div[2]/div[1]/div/div[5]/div/div/div[1]/div[1]/div/div/div[1]/div/div/a/img',
-                '/html/body/div[1]/div[3]/div[3]/div[4]/div[1]/div[2]/div[1]/div/div[5]/div/div/div[1]/div[1]/div/div/div[1]/div/div/a/img',
-                '/html/body/div[7]/div[3]/div[3]/div[4]/div[1]/div[2]/div[1]/div/div[5]/div/div/div[1]/div[1]/div/div/div[1]/div/div/a/img',
-                '/html/body/div[4]/div[3]/div[3]/div[4]/div[1]/div[2]/div[1]/div/div[5]/div/div/div[1]/div[1]/div/div/div[1]/div/div/a/img'
+                '/html/body/div[1]/div[3]/div[3]/div[4]/div[1]/div[2]/div[1]/div/div[5]/div/div/div[1]/div[1]/div/div/div[1]/div/div/a/img'
             ]
 
             # 기본값 설정 (DB에 없는 경우 - price, title, imageurl 제외)
