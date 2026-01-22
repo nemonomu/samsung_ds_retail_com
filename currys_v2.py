@@ -78,39 +78,15 @@ class CurrysScraper:
 
             df = pd.read_sql(query, self.db_engine)
 
-            # element_type별로 그룹화 (price, title, imageurl 제외)
+            # element_type별로 그룹화 (모든 타입 포함)
             self.XPATHS = {}
             for element_type in df['element_type'].unique():
-                if element_type not in ['price', 'title', 'imageurl']:
-                    type_selectors = df[df['element_type'] == element_type]['selector_value'].tolist()
-                    self.XPATHS[element_type] = type_selectors
+                type_selectors = df[df['element_type'] == element_type]['selector_value'].tolist()
+                self.XPATHS[element_type] = type_selectors
 
             logger.info(f"✅ DB에서 선택자 로드 완료: {len(df)}개")
 
-            # price, title, imageurl 선택자는 항상 하드코딩된 값 사용 (DB 무시)
-            self.XPATHS['price'] = [
-                '/html/body/div[1]/div[4]/div[3]/div[4]/div[1]/div[2]/div[2]/div[2]/div[1]/div[1]/div/div/div/div/div/span/span/span',
-                '/html/body/div[1]/div[3]/div[3]/div[4]/div[1]/div[2]/div[2]/div[2]/div[1]/div[1]/div/div/div/div/div/span/span/span',
-                '/html/body/div[4]/div[3]/div[3]/div[4]/div[1]/div[2]/div[2]/div[2]/div[1]/div[1]/div/div/div/div/div/span/span/span',
-                '/html/body/div[4]/div[3]/div[3]/div[4]/div[1]/div[2]/div[2]/div[2]/div[1]/div[1]/div/div/div/div[1]/div/span[1]/span/span'
-            ]
-
-            self.XPATHS['title'] = [
-                '//*[@id="js-product-detail"]/div[1]/div[2]/div[1]/div/div[1]/div/h1',
-                '/html/body/div[1]/div[3]/div[3]/div[4]/div[1]/div[2]/div[1]/div/div[1]/div/h1',
-                '/html/body/div[7]/div[3]/div[3]/div[4]/div[1]/div[2]/div[1]/div/div[1]/div/h1',
-                '/html/body/div[4]/div[3]/div[3]/div[4]/div[1]/div[2]/div[1]/div/div[1]/div/h1'
-            ]
-
-            self.XPATHS['imageurl'] = [
-                '//*[starts-with(@id, "pdpCarousel-")]/div[1]/div/div/div/div[2]/div/div/a/img',  # 최우선순위 - 신규 구조
-                '//*[starts-with(@id, "pdpCarousel-")]/div[1]/div/div/div[1]/div/div/a/img',  # 구 구조
-                '//img[@itemprop="image"]',  # itemprop 기반 (범용)
-                '/html/body/div[1]/div[4]/div[3]/div[4]/div[1]/div[2]/div[1]/div/div[5]/div/div/div[1]/div[1]/div/div/div[1]/div/div/a/img',
-                '/html/body/div[1]/div[3]/div[3]/div[4]/div[1]/div[2]/div[1]/div/div[5]/div/div/div[1]/div[1]/div/div/div[1]/div/div/a/img'
-            ]
-
-            # 기본값 설정 (DB에 없는 경우 - price, title, imageurl 제외)
+            # DB에 없는 경우 기본값 설정
             if not self.XPATHS.get('cookie_accept'):
                 self.XPATHS['cookie_accept'] = []
 
