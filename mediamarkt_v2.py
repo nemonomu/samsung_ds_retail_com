@@ -128,47 +128,23 @@ class MediaMarktInfiniteScraper:
                     logger.info("INSERT INTO mall_selectors (mall_name, country_code, element_type, selector_value, priority, is_active)")
                     logger.info("VALUES ('mediamarkt', 'de', 'price', 'span[data-test=\"branded-price-whole\"]', 1, TRUE);")
                 
-                # 기본값 설정
+                # 기본값 설정 - DB에서 관리되므로 빈 배열로 설정
                 self.XPATHS = {
-                    'price': [
-                        "span[data-test='branded-price-whole']",
-                        "div.price__large",
-                        "span.price",
-                        "[itemprop='price']",
-                        ".product-price__price",
-                        "span[data-testid='price-now']",
-                        "div[data-testid='price-box'] span"
-                    ],
-                    'title': [
-                        "h1",
-                        "h1[data-test='product-title']",
-                        ".product-title",
-                        "h1.sc-f0860893-0",
-                        "[data-testid='product-name']"
-                    ],
-                    'imageurl': [
-                        "img.product-image",
-                        "img[data-test='product-image']",
-                        ".product-gallery img",
-                        "picture img",
-                        "[data-testid='product-image'] img"
-                    ],
-                    'availability': [
-                        "[data-test='delivery-availability']",
-                        ".availability-indicator",
-                        "[data-testid='availability']"
-                    ]
+                    'price': [],
+                    'title': [],
+                    'imageurl': [],
+                    'availability': []
                 }
-                logger.warning("⚠️ 기본 MediaMarkt 선택자 사용")
+                logger.warning("⚠️ DB에 MediaMarkt 선택자가 없습니다. DB에 선택자를 추가해주세요.")
                 
         except Exception as e:
             logger.error(f"선택자 로드 실패: {e}")
-            # 오류 시 기본값
+            # 오류 시 기본값 - DB에서 관리되므로 빈 배열로 설정
             self.XPATHS = {
-                'price': ["span[data-test='branded-price-whole']", "div.price__large", "span.price"],
-                'title': ["h1", "h1[data-test='product-title']"],
-                'imageurl': ["img.product-image", ".product-gallery img"],
-                'availability': ["[data-test='delivery-availability']"]
+                'price': [],
+                'title': [],
+                'imageurl': [],
+                'availability': []
             }
     
     def get_crawl_targets(self, limit=None):
