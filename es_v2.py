@@ -1013,44 +1013,19 @@ class AmazonScraper:
             }
             
             result['title'] = self.extract_element_text(
-                self.selectors[self.country_code].get('title', []), 
+                self.selectors[self.country_code].get('title', []),
                 "제목"
             )
-            
+
             has_stock = self.check_stock_availability()
-            
-            logger.info("가격 추출 시도 (추천상품 필터링 적용)")
-            result['retailprice'] = self.extract_price(self.country_code)
-            
-            # 가격 검증 추가 (165 문제 방지)
-            if result['retailprice']:
-                try:
-                    price_clean = re.sub(r'[^\d.]', '', str(result['retailprice']))
-                    price_value = float(price_clean)
-                    
-                    # 스페인의 경우 최소 10유로, 최대 10000유로
-                    if self.country_code == 'es':
-                        if price_value < 10 or price_value > 10000:
-                            logger.warning(f"비정상적인 가격 감지: {result['retailprice']} -> None으로 변경")
-                            result['retailprice'] = None
-                    # 다른 국가도 비슷한 범위 적용
-                    elif price_value < 5 or price_value > 50000:
-                        logger.warning(f"비정상적인 가격 감지: {result['retailprice']} -> None으로 변경")
-                        result['retailprice'] = None
-                        
-                except:
-                    logger.warning(f"가격 형태 오류: {result['retailprice']} -> None으로 변경")
-                    result['retailprice'] = None
-            
-            if not has_stock and result['retailprice'] is None:
-                result['retailprice'] = None
-                logger.info("재고 없음 + 가격 없음 -> 가격 None으로 설정")
-            
+
+            # Ships From 추출
             result['ships_from'] = self.extract_element_text(
                 self.selectors[self.country_code].get('ships_from', []),
                 "Ships From"
             )
 
+            # Sold By 추출
             result['sold_by'] = self.extract_element_text(
                 self.selectors[self.country_code].get('sold_by', []),
                 "Sold By"
@@ -1075,6 +1050,39 @@ class AmazonScraper:
                             logger.info(f"Remitente / Vendedor 통합 라벨 발견 - ships_from에 sold_by 값 복사: {result['ships_from']}")
                 except Exception as e:
                     logger.info(f"통합 라벨 확인 중 오류: {e}")
+
+            # Ships From과 Sold By가 모두 없으면 가격도 빈 값으로 처리
+            if not result['ships_from'] and not result['sold_by']:
+                logger.warning("Ships From과 Sold By가 모두 없음 - 가격을 빈 값으로 설정")
+                result['retailprice'] = None
+            else:
+                # 가격 추출 (추천상품 필터링 적용)
+                logger.info("가격 추출 시도 (추천상품 필터링 적용)")
+                result['retailprice'] = self.extract_price(self.country_code)
+
+                # 가격 검증 추가 (165 문제 방지)
+                if result['retailprice']:
+                    try:
+                        price_clean = re.sub(r'[^\d.]', '', str(result['retailprice']))
+                        price_value = float(price_clean)
+
+                        # 스페인의 경우 최소 10유로, 최대 10000유로
+                        if self.country_code == 'es':
+                            if price_value < 10 or price_value > 10000:
+                                logger.warning(f"비정상적인 가격 감지: {result['retailprice']} -> None으로 변경")
+                                result['retailprice'] = None
+                        # 다른 국가도 비슷한 범위 적용
+                        elif price_value < 5 or price_value > 50000:
+                            logger.warning(f"비정상적인 가격 감지: {result['retailprice']} -> None으로 변경")
+                            result['retailprice'] = None
+
+                    except:
+                        logger.warning(f"가격 형태 오류: {result['retailprice']} -> None으로 변경")
+                        result['retailprice'] = None
+
+                if not has_stock and result['retailprice'] is None:
+                    result['retailprice'] = None
+                    logger.info("재고 없음 + 가격 없음 -> 가격 None으로 설정")
 
             for selector in self.selectors[self.country_code].get('imageurl', []):
                 try:
