@@ -65,96 +65,24 @@ class AmazonScraper:
             self.db_engine = None
     
     def setup_default_selectors(self):
-        """기본 선택자 설정 - 165 문제 해결용 + 추천상품 필터링 추가"""
+        """기본 선택자 설정 - DB에서 관리되지 않는 항목만"""
         self.selectors = {
             self.country_code: {
-                'price': [
-                    # centerCol 내부만 타겟팅 (추천상품 제외)
-                    "//*[@id='centerCol']//span[@class='a-price']//span[@class='a-offscreen']",
-                    "//*[@id='centerCol']//*[@id='apex_desktop']//span[@class='a-price']//span[@class='a-offscreen']",
-                    "//*[@id='centerCol']//*[@id='corePrice_feature_div']//span[@class='a-offscreen']",
-                    "//*[@id='centerCol']//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-offscreen']",
-                    # 메인 제품 영역만 타겟팅 (비교 테이블 제외)
-                    "//*[@id='apex_desktop']//span[@class='a-price']//span[@class='a-offscreen']",
-                    "//*[@id='corePrice_feature_div']//span[@class='a-offscreen']",
-                    "//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-offscreen']",
-                    # 첫 번째 가격만 (비교 테이블 전)
-                    "(//span[@class='a-price']//span[@class='a-offscreen'])[1]",
-                    "//*[@id='priceblock_ourprice']",
-                    "//*[@id='priceblock_dealprice']",
-                    # 메인 영역의 whole 가격
-                    "//*[@id='centerCol']//*[@id='apex_desktop']//span[@class='a-price-whole']",
-                    "//*[@id='centerCol']//*[@id='corePrice_feature_div']//span[@class='a-price-whole']",
-                    "//*[@id='centerCol']//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-price-whole']",
-                    "//*[@id='apex_desktop']//span[@class='a-price-whole']",
-                    "//*[@id='corePrice_feature_div']//span[@class='a-price-whole']",
-                    "//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-price-whole']",
-                    # 최후의 수단: 첫 번째 whole 가격만
-                    "(//span[@class='a-price-whole'])[1]"
-                ],
-                'price_fraction': [
-                    "//*[@id='centerCol']//*[@id='corePrice_feature_div']/div/div/div/div/span[1]/span[2]",
-                    "//*[@id='centerCol']//*[@id='corePriceDisplay_desktop_feature_div']/div[1]/span[3]/span[2]",
-                    "//*[@id='centerCol']//*[@id='corePrice_feature_div']//span[@class='a-price-fraction']",
-                    "//*[@id='centerCol']//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-price-fraction']",
-                    "//*[@id='corePrice_feature_div']/div/div/div/div/span[1]/span[2]",
-                    "//*[@id='corePriceDisplay_desktop_feature_div']/div[1]/span[3]/span[2]",
-                    "//*[@id='corePrice_feature_div']//span[@class='a-price-fraction']",
-                    "//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-price-fraction']",
-                    "//span[@class='a-price-fraction']",
-                    ".a-price-fraction"
-                ],
-                'title': [
-                    "#productTitle",
-                    "//span[@id='productTitle']",
-                    "//h1/span[@id='productTitle']",
-                    "h1#title span",
-                    "//div[@id='titleSection']//h1//span"
-                ],
-                'ships_from': [
-                    "//*[@id='SSOFpopoverLink_ubb']",
-                    "//a[@id='SSOFpopoverLink_ubb']",
-                    "//*[@id='fulfillerInfoFeature_feature_div']/div[2]/div[1]/span",
-                    "//div[@id='fulfillerInfoFeature_feature_div']//span",
-                    "//*[@id='fulfillerInfoFeature_feature_div']//div[2]//span",
-                    "//div[contains(@id, 'fulfillerInfo')]//span"
-                ],
-                'sold_by': [
-                    "//a[@id='sellerProfileTriggerId']",
-                    "//*[@id='sellerProfileTriggerId']",
-                    "//*[@id='merchantInfoFeature_feature_div']/div[2]/div[1]/span",
-                    "//div[@id='merchantInfoFeature_feature_div']//a",
-                    "//div[@id='merchantInfoFeature_feature_div']//span",
-                    "//*[@id='merchantInfoFeature_feature_div']//div[2]//span",
-                    "//div[contains(@id, 'merchantInfo')]//span",
-                    "//span[contains(text(), 'Sold by')]/following-sibling::a",
-                    "//span[contains(text(), 'Sold by')]/following-sibling::span",
-                    "//span[contains(text(), 'Vendu par')]/following-sibling::span",
-                    "//span[contains(text(), 'Verkauft von')]/following-sibling::span",
-                    "//span[contains(text(), 'Venduto da')]/following-sibling::span",
-                    "//span[contains(text(), 'Vendido por')]/following-sibling::span"
-                ],
-                'imageurl': [
-                    "//div[@id='imageBlock']//img[@id='landingImage']",
-                    "//div[@id='main-image-container']//img",
-                    "//img[@class='a-dynamic-image']",
-                    "//div[@class='imgTagWrapper']//img",
-                    "//*[@id='landingImage']"
-                ],
-                'availability': [
-                    "//div[@id='availability']//span",
-                    "//div[@id='availability_feature_div']//span",
-                    "//span[@class='a-size-medium a-color-success']",
-                    "//span[@class='a-size-medium a-color-price']"
-                ],
+                'price': [],
+                'price_fraction': [],
+                'title': [],
+                'ships_from': [],
+                'sold_by': [],
+                'imageurl': [],
+                'availability': [],
                 'stock_flag': [
-                    'Currently unavailable', 
+                    'Currently unavailable',
                     'Out of Stock',
                     'Temporarily out of stock'
                 ],
                 'blocked_patterns': [
-                    'sorry', 
-                    'robot check', 
+                    'sorry',
+                    'robot check',
                     '503 Service Unavailable',
                     'Something went wrong',
                     'access denied',
@@ -241,15 +169,14 @@ class AmazonScraper:
         if not self.db_engine:
             logger.warning("DB 연결이 없어 선택자 로드 불가")
             return
-            
+
         try:
             query = """
             SELECT element_type, selector_value, priority
             FROM amazon_selectors
-            WHERE country_code = %s 
+            WHERE country_code = %s
               AND is_active = TRUE
-              AND selector_value NOT LIKE '/html/%'
-            ORDER BY element_type, priority ASC
+            ORDER BY element_type, priority DESC
             """
             
             df = pd.read_sql(query, self.db_engine, params=(self.country_code,))
