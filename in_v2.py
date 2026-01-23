@@ -74,82 +74,16 @@ class AmazonIndiaScraper:
             self.db_engine = None
     
     def setup_india_selectors(self):
-        """인도 전용 선택자 설정 - centerCol 타겟팅 및 추천상품 필터링 강화"""
+        """인도 전용 선택자 설정 - price, title, ships_from, sold_by, imageurl은 DB에서 관리"""
         self.selectors = {
             'in': {
-                'price': [
-                    # centerCol 내부 메인 가격만 타겟팅 (추천상품 제외)
-                    "//div[@id='centerCol']//span[@class='a-price-whole']",
-                    "//div[@id='centerCol']//div[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-price-whole']",
-                    "//div[@id='centerCol']//div[@class='a-section a-spacing-none aok-align-center']//span[@class='a-price-whole']",
-                    "//div[@id='centerCol']//div[@id='apex_desktop']//span[@class='a-price-whole']",
-                    "//div[@id='centerCol']//div[@id='price_inside_buybox']//span[@class='a-price-whole']",
-                    
-                    # 기존 메인 가격 표시 영역 (가장 신뢰할 수 있는 선택자들)
-                    "span.a-price-whole",
-                    "//span[@class='a-price-whole']",
-                    "//div[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-price-whole']",
-                    "//div[@class='a-section a-spacing-none aok-align-center']//span[@class='a-price-whole']",
-                    "#apex_desktop .a-price-whole",
-                    "//span[@class='a-price a-text-price a-size-medium a-color-price']//span[@class='a-price-whole']",
-                    "//div[@id='price_inside_buybox']//span[@class='a-price-whole']",
-                    
-                    # 백업 선택자들 (메인이 실패할 때만)
-                    ".a-price.a-text-price.a-size-medium .a-offscreen",
-                    "//span[@class='a-price']//span[@class='a-offscreen']",
-                    "span.a-price-range span.a-price-whole",
-                    "div.a-section.a-spacing-micro span.a-price-whole",
-                    "[data-a-color='price'] .a-offscreen",
-                    ".a-price-range .a-price .a-offscreen"
-                ],
-                'title': [
-                    "#productTitle",
-                    "//span[@id='productTitle']",
-                    "//h1/span[@id='productTitle']",
-                    "h1#title span",
-                    "//div[@id='titleSection']//h1//span"
-                ],
-                'ships_from': [
-                    # 새로 추가된 선택자들을 최우선으로 배치
-                    "//*[@id='fulfillerInfoFeature_feature_div']/div[2]/div[1]/span",
-                    "/html/body/div[2]/div/div/div[5]/div[1]/div[4]/div/div[1]/div/div/div/form/div/div/div/div/div[4]/div/div[19]/div/div/div[1]/div/div[2]/div[2]/div[1]/span",
-                    # 기존 선택자들
-                    "//span[contains(text(), 'Ships from')]/following-sibling::span",
-                    "//div[@id='merchant-info']//a",
-                    "//div[@tabular-attribute-name='Ships from']//span",
-                    "//span[@class='tabular-buybox-text'][1]",
-                    "//div[@id='fulfillerInfoFeature_feature_div']//span",
-                    "//div[contains(@class, 'tabular-buybox-container')]//span[contains(text(), 'Ships from')]/../following-sibling::span",
-                    "//div[@class='tabular-buybox-container']//span[@class='tabular-buybox-text']",
-                    "//div[@id='merchant-info']//span",
-                    "//span[contains(text(), 'Dispatched from')]/../following-sibling::span",
-                    "//div[@data-feature-name='fulfillerInfo']//span",
-                    "//div[contains(@class, 'a-row')]//span[contains(text(), 'Ships from')]/../span[2]",
-                    "//table[@id='productDetails_techSpec_section_1']//span[contains(text(), 'Ships from')]/../following-sibling::td/span"
-                ],
-                'sold_by': [
-                    # 새로 추가된 선택자들을 최우선으로 배치
-                    "//*[@id='sellerProfileTriggerId']",
-                    "/html/body/div[2]/div/div/div[5]/div[1]/div[4]/div/div[1]/div/div/div/form/div/div/div/div/div[4]/div/div[19]/div/div/div[1]/div/div[3]/div[2]/div[1]/span/a",
-                    # 기존 선택자들
-                    "//span[contains(text(), 'Sold by')]/following-sibling::span",
-                    "//div[@id='merchant-info']//a",
-                    "//a[@id='sellerProfileTriggerId']",
-                    "//div[@tabular-attribute-name='Sold by']//span",
-                    "//span[@class='tabular-buybox-text'][2]",
-                    "//div[@id='fulfillerInfoFeature_feature_div']//a",
-                    "//div[contains(@class, 'tabular-buybox-container')]//span[contains(text(), 'Sold by')]/../following-sibling::span",
-                    "//span[contains(text(), 'Sold by')]/../following-sibling::span//a",
-                    "//div[@data-feature-name='fulfillerInfo']//a"
-                ],
-                'imageurl': [
-                    "//div[@id='imageBlock']//img[@id='landingImage']",
-                    "//div[@id='main-image-container']//img",
-                    "//img[@class='a-dynamic-image']",
-                    "//div[@class='imgTagWrapper']//img",
-                    "//div[@id='imageBlock_feature_div']//img",
-                    "//img[@data-old-hires]"
-                ],
+                # DB에서 로드되는 선택자들 (빈 배열로 초기화)
+                'price': [],
+                'title': [],
+                'ships_from': [],
+                'sold_by': [],
+                'imageurl': [],
+                # 하드코딩 유지하는 선택자들
                 'availability': [
                     "//div[@id='availability']//span",
                     "//div[@id='availability_feature_div']//span",
