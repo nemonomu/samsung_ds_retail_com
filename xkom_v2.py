@@ -175,12 +175,6 @@ class XKomScraper:
             options.add_argument('--disable-dev-shm-usage')
             options.add_argument('--disable-blink-features=AutomationControlled')
             options.add_argument('--window-size=1920,1080')
-            # 메모리 최적화 옵션
-            options.add_argument('--disable-gpu')
-            options.add_argument('--disable-extensions')
-            options.add_argument('--disable-infobars')
-            options.add_argument('--disable-renderer-backgrounding')
-            options.add_argument('--js-flags=--max-old-space-size=512')
 
             # 폴란드 설정
             options.add_argument('--lang=pl-PL')
