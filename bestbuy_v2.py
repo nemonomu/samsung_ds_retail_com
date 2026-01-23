@@ -91,6 +91,7 @@ class BestBuyScraper:
             
             # price, imageurl 선택자는 항상 하드코딩된 값 사용 (DB 무시)
             self.XPATHS['imageurl'] = [
+                '/html/body/div[6]/div[5]/div[2]/div/div[2]/div[2]/div/div[2]/div/button/img',
                 '/html/body/div[5]/div[4]/div[2]/div/div[2]/div[2]/div/div[2]/div/button/img',
                 '/html/body/div[5]/div[4]/div[2]/div/div[2]/div[2]/div/div[2]/div/button[1]/img',
                 '/html/body/div[5]/div[4]/div[1]/div/div[2]/div[2]/div/div[2]/div/button/img',
@@ -126,6 +127,7 @@ class BestBuyScraper:
                         '//div[@class="sku-title"]//h1'
                     ],
                     'imageurl': [
+                        '/html/body/div[6]/div[5]/div[2]/div/div[2]/div[2]/div/div[2]/div/button/img',
                         '/html/body/div[5]/div[4]/div[2]/div/div[2]/div[2]/div/div[2]/div/button/img',
                         '/html/body/div[5]/div[4]/div[2]/div/div[2]/div[2]/div/div[2]/div/button[1]/img',
                         '/html/body/div[5]/div[4]/div[1]/div/div[2]/div[2]/div/div[2]/div/button/img',
