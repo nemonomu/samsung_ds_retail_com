@@ -216,8 +216,8 @@ class AmazonScraper:
             options.add_argument('--disable-gpu')
             options.add_argument('--disable-extensions')
             options.add_argument('--disable-infobars')
-            options.add_argument('--memory-pressure-off')
-            options.add_argument('--max_old_space_size=512')
+            options.add_argument('--disable-renderer-backgrounding')
+            options.add_argument('--js-flags=--max-old-space-size=512')
             
             user_agents = [
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -1560,7 +1560,7 @@ def main():
     
     save_results = scraper.save_results(
         results_df,
-        save_db=True,
+        save_db=False,  # scrape_urls()에서 이미 10개씩 중간 저장함
         upload_server=True
     )
     
