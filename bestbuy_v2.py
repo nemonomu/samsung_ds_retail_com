@@ -99,6 +99,7 @@ class BestBuyScraper:
                 '//div[@class="media-gallery"]//img'
             ]
             self.XPATHS['price'] = [
+                '/html/body/div[6]/div[5]/div[1]/div/div[4]/div/div/div/div[1]/div/div[1]/div[1]/div[1]/div/div/div/div[1]/span',
                 '/html/body/div[5]/div[4]/div[1]/div/div[5]/div/div/div[1]/div/div[1]/div[2]/div[1]/div/div/div/div[1]/span',
                 '/html/body/div[5]/div[4]/div[1]/div/div[4]/div/div/div[1]/div/div[1]/div[2]/div[1]/div/div/div/div[1]/span',
                 '/html/body/div[5]/div[4]/div[1]/div/div[4]/div/div/div[1]/div/div[1]/div[1]/div[1]/div/div/div/div[1]/span',
@@ -152,6 +153,7 @@ class BestBuyScraper:
             # 기본값 사용
             self.XPATHS = {
                 'price': [
+                    '/html/body/div[6]/div[5]/div[1]/div/div[4]/div/div/div/div[1]/div/div[1]/div[1]/div[1]/div/div/div/div[1]/span',
                     '/html/body/div[5]/div[4]/div[2]/div/div[3]/div/div/div[1]/div/div[1]/div[2]/div[1]/div/div/div/div[1]',
                     '/html/body/div[5]/div[4]/div[2]/div/div[3]/div/div/div[1]/div/div[1]/div[2]/div[1]/div/div/div/div[1]/span',
                     '/html/body/div[5]/div[4]/div[2]/div/div[3]/div/div/div[1]/div/div[1]/div[1]/div[1]/div/div/div/div[1]/span',
