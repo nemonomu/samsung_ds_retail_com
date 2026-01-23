@@ -120,52 +120,22 @@ class XKomScraper:
                 logger.info(f"✅ DB에서 X-kom 선택자 로드 완료: {len(df)}개")
                 
             else:
-                # X-kom 선택자가 없으면 기본값 사용
-                logger.warning("⚠️ DB에 X-kom 선택자가 없습니다. 기본값을 사용합니다.")
-                
-                # X-kom 특화 선택자
+                # X-kom 선택자가 없으면 빈 값 사용 (DB에서 관리)
+                logger.warning("⚠️ DB에 X-kom 선택자가 없습니다. DB에 선택자를 추가해주세요.")
                 self.XPATHS = {
-                    'price': [
-                        "span.a-price",
-                        "span.sc-n4n86h-4",
-                        "[data-name='Price']",
-                        ".sc-1bker4h-0 span",
-                        "meta[property='product:price:amount']",
-                        "//span[@class='a-price']",
-                        "//div[@data-name='Price']//span"
-                    ],
-                    'title': [
-                        "h1.sc-1bker4h-4",
-                        "h1[data-name='ProductName']",
-                        ".product-header h1",
-                        "meta[property='og:title']",
-                        "//h1[@class='sc-1bker4h-4']"
-                    ],
-                    'imageurl': [
-                        "img.sc-1fcmfeb-2",
-                        ".product-gallery img",
-                        "img[data-name='ProductImage']",
-                        "meta[property='og:image']",
-                        "//img[@class='sc-1fcmfeb-2']"
-                    ],
-                    'availability': [
-                        "[data-name='AvailabilityStatus']",
-                        ".availability-info",
-                        ".sc-13hqgn9-0"
-                    ]
+                    'price': [],
+                    'title': [],
+                    'imageurl': [],
+                    'availability': []
                 }
-                
-                logger.info("💡 다음 SQL로 X-kom 선택자를 DB에 추가하세요:")
-                logger.info("INSERT INTO mall_selectors (mall_name, country_code, element_type, selector_value, priority, is_active)")
-                logger.info("VALUES ('xkom', 'pl', 'price', 'span.a-price', 1, TRUE);")
                 
         except Exception as e:
             logger.error(f"선택자 로드 실패: {e}")
             self.XPATHS = {
-                'price': ["span.a-price", "span.sc-n4n86h-4"],
-                'title': ["h1.sc-1bker4h-4", "h1[data-name='ProductName']"],
-                'imageurl': ["img.sc-1fcmfeb-2", ".product-gallery img"],
-                'availability': ["[data-name='AvailabilityStatus']"]
+                'price': [],
+                'title': [],
+                'imageurl': [],
+                'availability': []
             }
     
     def get_crawl_targets(self, limit=None):
