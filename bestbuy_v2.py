@@ -80,40 +80,13 @@ class BestBuyScraper:
             
             df = pd.read_sql(query, self.db_engine)
             
-            # element_type별로 그룹화 (price 제외)
+            # element_type별로 그룹화 (모든 타입 포함)
             self.XPATHS = {}
             for element_type in df['element_type'].unique():
-                if element_type != 'price':  # price 선택자는 DB에서 로드하지 않음
-                    type_selectors = df[df['element_type'] == element_type]['selector_value'].tolist()
-                    self.XPATHS[element_type] = type_selectors
-            
+                type_selectors = df[df['element_type'] == element_type]['selector_value'].tolist()
+                self.XPATHS[element_type] = type_selectors
+
             logger.info(f"✅ DB에서 선택자 로드 완료: {len(df)}개")
-            
-            # price, imageurl 선택자는 항상 하드코딩된 값 사용 (DB 무시)
-            self.XPATHS['imageurl'] = [
-                '/html/body/div[6]/div[5]/div[2]/div/div[2]/div[2]/div/div[2]/div/button/img',
-                '/html/body/div[5]/div[4]/div[2]/div/div[2]/div[2]/div/div[2]/div/button/img',
-                '/html/body/div[5]/div[4]/div[2]/div/div[2]/div[2]/div/div[2]/div/button[1]/img',
-                '/html/body/div[5]/div[4]/div[1]/div/div[2]/div[2]/div/div[2]/div/button/img',
-                '/html/body/div[5]/div[4]/div[1]/div/div[2]/div[2]/div/div[2]/div/button[1]/img',
-                '//img[@class="primary-image"]',
-                '//div[@class="media-gallery"]//img'
-            ]
-            self.XPATHS['price'] = [
-                '/html/body/div[6]/div[5]/div[1]/div/div[4]/div/div/div/div[1]/div/div[1]/div[1]/div[1]/div/div/div/div[1]/span',
-                '/html/body/div[5]/div[4]/div[1]/div/div[5]/div/div/div[1]/div/div[1]/div[2]/div[1]/div/div/div/div[1]/span',
-                '/html/body/div[5]/div[4]/div[1]/div/div[4]/div/div/div[1]/div/div[1]/div[2]/div[1]/div/div/div/div[1]/span',
-                '/html/body/div[5]/div[4]/div[1]/div/div[4]/div/div/div[1]/div/div[1]/div[1]/div[1]/div/div/div/div[1]/span',
-                '/html/body/div[5]/div[4]/div[1]/div/div[5]/div/div/div[1]/div/div[1]/div[1]/div[1]/div/div/div/div[1]/span',
-                '/html/body/div[5]/div[4]/div[2]/div/div[3]/div/div/div[1]/div/div[1]/div[2]/div[1]/div/div/div/div[1]',
-                '/html/body/div[5]/div[4]/div[2]/div/div[3]/div/div/div[1]/div/div[1]/div[2]/div[1]/div/div/div/div[1]/span',
-                '/html/body/div[5]/div[4]/div[2]/div/div[3]/div/div/div[1]/div/div[1]/div[1]/div[1]/div/div/div/div[1]/span',
-                '/html/body/div[5]/div[4]/div[2]/div/div[4]/div/div/div[1]/div/div[1]/div[1]/div[1]/div/div/div/div[1]/span',
-                '/html/body/div[5]/div[4]/div[2]/div/div[5]/div/div/div[1]/div/div[1]/div[1]/div[1]/div/div/div/div[1]/span',
-                '/html/body/div[5]/div[4]/div[2]/div/div[4]/div/div/div/div/div[2]/div[1]/div[1]',
-                '/html/body/div[5]/div[4]/div[2]/div/div[5]/div/div/div/div/div[2]/div[1]/div[1]',
-                '/html/body/div[5]/div[4]/div[2]/div/div[4]/div/div/div[1]/div/div[1]/div[2]/div[1]/div/div/div/div[1]/span'
-            ]
             
             # 기본값 설정 (DB에 없는 경우 - price 제외)
             if not self.XPATHS.get('title'):
