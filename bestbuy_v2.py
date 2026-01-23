@@ -423,7 +423,13 @@ class BestBuyScraper:
             # 재고 상태 확인
             page_source = self.driver.page_source
             stock_available = True
-            
+
+            # 에러 페이지 감지 (retry 하지 않고 다음 제품으로)
+            if "We're sorry, something went wrong" in page_source:
+                logger.warning("⚠️ 에러 페이지 감지: 'We're sorry, something went wrong' - retry 없이 다음 제품으로")
+                self.error_logs.append(f"[에러 페이지] URL: {url} | 메시지: something went wrong")
+                return result  # retry 없이 바로 반환
+
             for stock_flag in self.XPATHS.get('stock_flag', []):
                 if stock_flag in page_source:
                     logger.info(f"재고 없음: {stock_flag}")
