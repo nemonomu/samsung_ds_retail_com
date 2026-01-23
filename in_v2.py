@@ -932,33 +932,35 @@ class AmazonIndiaScraper:
             
             # 제목 추출
             result['title'] = self.extract_element_text(
-                self.selectors['in']['title'], 
+                self.selectors['in']['title'],
                 "제목"
             )
-            
+
             # 재고 확인
             has_stock = self.check_stock_availability()
-            
-            # 루피 가격 추출 (강화된 필터링)
-            result['retailprice'] = self.extract_price_india()
-            
-            # Ships From 추출 (인도 전용 함수 사용)
-            result['ships_from'] = self.extract_ships_from_india()
-            
-            # 판매자 정보 추출 (인도 전용 함수 사용)
-            result['sold_by'] = self.extract_sold_by_india()
-            
-            # ships_from과 sold_by가 모두 없을 경우 가격을 0으로 설정
-            result['retailprice'] = self.apply_price_zero_rule(
-                result['ships_from'], 
-                result['sold_by'], 
-                result['retailprice']
-            )
-            
-            # 재고 없고 가격 없으면 None (기존 로직 유지)
-            if not has_stock and result['retailprice'] is None:
+
+            # 재고 없으면 price, ships_from, sold_by 수집 건너뛰기
+            if not has_stock:
+                logger.info("⏭️ 재고 없음 - price, ships_from, sold_by 수집 건너뛰기")
                 result['retailprice'] = None
-                logger.info("재고 없음 + 가격 없음 -> 가격 None")
+                result['ships_from'] = None
+                result['sold_by'] = None
+            else:
+                # 루피 가격 추출 (강화된 필터링)
+                result['retailprice'] = self.extract_price_india()
+
+                # Ships From 추출 (인도 전용 함수 사용)
+                result['ships_from'] = self.extract_ships_from_india()
+
+                # 판매자 정보 추출 (인도 전용 함수 사용)
+                result['sold_by'] = self.extract_sold_by_india()
+
+                # ships_from과 sold_by가 모두 없을 경우 가격을 0으로 설정
+                result['retailprice'] = self.apply_price_zero_rule(
+                    result['ships_from'],
+                    result['sold_by'],
+                    result['retailprice']
+                )
             
             # 이미지 URL 추출
             for selector in self.selectors['in']['imageurl']:
