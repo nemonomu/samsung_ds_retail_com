@@ -904,10 +904,10 @@ class CoolblueScraper:
                     logger.info(f"⏳ {wait_time:.1f}초 대기 중...")
                     time.sleep(wait_time)
                     
-                    # 10개마다 긴 휴식
+                    # 10개마다 휴식
                     if (idx + 1) % 10 == 0:
-                        logger.info("☕ 10개 처리 완료, 30초 휴식...")
-                        time.sleep(30)
+                        logger.info("☕ 10개 처리 완료, 10초 휴식...")
+                        time.sleep(10)
         
         except Exception as e:
             logger.error(f"❌ 스크래핑 중 오류: {e}")
