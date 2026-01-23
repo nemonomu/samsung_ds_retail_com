@@ -95,84 +95,22 @@ class FnacScraperV2:
 
             logger.info(f"DB에서 선택자 로드 완료: {len(df)}개")
 
-            # 새로운 XPath를 기존 DB XPath 앞에 추가
-            if 'price' in self.XPATHS:
-                new_price_selectors = [
-                    '.f-faPriceBox__price',  # CSS 선택자
-                    "//span[@class='f-faPriceBox__price userPrice checked']",
-                    "//div[@class='f-faPriceBox__priceLine']//span[@class='f-faPriceBox__price']"
-                ]
-                self.XPATHS['price'] = new_price_selectors + self.XPATHS['price']
-                logger.info(f"새로운 price 선택자 추가됨. 총 price: {len(self.XPATHS['price'])}개")
-            else:
-                self.XPATHS['price'] = [
-                    '.f-faPriceBox__price',
-                    "//span[@class='f-faPriceBox__price userPrice checked']",
-                    "//div[@class='f-faPriceBox__priceLine']//span[@class='f-faPriceBox__price']"
-                ]
-
-            # title XPath 추가
-            if 'title' in self.XPATHS:
-                new_title_selectors = [
-                    '.f-productHeader__heading',
-                    "//h1[@class='f-productHeader__heading']"
-                ]
-                self.XPATHS['title'] = new_title_selectors + self.XPATHS['title']
-                logger.info(f"새로운 title 선택자 추가됨. 총 title: {len(self.XPATHS['title'])}개")
-            else:
-                self.XPATHS['title'] = [
-                    '.f-productHeader__heading',
-                    "//h1[@class='f-productHeader__heading']"
-                ]
-
-            # imageurl 선택자 추가
-            if 'imageurl' in self.XPATHS:
-                new_image_selectors = [
-                    '.f-productMedias__viewItem--main',
-                    "//img[@class='f-productMedias__viewItem--main']"
-                ]
-                self.XPATHS['imageurl'] = new_image_selectors + self.XPATHS['imageurl']
-                logger.info(f"새로운 imageurl 선택자 추가됨. 총 imageurl: {len(self.XPATHS['imageurl'])}개")
-            else:
-                self.XPATHS['imageurl'] = [
-                    '.f-productMedias__viewItem--main',
-                    "//img[@class='f-productMedias__viewItem--main']"
-                ]
-
-            # 기본값 설정 (DB에 없는 경우)
+            # 기본값 설정 (DB에 없는 경우) - DB에서 관리되므로 빈 배열로 설정
             if not self.XPATHS:
-                logger.warning("DB에 선택자가 없어 기본값 사용")
+                logger.warning("DB에 선택자가 없습니다. DB에 선택자를 추가해주세요.")
                 self.XPATHS = {
-                    'price': [
-                        '.f-faPriceBox__price',
-                        "//span[@class='f-faPriceBox__price userPrice checked']"
-                    ],
-                    'title': [
-                        '.f-productHeader__heading',
-                        "//h1[@class='f-productHeader__heading']"
-                    ],
-                    'imageurl': [
-                        '.f-productMedias__viewItem--main',
-                        "//img[@class='f-productMedias__viewItem--main']"
-                    ]
+                    'price': [],
+                    'title': [],
+                    'imageurl': []
                 }
 
         except Exception as e:
             logger.error(f"선택자 로드 실패: {e}")
-            # 기본값 사용
+            # 오류 시 빈 배열 - DB에서 관리되므로
             self.XPATHS = {
-                'price': [
-                    '.f-faPriceBox__price',
-                    "//span[@class='f-faPriceBox__price userPrice checked']"
-                ],
-                'title': [
-                    '.f-productHeader__heading',
-                    "//h1[@class='f-productHeader__heading']"
-                ],
-                'imageurl': [
-                    '.f-productMedias__viewItem--main',
-                    "//img[@class='f-productMedias__viewItem--main']"
-                ]
+                'price': [],
+                'title': [],
+                'imageurl': []
             }
 
     def get_crawl_targets(self, limit=None, include_failed=False):
