@@ -67,104 +67,25 @@ class AmazonScraper:
             self.db_engine = None
     
     def setup_default_selectors(self):
-        """기본 선택자 설정"""
+        """기본 선택자 설정 - DB에서 관리되지 않는 항목만"""
         self.selectors = {
             self.country_code: {
-                'price': [
-                    "//*[@id='corePrice_feature_div']//span[@class='a-offscreen']",
-                    "//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-offscreen']", 
-                    ".a-price .a-offscreen",
-                    "//span[@class='a-price']//span[@class='a-offscreen']",
-                    "//*[@id='corePrice_feature_div']//span[@class='a-price-whole']",
-                    "//*[@id='corePrice_feature_div']/div/div/div/div/span[1]/span[1]",
-                    "//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-price-whole']",
-                    "span.a-price-whole",
-                    "//span[@class='a-price-whole']",
-                    "//span[@id='priceblock_ourprice']",
-                    "//span[@id='priceblock_dealprice']"
-                ],
-                'price_fraction': [
-                    "//*[@id='corePrice_feature_div']/div/div/div/div/span[1]/span[2]",
-                    "//*[@id='corePriceDisplay_desktop_feature_div']/div[1]/span[3]/span[2]",
-                    "//*[@id='corePrice_feature_div']//span[@class='a-price-fraction']",
-                    "//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-price-fraction']",
-                    "//span[@class='a-price-fraction']",
-                    ".a-price-fraction"
-                ],
-                'title': [
-                    "#productTitle",
-                    "//span[@id='productTitle']",
-                    "//h1/span[@id='productTitle']",
-                    "h1#title span",
-                    "//div[@id='titleSection']//h1//span"
-                ],
-                'ships_from': [
-                    # 정확한 XPath를 최우선으로 배치
-                    "//*[@id='fulfillerInfoFeature_feature_div']/div[2]/div[1]/span",  # 정확한 XPath (우선순위 1)
-
-                    # 기타 백업 선택자들
-                    "//div[@id='fulfillerInfoFeature_feature_div']//span",
-                    "//*[@id='fulfillerInfoFeature_feature_div']//div[2]//span",
-                    "//div[contains(@id, 'fulfillerInfo')]//span",
-                    "//*[@id='SSOFpopoverLink_ubb']"
-                ],
-                'sold_by': [
-                    # 정확한 XPath들을 최우선으로 배치
-                    "//a[@id='sellerProfileTriggerId']",  # 미국 Amazon 링크형 판매자
-                    "//*[@id='sellerProfileTriggerId']",  # 미국 Amazon 백업
-                    "//*[@id='merchantInfoFeature_feature_div']/div[2]/div[1]/span",  # 정확한 XPath (우선순위 1)
-                    
-                    # 기타 백업 선택자들
-                    "//div[@id='merchantInfoFeature_feature_div']//a",
-                    "//div[@id='merchantInfoFeature_feature_div']//span",
-                    "//*[@id='merchantInfoFeature_feature_div']//div[2]//span",
-                    "//div[contains(@id, 'merchantInfo')]//span",
-                    
-                    # 다국어 following-sibling 패턴들 (마지막에 배치)
-                    "//span[contains(text(), 'Sold by')]/following-sibling::a",
-                    "//span[contains(text(), 'Sold by')]/following-sibling::span",
-                    "//span[contains(text(), 'Vendu par')]/following-sibling::span",
-                    "//span[contains(text(), 'Verkauft von')]/following-sibling::span",
-                    "//span[contains(text(), 'Venduto da')]/following-sibling::span",
-                    "//span[contains(text(), 'Vendido por')]/following-sibling::span"
-                ],
-                'imageurl': [
-                    "//div[@id='imageBlock']//img[@id='landingImage']",
-                    "//div[@id='main-image-container']//img",
-                    "//img[@class='a-dynamic-image']",
-                    "//div[@class='imgTagWrapper']//img"
-                ],
-                'availability': [
-                    "//div[@id='availability']//span",
-                    "//div[@id='availability_feature_div']//span",
-                    "//span[@class='a-size-medium a-color-success']",
-                    "//span[@class='a-size-medium a-color-price']"
-                ],
-                # 'vat_text_list': [
-                #     "Tax included", 
-                #     "include VAT.",
-                #     "VAT included", 
-                #     "inkl. MwSt", 
-                #     "TVA incluse", 
-                #     "IVA incluida",
-                #     "Inclusive of all taxes",
-                #     "Including all taxes",
-                #     "Includes all taxes",
-                #     "Price includes VAT",
-                #     "GST included",
-                #     "Tax inclusive",
-                #     "Including tax",
-                #     "Inc. tax",
-                #     "Incl. VAT"
-                # ],
+                # price, price_fraction, title, ships_from, sold_by, imageurl은 DB에서 로드
+                'price': [],
+                'price_fraction': [],
+                'title': [],
+                'ships_from': [],
+                'sold_by': [],
+                'imageurl': [],
+                'availability': [],
                 'stock_flag': [
-                    'Currently unavailable', 
+                    'Currently unavailable',
                     'Out of Stock',
                     'Temporarily out of stock'
                 ],
                 'blocked_patterns': [
-                    'sorry', 
-                    'robot check', 
+                    'sorry',
+                    'robot check',
                     '503 Service Unavailable',
                     'Something went wrong',
                     'access denied',
@@ -180,34 +101,33 @@ class AmazonScraper:
         if not self.db_engine:
             logger.warning("DB 연결이 없어 선택자 로드 불가")
             return
-            
+
         try:
             query = """
             SELECT element_type, selector_value, priority
             FROM amazon_selectors
-            WHERE country_code = %s 
+            WHERE country_code = %s
               AND is_active = TRUE
-              AND selector_value NOT LIKE '/html/%'
-            ORDER BY element_type, priority ASC
+            ORDER BY element_type, priority DESC
             """
-            
+
             df = pd.read_sql(query, self.db_engine, params=(self.country_code,))
             logger.info(f"DB에서 선택자 로드: {len(df)}개")
-            
+
             db_selectors = {self.country_code: {}}
-            
+
             for element_type in df['element_type'].unique():
                 db_selectors[self.country_code][element_type] = df[df['element_type'] == element_type]['selector_value'].tolist()
-            
+
             for element_type, selectors in db_selectors[self.country_code].items():
                 if element_type in self.selectors[self.country_code]:
                     existing = self.selectors[self.country_code][element_type]
                     self.selectors[self.country_code][element_type] = selectors + [s for s in existing if s not in selectors]
                 else:
                     self.selectors[self.country_code][element_type] = selectors
-            
+
             logger.info("DB 선택자 로드 완료")
-            
+
         except Exception as e:
             logger.error(f"DB 선택자 로드 실패: {e}")
     
