@@ -212,6 +212,12 @@ class AmazonScraper:
             options.add_argument('--disable-dev-shm-usage')
             options.add_argument('--no-sandbox')
             options.add_argument('--disable-setuid-sandbox')
+            # 메모리 최적화 옵션
+            options.add_argument('--disable-gpu')
+            options.add_argument('--disable-extensions')
+            options.add_argument('--disable-infobars')
+            options.add_argument('--memory-pressure-off')
+            options.add_argument('--max_old_space_size=512')
             
             user_agents = [
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -1387,6 +1393,18 @@ class AmazonScraper:
                     if (idx + 1) % 20 == 0:
                         logger.info("20개 처리 완료, 30초 휴식...")
                         time.sleep(30)
+
+                    # 30개마다 드라이버 재시작 (메모리 누적 방지)
+                    if (idx + 1) % 30 == 0:
+                        logger.info("🔄 30개 처리 완료 - 드라이버 재시작 (메모리 정리)")
+                        try:
+                            self.driver.quit()
+                            time.sleep(3)
+                            self.setup_driver()
+                            logger.info("✅ 드라이버 재시작 완료")
+                        except Exception as e:
+                            logger.error(f"드라이버 재시작 실패: {e}")
+                            self.setup_driver()
 
             # 마지막으로 저장되지 않은 나머지 데이터 저장 (10의 배수가 아닌 경우)
             remainder = len(results) % 10
