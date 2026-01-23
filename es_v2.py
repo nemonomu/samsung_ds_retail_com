@@ -972,11 +972,7 @@ class AmazonScraper:
                 raise Exception("페이지 차단됨")
             
             # V2: 타임존 분리
-
-            
             now_time = datetime.now(self.korea_tz)
-
-            
             local_time = datetime.now(self.local_tz)
 
             # ISO 8601 형식
@@ -1128,12 +1124,15 @@ class AmazonScraper:
                 return self.extract_product_info(url, row_data, retry_count + 1, max_retries)
             
             # V2: 타임존 분리
-
-            
             now_time = datetime.now(self.korea_tz)
-
-            
             local_time = datetime.now(self.local_tz)
+
+            # ISO 8601 형식
+            crawl_dt = local_time.strftime("%Y-%m-%dT%H:%M:%S")
+            tz_offset = local_time.strftime("%z")
+            tz_formatted = f"{tz_offset[:3]}:{tz_offset[3:]}" if tz_offset else "+00:00"
+            crawl_datetime_iso = f"{crawl_dt}{tz_formatted}"
+
             return {
                 'retailerid': row_data.get('retailerid', ''),
                 'country_code': self.country_code,
@@ -1384,11 +1383,22 @@ class AmazonScraper:
                     wait_time = random.uniform(5, 10)
                     logger.info(f"{wait_time:.1f}초 대기 중...")
                     time.sleep(wait_time)
-                    
+
                     if (idx + 1) % 20 == 0:
                         logger.info("20개 처리 완료, 30초 휴식...")
                         time.sleep(30)
-        
+
+            # 마지막으로 저장되지 않은 나머지 데이터 저장 (10의 배수가 아닌 경우)
+            remainder = len(results) % 10
+            if remainder > 0 and self.db_engine:
+                try:
+                    remainder_df = pd.DataFrame(results[-remainder:])
+                    table_name = f'amazon_price_crawl_tbl_{self.country_code}_v2'
+                    remainder_df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
+                    logger.info(f"마지막 저장: {remainder}개 레코드")
+                except Exception as e:
+                    logger.error(f"마지막 저장 실패: {e}")
+
         except Exception as e:
             logger.error(f"스크래핑 중 오류: {e}")
         
