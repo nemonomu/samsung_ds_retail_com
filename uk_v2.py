@@ -64,91 +64,16 @@ class AmazonUKScraper:
             self.db_engine = None
     
     def setup_uk_selectors(self):
-        """영국 전용 선택자 설정 (독일 선택자 추가)"""
+        """영국 전용 선택자 설정 - DB에서 관리되지 않는 항목만"""
         self.selectors = {
-            'price': [
-                # 독일 전용 xpath 추가 (최우선)
-                "//*[@id='corePrice_feature_div']/div/div/span[1]/span[1]",
-                "/html/body/div[2]/div/div/div[4]/div[1]/div[3]/div/div[1]/div/div/div/form/div/div/div/div/div[3]/div/div[1]/div/div/span[1]/span[1]",
-                
-                # 요청된 추가 선택자
-                "//*[@id='corePriceDisplay_desktop_feature_div']/div[1]/span[1]",
-                "//*[@id='usedBuySection']/div[1]/div/span[2]",
-                
-                # 메인 가격 영역
-                "//*[@id='corePrice_feature_div']//span[@class='a-offscreen']",
-                "//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-offscreen']",
-                "//*[@id='apex_desktop']//span[@class='a-price']//span[@class='a-offscreen']",
-                
-                # 첫 번째 가격만
-                "(//span[@class='a-price']//span[@class='a-offscreen'])[1]",
-                "(//span[@class='a-price-whole'])[1]",
-                
-                # 기본 가격 요소들
-                "//*[@id='priceblock_ourprice']",
-                "//*[@id='priceblock_dealprice']",
-                "//*[@id='listPrice']",
-                
-                # Whole 가격
-                "//*[@id='corePrice_feature_div']//span[@class='a-price-whole']",
-                "//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-price-whole']",
-                "//*[@id='apex_desktop']//span[@class='a-price-whole']"
-            ],
-            'price_fraction': [
-                "//*[@id='corePrice_feature_div']//span[@class='a-price-fraction']",
-                "//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-price-fraction']",
-                "//*[@id='apex_desktop']//span[@class='a-price-fraction']",
-                "//span[@class='a-price-fraction']"
-            ],
-            'title': [
-                # 독일 전용 xpath 추가 (최우선)
-                "//*[@id='productTitle']",
-                "/html/body/div[2]/div/div/div[4]/div[4]/div[1]/div/h1/span",
-                
-                "#productTitle",
-                "//span[@id='productTitle']",
-                "//h1/span[@id='productTitle']"
-            ],
-            'ships_from': [
-                # 독일 전용 xpath 추가 (최우선)
-                "//*[@id='fulfillerInfoFeature_feature_div']/div[2]/div[1]/span",
-                
-                "//*[@id='SSOFpopoverLink_ubb']",
-                "//a[@id='SSOFpopoverLink_ubb']",
-                "//div[@id='fulfillerInfoFeature_feature_div']//span"
-            ],
-            'sold_by': [
-                # 독일 전용 xpath 추가 (최우선)
-                "//*[@id='merchantInfoFeature_feature_div']/div[2]/div[1]/span",
-                
-                "//a[@id='sellerProfileTriggerId']",
-                "//*[@id='sellerProfileTriggerId']",
-                "//div[@id='merchantInfoFeature_feature_div']//a",
-                "//div[@id='merchantInfoFeature_feature_div']//span"
-            ],
-            'imageurl': [
-                # 독일 전용 xpath 추가 (최우선)
-                "//*[@id='landingImage']",
-                "/html/body/div[2]/div/div/div[4]/div[3]/div[1]/div[1]/div/div/div[2]/div[1]/div[1]/ul/li[1]/span/span/div/img",
-                
-                "//div[@id='imageBlock']//img[@id='landingImage']",
-                "//div[@id='main-image-container']//img",
-                "//img[@class='a-dynamic-image']"
-            ],
-            'availability': [
-                "//div[@id='availability']//span",
-                "//div[@id='availability_feature_div']//span"
-            # ],
-            # 'vat_text_list': [
-            #     # 독일 VAT 텍스트 추가
-            #     "inkl. MwSt.",
-            #     "inklusive MwSt.", 
-            #     "Steuer inbegriffen",
-            #     # 영국 VAT 텍스트
-            #     "Tax included", 
-            #     "include VAT.",
-            #     "VAT included"
-            ],
+            # price, price_fraction, title, ships_from, sold_by, imageurl, availability는 DB에서 로드
+            'price': [],
+            'price_fraction': [],
+            'title': [],
+            'ships_from': [],
+            'sold_by': [],
+            'imageurl': [],
+            'availability': [],
             'excluded_price_areas': [
                 'product-comparison',
                 'comparison-desktop',
@@ -168,29 +93,29 @@ class AmazonUKScraper:
         if not self.db_engine:
             logger.warning("DB 연결이 없어 선택자 로드 불가")
             return
-        
+
         try:
             query = """
             SELECT element_type, selector_value, priority
             FROM amazon_selectors
-            WHERE country_code = 'gb' 
+            WHERE country_code = 'gb'
               AND is_active = TRUE
-            ORDER BY element_type, priority ASC
+            ORDER BY element_type, priority DESC
             """
-            
+
             df = pd.read_sql(query, self.db_engine)
             logger.info(f"DB에서 UK 선택자 로드: {len(df)}개")
-            
+
             if len(df) > 0:
                 for element_type in df['element_type'].unique():
                     selectors = df[df['element_type'] == element_type]['selector_value'].tolist()
                     if element_type in self.selectors:
                         existing = self.selectors[element_type]
-                        self.selectors[element_type] = existing + selectors
+                        self.selectors[element_type] = selectors + [s for s in existing if s not in selectors]
                     else:
                         self.selectors[element_type] = selectors
-                
-                logger.info("DB 선택자 병합 완료")
+
+                logger.info("DB 선택자 로드 완료")
         except Exception as e:
             logger.error(f"DB 선택자 로드 실패: {e}")
     
