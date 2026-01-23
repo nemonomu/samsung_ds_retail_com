@@ -175,7 +175,7 @@ class XKomScraper:
             options.add_argument('--disable-dev-shm-usage')
             options.add_argument('--disable-blink-features=AutomationControlled')
             options.add_argument('--window-size=1920,1080')
-
+            
             # 폴란드 설정
             options.add_argument('--lang=pl-PL')
             options.add_experimental_option('prefs', {
