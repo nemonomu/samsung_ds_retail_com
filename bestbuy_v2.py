@@ -425,10 +425,14 @@ class BestBuyScraper:
             stock_available = True
 
             # 에러 페이지 감지 (retry 하지 않고 다음 제품으로)
-            if "We're sorry, something went wrong" in page_source:
-                logger.warning("⚠️ 에러 페이지 감지: 'We're sorry, something went wrong' - retry 없이 다음 제품으로")
-                self.error_logs.append(f"[에러 페이지] URL: {url} | 메시지: something went wrong")
-                return result  # retry 없이 바로 반환
+            try:
+                error_element = self.driver.find_element(By.XPATH, "//h1[contains(@class, 'VPT-title')]")
+                if error_element and "something went wrong" in error_element.text.lower():
+                    logger.warning(f"⚠️ 에러 페이지 감지: '{error_element.text}' - retry 없이 다음 제품으로")
+                    self.error_logs.append(f"[에러 페이지] URL: {url} | 메시지: {error_element.text}")
+                    return result  # retry 없이 바로 반환
+            except:
+                pass  # 에러 요소 없으면 정상 페이지
 
             for stock_flag in self.XPATHS.get('stock_flag', []):
                 if stock_flag in page_source:
