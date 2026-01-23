@@ -49,8 +49,8 @@ class CentrecomScraper:
         # DB 연결 설정
         self.setup_db_connection()
 
-        # 기본 선택자 설정
-        self.setup_default_selectors()
+        # DB에서 선택자 로드
+        self.load_selectors_from_db()
 
     def setup_db_connection(self):
         """DB 연결 설정"""
@@ -66,26 +66,47 @@ class CentrecomScraper:
             logger.error(f"DB 연결 실패: {e}")
             self.db_engine = None
 
-    def setup_default_selectors(self):
-        """기본 선택자 설정 - Centrecom 전용"""
-        self.selectors = {
-            self.country_code: {
-                'price': [
-                    "//*[@id='product-details-form']/div/div[1]/div[2]/div[1]/div[2]/div[1]/div[3]/div[1]/span",
-                    "//*[@id='product-details-form']/div/div[1]/div[2]/div[1]/div[2]/div[1]/div[3]/div[1]",
-                    "//*[@id='product-details-form']/div/div[2]/div[2]/div[1]/div[2]/div[1]/div[3]/div[1]/span",
-                    "//*[@id='product-details-form']/div/div[2]/div[2]/div[1]/div[2]/div[1]/div[3]/div[1]"
-                ],
-                'title': [
-                    "//*[@id='product-details-form']/div/div[1]/div[2]/div[1]/div[1]/h1",
-                    "//*[@id='product-details-form']/div/div[2]/div[2]/div[1]/div[1]/h1"
-                ],
-                'imageurl': [
-                    "//*[@id='gallery-1']/div[1]/div[1]/div[3]/img",
-                    "//*[@id='gallery-1']/div[1]/div[1]/div/img"
-                ]
+    def load_selectors_from_db(self):
+        """DB에서 Centrecom용 선택자 로드"""
+        try:
+            query = """
+            SELECT element_type, selector_value, priority
+            FROM mall_selectors
+            WHERE mall_name = 'centrecom'
+              AND country_code = 'au'
+              AND is_active = TRUE
+            ORDER BY element_type, priority ASC
+            """
+
+            df = pd.read_sql(query, self.db_engine)
+
+            # element_type별로 그룹화
+            self.selectors = {self.country_code: {}}
+            for element_type in df['element_type'].unique():
+                type_selectors = df[df['element_type'] == element_type]['selector_value'].tolist()
+                self.selectors[self.country_code][element_type] = type_selectors
+
+            logger.info(f"DB에서 선택자 로드 완료: {len(df)}개")
+
+            # 기본값 설정 (DB에 없는 경우) - price, title, imageurl은 DB에서 관리
+            if not self.selectors[self.country_code]:
+                logger.warning("DB에 선택자가 없습니다. DB에서 centrecom/au 선택자를 확인하세요.")
+                self.selectors[self.country_code] = {
+                    'price': [],
+                    'title': [],
+                    'imageurl': []
+                }
+
+        except Exception as e:
+            logger.error(f"선택자 로드 실패: {e}")
+            # 기본값 사용
+            self.selectors = {
+                self.country_code: {
+                    'price': [],
+                    'title': [],
+                    'imageurl': []
+                }
             }
-        }
 
     def setup_driver(self):
         """Chrome 드라이버 설정"""
