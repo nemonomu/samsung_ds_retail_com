@@ -268,7 +268,7 @@ class CoolblueScraper:
             logger.debug(f"쿠키 팝업 처리 중 오류 (무시): {e}")
             return False
     
-    def extract_product_info(self, url, row_data, retry_count=0, max_retries=3):
+    def extract_product_info(self, url, row_data, retry_count=0, max_retries=2):
         """제품 정보 추출 (재시도 로직 포함)"""
         try:
             logger.info(f"🔍 페이지 접속: {url} (시도: {retry_count + 1}/{max_retries + 1})")
@@ -568,7 +568,7 @@ class CoolblueScraper:
             
             # 재시도 로직
             if retry_count < max_retries:
-                wait_time = (retry_count + 1) * 10  # 재시도마다 대기 시간 증가
+                wait_time = 5  # 일괄 5초 대기
                 logger.info(f"🔄 {wait_time}초 후 재시도합니다... (재시도 {retry_count + 1}/{max_retries})")
                 time.sleep(wait_time)
                 
