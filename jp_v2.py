@@ -107,13 +107,11 @@ class AmazonScraper:
             return
             
         try:
-            # Full XPath는 제외하고 로드
             query = """
             SELECT element_type, selector_value, priority
             FROM amazon_selectors
-            WHERE country_code = %s 
+            WHERE country_code = %s
               AND is_active = TRUE
-              AND selector_value NOT LIKE '/html/%'
             ORDER BY element_type, priority ASC
             """
             
