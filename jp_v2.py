@@ -70,80 +70,29 @@ class AmazonScraper:
             self.db_engine = None
     
     def setup_default_selectors(self):
-        """기본 선택자 설정 - 안정적인 상대 경로 사용"""
+        """기본 선택자 설정 - price, title, ships_from, sold_by, imageurl은 DB에서 관리"""
         self.selectors = {
             self.country_code: {
-                'price': [
-                    # 가장 일반적인 가격 선택자들
-                    "span.a-price-whole",
-                    "//span[@class='a-price-whole']",
-                    "//span[contains(@class, 'a-price-whole')]",
-                    ".a-price.a-text-price.a-size-medium .a-offscreen",
-                    "//span[@class='a-price']//span[@class='a-offscreen']",
-                    "//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-price-whole']",
-                    "//div[@class='a-section a-spacing-none aok-align-center']//span[@class='a-price-whole']",
-                    "span.a-price-range span.a-price-whole",
-                    "#apex_desktop .a-price-whole",
-                    "div.a-section.a-spacing-micro span.a-price-whole",
-                    "[data-a-color='price'] .a-offscreen",
-                    ".a-price-range .a-price .a-offscreen"
-                ],
-                'title': [
-                    "#productTitle",
-                    "//span[@id='productTitle']",
-                    "//h1/span[@id='productTitle']",
-                    "h1#title span",
-                    "//div[@id='titleSection']//h1//span"
-                ],
-                'ships_from': [
-                    "//*[@id='fulfillerInfoFeature_feature_div']/div[2]/div[1]/span",
-                    "/html/body/div[2]/div/div/div[4]/div[1]/div[3]/div/div[1]/div/div/div/form/div/div/div/div/div[4]/div/div[20]/div/div/div[1]/div/div[2]/div[2]/div[1]/span",
-                    "//*[@id='SSOFpopoverLink_ubb']"
-                ],
-                'sold_by': [
-                    "//*[@id='merchantInfoFeature_feature_div']/div[2]/div[1]/span/a",
-                    "//*[@id='sellerProfileTriggerId']",
-                    "/html/body/div[2]/div/div/div[4]/div[1]/div[3]/div/div[1]/div/div/div/form/div/div/div/div/div[4]/div/div[20]/div/div/div[1]/div/div[3]/div[2]/div[1]/a"
-                ],
-                'imageurl': [
-                    "//div[@id='imageBlock']//img[@id='landingImage']",
-                    "//div[@id='main-image-container']//img",
-                    "//img[@class='a-dynamic-image']",
-                    "//div[@class='imgTagWrapper']//img"
-                ],
+                # price, title, ships_from, sold_by, imageurl은 DB(amazon_selectors)에서 로드
+                'price': [],
+                'title': [],
+                'ships_from': [],
+                'sold_by': [],
+                'imageurl': [],
                 'availability': [
                     "//div[@id='availability']//span",
                     "//div[@id='availability_feature_div']//span",
                     "//span[@class='a-size-medium a-color-success']",
                     "//span[@class='a-size-medium a-color-price']"
-                # ],
-                # 'vat_text_list': [
-                #     "Tax included", 
-                #     "include VAT.",
-                #     "VAT included", 
-                #     "inkl. MwSt", 
-                #     "TVA incluse", 
-                #     "IVA incluida",
-                #     "Inclusive of all taxes",
-                #     "Including all taxes",
-                #     "Includes all taxes",
-                #     "Price includes VAT",
-                #     "GST included",
-                #     "Tax inclusive",
-                #     "Including tax",
-                #     "Inc. tax",
-                #     "Incl. VAT",
-                #     "税込",  # 일본어
-                #     "含税"   # 중국어
                 ],
                 'stock_flag': [
-                    'Currently unavailable', 
+                    'Currently unavailable',
                     'Out of Stock',
                     'Temporarily out of stock'
                 ],
                 'blocked_patterns': [
-                    'sorry', 
-                    'robot check', 
+                    'sorry',
+                    'robot check',
                     '503 Service Unavailable',
                     'Something went wrong',
                     'access denied'
