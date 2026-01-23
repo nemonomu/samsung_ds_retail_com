@@ -119,6 +119,7 @@ class BestBuyScraper:
                 logger.warning("⚠️ DB에 선택자가 없어 기본값 사용")
                 self.XPATHS.update({
                     'title': [
+                        '/html/body/div[6]/div[5]/div[1]/div/div[2]/h1',
                         '/html/body/div[5]/div[4]/div[1]/div/h1',
                         '/html/body/div[5]/div[4]/div[2]/div/h1',
                         '//h1[@class="sku-title"]',
