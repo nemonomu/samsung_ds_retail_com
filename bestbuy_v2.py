@@ -352,7 +352,7 @@ class BestBuyScraper:
             pass
         return False
 
-    def extract_product_info(self, url, row_data, retry_count=0, max_retries=3):
+    def extract_product_info(self, url, row_data, retry_count=0, max_retries=2):
         """제품 정보 추출 (재시도 로직 포함)"""
         try:
             logger.info(f"🔍 페이지 접속: {url} (시도: {retry_count + 1}/{max_retries + 1})")
@@ -478,7 +478,8 @@ class BestBuyScraper:
                             except:
                                 continue
 
-                        # retailprice는 None으로 유지, 재시도 없이 반환
+                        # retailprice는 None으로 유지, no_longer_available 표시 후 반환
+                        result['no_longer_available'] = True
                         return result
                 except:
                     continue
@@ -588,7 +589,7 @@ class BestBuyScraper:
             # 가격 추출 실패 시 재시도 (exception 없이 price가 None인 경우)
             # 단, 품절 fallback으로 제목을 추출한 경우 재시도하지 않음 (품절 상품은 가격 없는 것이 정상)
             if result['retailprice'] is None and retry_count < max_retries and not is_soldout_fallback:
-                wait_time = (retry_count + 1) * 10
+                wait_time = 5
                 logger.warning(f"⚠️ 가격 추출 실패, {wait_time}초 후 재시도... (재시도 {retry_count + 1}/{max_retries})")
                 time.sleep(wait_time)
 
@@ -619,7 +620,7 @@ class BestBuyScraper:
 
             # 재시도 로직
             if retry_count < max_retries:
-                wait_time = (retry_count + 1) * 10  # 재시도마다 대기 시간 증가 (10초, 20초, 30초)
+                wait_time = 5
                 logger.info(f"🔄 {wait_time}초 후 재시도합니다... (재시도 {retry_count + 1}/{max_retries})")
                 time.sleep(wait_time)
 
@@ -952,8 +953,8 @@ class BestBuyScraper:
 
                     # 10개마다 긴 휴식
                     if (idx + 1) % 10 == 0:
-                        logger.info("☕ 10개 처리 완료, 20초 휴식...")
-                        time.sleep(20)
+                        logger.info("☕ 10개 처리 완료, 10초 휴식...")
+                        time.sleep(10)
 
             except Exception as e:
                 logger.error(f"❌ 스크래핑 중 오류 (URL: {row.get('url', 'unknown')}): {e}")
@@ -1086,16 +1087,31 @@ def main():
         first_success = first_results_df['retailprice'].notna().sum()
         logger.info(f"성공: {first_success}개, 실패: {first_failed}개")
 
-        # 2단계: 실패한 URL 재시도 (실패가 있는 경우만)
+        # 2단계: 실패한 URL 재시도 (실패가 있는 경우만, no_longer_available 제외)
         final_results_df = first_results_df.copy()
 
-        if first_failed > 0:
-            logger.info(f"\n🔄 2단계: 실패한 {first_failed}개 URL 재시도")
-            logger.info("60초 대기 후 재시도합니다...")
-            time.sleep(60)
+        # no_longer_available 컬럼이 없으면 False로 채움
+        if 'no_longer_available' not in final_results_df.columns:
+            final_results_df['no_longer_available'] = False
+        final_results_df['no_longer_available'] = final_results_df['no_longer_available'].fillna(False)
 
-            # 실패한 URL들만 추출 (원본 urls_data에서)
-            failed_product_urls = first_results_df[first_results_df['retailprice'].isna()]['producturl'].tolist()
+        # 재시도 대상: retailprice가 None이고 no_longer_available이 아닌 것
+        retry_candidates = final_results_df[
+            (final_results_df['retailprice'].isna()) &
+            (final_results_df['no_longer_available'] == False)
+        ]
+        no_longer_count = final_results_df['no_longer_available'].sum()
+
+        if no_longer_count > 0:
+            logger.info(f"ℹ️ no_longer_available 상품 {no_longer_count}개는 재시도 제외")
+
+        if len(retry_candidates) > 0:
+            logger.info(f"\n🔄 2단계: 실패한 {len(retry_candidates)}개 URL 재시도")
+            logger.info("5초 대기 후 재시도합니다...")
+            time.sleep(5)
+
+            # 실패한 URL들만 추출 (no_longer_available 제외)
+            failed_product_urls = retry_candidates['producturl'].tolist()
 
             # 원본 urls_data에서 실패한 URL에 해당하는 데이터만 추출
             failed_urls_data = [
@@ -1156,6 +1172,10 @@ def main():
 
         # 상세 분석 (save_results 전에 실행 - 컬럼명 대문자 변환 전)
         scraper.analyze_results(final_results_df)
+
+        # no_longer_available 컬럼 제거 (DB 저장용)
+        if 'no_longer_available' in final_results_df.columns:
+            final_results_df = final_results_df.drop(columns=['no_longer_available'])
 
         # DB와 파일서버에 최종 결과 저장
         save_results = scraper.save_results(
