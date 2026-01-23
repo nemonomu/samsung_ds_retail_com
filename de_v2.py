@@ -64,76 +64,16 @@ class AmazonDEScraper:
             self.db_engine = None
     
     def setup_de_selectors(self):
-        """독일 전용 선택자 설정 - 메인 상품 영역만 타겟팅"""
+        """독일 전용 선택자 설정 - DB에서 관리되지 않는 항목만"""
         self.selectors = {
-            'price': [
-                # 메인 가격 영역만 타겟팅 (우선순위 높음)
-                "//*[@id='corePriceDisplay_desktop_feature_div']/div[1]/span[1]",
-                "//*[@id='corePrice_feature_div']/div/div/div/div/span[1]/span[1]",
-                "//*[@id='corePrice_feature_div']/div/div/span[1]/span[1]",
-                
-                # 메인 가격 영역 (더 구체적한 순서로) - centerCol 내부만
-                "//*[@id='centerCol']//*[@id='corePrice_feature_div']//span[@class='a-offscreen']",
-                "//*[@id='centerCol']//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-offscreen']",
-                "//*[@id='centerCol']//*[@id='apex_desktop']//span[@class='a-price']//span[@class='a-offscreen']",
-                
-                # 기존 독일 Amazon 특화 가격 선택자 (centerCol 제한)
-                "//*[@id='centerCol']//span[@class='a-offscreen']",
-                
-                # 첫 번째 가격만 (centerCol 내부만, 개선된 선택자)
-                "(//*[@id='centerCol']//span[@class='a-price']//span[@class='a-offscreen'])[1]",
-                "(//*[@id='centerCol']//span[@class='a-price-whole'])[1]",
-                
-                # 기본 가격 요소들 (centerCol 내부만)
-                "//*[@id='centerCol']//*[@id='priceblock_ourprice']",
-                "//*[@id='centerCol']//*[@id='priceblock_dealprice']",
-                "//*[@id='centerCol']//*[@id='listPrice']",
-                
-                # whole 가격 (centerCol 내부만)
-                "//*[@id='centerCol']//*[@id='corePrice_feature_div']//span[@class='a-price-whole']",
-                "//*[@id='centerCol']//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-price-whole']",
-                "//*[@id='centerCol']//*[@id='apex_desktop']//span[@class='a-price-whole']",
-                
-                # 백업용 일반 선택자 (최후 수단)
-                "//div[@id='centerCol']//span[@class='a-price']//span[@class='a-offscreen']",
-                "//div[@id='centerCol']//span[@class='a-price-whole']",
-            ],
-            'price_used': [
-                # 중고 제품 가격 (신품이 없을 때만 사용) - centerCol 내부만
-                "//*[@id='centerCol']//*[@id='usedBuySection']/div[1]/div/span[2]",
-                "//*[@id='centerCol']//*[@id='usedBuySection']//span[@class='a-offscreen']",
-                "//div[@id='centerCol']//div[@id='usedBuySection']//span[@class='a-price']//span[@class='a-offscreen']"
-            ],
-            'price_fraction': [
-                "//*[@id='centerCol']//*[@id='corePrice_feature_div']//span[@class='a-price-fraction']",
-                "//*[@id='centerCol']//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-price-fraction']",
-                "//*[@id='centerCol']//*[@id='apex_desktop']//span[@class='a-price-fraction']",
-                "//div[@id='centerCol']//span[@class='a-price-fraction']"
-            ],
-            'title': [
-                "#productTitle",
-                "//span[@id='productTitle']",
-                "//h1/span[@id='productTitle']"
-            ],
-            'ships_from': [
-                "//*[@id='SSOFpopoverLink_ubb']",
-                "/html/body/div[2]/div/div/div[4]/div[1]/div[3]/div/div[1]/div/div/div/form/div/div[1]/div/div/div/div[2]/div[2]/div[3]/a",
-                "//a[@id='SSOFpopoverLink_ubb']",
-                "//*[@id='fulfillerInfoFeature_feature_div']/div[2]/div[1]/span",
-                "//div[@id='fulfillerInfoFeature_feature_div']//span"
-            ],
-            'sold_by': [
-                "//a[@id='sellerProfileTriggerId']",
-                "//*[@id='sellerProfileTriggerId']",
-                "//*[@id='merchantInfoFeature_feature_div']/div[2]/div[1]/span",
-                "//div[@id='merchantInfoFeature_feature_div']//a",
-                "//div[@id='merchantInfoFeature_feature_div']//span"
-            ],
-            'imageurl': [
-                "//div[@id='imageBlock']//img[@id='landingImage']",
-                "//div[@id='main-image-container']//img",
-                "//img[@class='a-dynamic-image']"
-            ],
+            # price, price_used, price_fraction, title, ships_from, sold_by, imageurl은 DB에서 로드
+            'price': [],
+            'price_used': [],
+            'price_fraction': [],
+            'title': [],
+            'ships_from': [],
+            'sold_by': [],
+            'imageurl': [],
             'availability': [
                 "//div[@id='availability']//span",
                 "//div[@id='availability_feature_div']//span"
@@ -181,33 +121,34 @@ class AmazonDEScraper:
         }
     
     def load_selectors_from_db(self):
-        """DB에서 선택자 로드"""
+        """DB에서 독일 특화 선택자 로드"""
         if not self.db_engine:
             logger.warning("DB 연결이 없어 선택자 로드 불가")
             return
-        
+
         try:
             query = """
             SELECT element_type, selector_value, priority
             FROM amazon_selectors
-            WHERE country_code = %s 
+            WHERE country_code = 'de'
               AND is_active = TRUE
-            ORDER BY element_type, priority ASC
+            ORDER BY element_type, priority DESC
             """
-            
-            df = pd.read_sql(query, self.db_engine, params=(self.country_code,))
-            logger.info(f"DB에서 선택자 로드: {len(df)}개")
-            
-            if len(df) > 0:
-                for element_type in df['element_type'].unique():
-                    selectors = df[df['element_type'] == element_type]['selector_value'].tolist()
-                    if element_type in self.selectors:
-                        existing = self.selectors[element_type]
-                        self.selectors[element_type] = existing + selectors
-                    else:
-                        self.selectors[element_type] = selectors
-                
-                logger.info("DB 선택자 병합 완료")
+
+            df = pd.read_sql(query, self.db_engine)
+            logger.info(f"DB에서 독일 선택자 로드: {len(df)}개")
+
+            for element_type in df['element_type'].unique():
+                db_selectors = df[df['element_type'] == element_type]['selector_value'].tolist()
+
+                if element_type in self.selectors:
+                    existing = self.selectors[element_type]
+                    self.selectors[element_type] = db_selectors + [s for s in existing if s not in db_selectors]
+                else:
+                    self.selectors[element_type] = db_selectors
+
+            logger.info("독일 DB 선택자 로드 완료")
+
         except Exception as e:
             logger.error(f"DB 선택자 로드 실패: {e}")
     
