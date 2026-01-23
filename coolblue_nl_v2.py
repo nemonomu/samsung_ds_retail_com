@@ -471,10 +471,14 @@ class CoolblueScraper:
             try:
                 for xpath in self.XPATHS.get('title', []):
                     try:
-                        title_element = self.driver.find_element(By.XPATH, xpath)
+                        title_element = wait.until(
+                            EC.presence_of_element_located((By.XPATH, xpath))
+                        )
+                        wait.until(EC.visibility_of(title_element))
                         result['title'] = title_element.text.strip()
-                        logger.info(f"제목: {result['title']}")
-                        break
+                        if result['title']:
+                            logger.info(f"제목: {result['title']}")
+                            break
                     except:
                         continue
             except Exception as e:
