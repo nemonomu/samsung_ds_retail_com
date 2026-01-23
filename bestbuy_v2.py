@@ -112,11 +112,20 @@ class BestBuyScraper:
                         '/html/body/div[5]/div[3]/div[1]/div/div[1]/img'
                     ],
                     'stock_flag': [
-                        'Out of Stock', 'Sold Out', 'Currently unavailable', 
+                        'Out of Stock', 'Sold Out', 'Currently unavailable',
                         'Coming Soon', 'Temporarily out of stock'
                     ],
                     'country_select': [
                         '/html/body/div[2]/div/div/div/div[1]/div[2]/a[2]'
+                    ],
+                    'no_longer_available_flag': [
+                        "//div[contains(@class, 'text-danger') and contains(text(), 'no longer available')]"
+                    ],
+                    'no_longer_available_title': [
+                        '/html/body/div[6]/div[3]/div[1]/div/div[2]/h1'
+                    ],
+                    'no_longer_available_imageurl': [
+                        '/html/body/div[6]/div[3]/div[1]/div/div[1]/img'
                     ]
                 })
                 
@@ -433,6 +442,40 @@ class BestBuyScraper:
                     return result  # retry 없이 바로 반환
             except:
                 pass  # 에러 요소 없으면 정상 페이지
+
+            # "no longer available in new condition" 상태 감지
+            is_no_longer_available = False
+            for flag_xpath in self.XPATHS.get('no_longer_available_flag', []):
+                try:
+                    no_longer_element = self.driver.find_element(By.XPATH, flag_xpath)
+                    if no_longer_element:
+                        logger.info("ℹ️ 'No longer available in new condition' 상태 감지")
+                        is_no_longer_available = True
+
+                        # 해당 상태용 title 추출
+                        for title_xpath in self.XPATHS.get('no_longer_available_title', []):
+                            try:
+                                title_element = self.driver.find_element(By.XPATH, title_xpath)
+                                result['title'] = title_element.text.strip()
+                                logger.info(f"제목 (no longer available): {result['title'][:50]}...")
+                                break
+                            except:
+                                continue
+
+                        # 해당 상태용 imageurl 추출
+                        for img_xpath in self.XPATHS.get('no_longer_available_imageurl', []):
+                            try:
+                                image_element = self.driver.find_element(By.XPATH, img_xpath)
+                                result['imageurl'] = image_element.get_attribute('src')
+                                logger.info(f"이미지 URL (no longer available): {result['imageurl'][:50]}...")
+                                break
+                            except:
+                                continue
+
+                        # retailprice는 None으로 유지, 재시도 없이 반환
+                        return result
+                except:
+                    continue
 
             for stock_flag in self.XPATHS.get('stock_flag', []):
                 if stock_flag in page_source:

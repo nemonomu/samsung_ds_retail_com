@@ -89,25 +89,15 @@ class DanawaScraper:
             
             logger.info(f"✅ DB에서 선택자 로드 완료: {len(df)}개")
             
-            # 기본값 설정 (DB에 없는 경우)
+            # 기본값 설정 (DB에 없는 경우) - price, title, imageurl은 DB에서 관리
             if not self.XPATHS:
-                logger.warning("⚠️ DB에 선택자가 없어 기본값 사용")
+                logger.warning("⚠️ DB에 선택자가 없습니다. DB에서 danawa/kr 선택자를 확인하세요.")
                 self.XPATHS = {
-                    'price': [
-                        '/html/body/div[2]/div[5]/div[2]/div[2]/div[2]/div[1]/div[2]/div[1]/div[2]/a/div/span[1]'
-                    ],
-                    'title': [
-                        '/html/body/div[2]/div[5]/div[2]/div[2]/div[1]/h3/span'
-                    ],
-                    'imageurl': [
-                        '/html/body/div[2]/div[5]/div[2]/div[2]/div[2]/div[1]/div[1]/div[1]/a/img'
-                    ],
-                    'ships_from': [
-                        '/html/body/div[2]/div/div/div[5]/div[1]/div[4]/div/div[1]/div/div/div/form/div/div/div/div/div[4]/div/div[19]/div/div/div[1]/div/div[2]/div[2]/div[1]/span'
-                    ],
-                    'sold_by': [
-                        '/html/body/div[2]/div/div/div[5]/div[1]/div[4]/div/div[1]/div/div/div/form/div/div/div/div/div[4]/div/div[19]/div/div/div[1]/div/div[3]/div[2]/div[1]/span'
-                    ]
+                    'price': [],
+                    'title': [],
+                    'imageurl': [],
+                    'ships_from': [],
+                    'sold_by': []
                 }
                 
         except Exception as e:
