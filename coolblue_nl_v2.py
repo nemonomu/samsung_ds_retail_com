@@ -277,7 +277,25 @@ class CoolblueScraper:
             # 페이지 로드 대기
             wait = WebDriverWait(self.driver, 6)
             time.sleep(random.uniform(3, 5))
-            
+
+            # 에러 페이지 감지 및 재로드 버튼 클릭
+            try:
+                reload_button = self.driver.find_element(By.CSS_SELECTOR, "button.css-fm7qx4")
+                if reload_button and "opnieuw laden" in reload_button.text.lower():
+                    logger.info("⚠️ 에러 페이지 감지 - 'Pagina opnieuw laden' 버튼 클릭")
+                    reload_button.click()
+                    time.sleep(3)
+                    # 재로드 후 다시 확인
+                    try:
+                        reload_button2 = self.driver.find_element(By.CSS_SELECTOR, "button.css-fm7qx4")
+                        if reload_button2 and "opnieuw laden" in reload_button2.text.lower():
+                            logger.warning("⚠️ 재로드 후에도 에러 페이지 - 재시도 필요")
+                            raise Exception("Error page after reload")
+                    except:
+                        logger.info("✅ 재로드 성공 - 정상 페이지 로드됨")
+            except:
+                pass  # 버튼이 없으면 정상 페이지
+
             # 차단 감지
             title = self.driver.title
             blocked_patterns = ["Access Denied", "Blocked", "Robot", "Captcha", "Sorry", "Error"]
