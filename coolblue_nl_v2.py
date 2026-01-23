@@ -84,42 +84,14 @@ class CoolblueScraper:
                 self.XPATHS[element_type] = type_selectors
             
             logger.info(f"✅ DB에서 선택자 로드 완료: {len(df)}개")
-            
-            # 새로운 XPath를 기존 DB XPath 앞에 추가
-            if 'price' in self.XPATHS:
-                new_price_xpaths = [
-                    '//*[@id="main-content"]/div[1]/div[2]/div[2]/div/div/form/div[1]/div[1]/div/div/p/span',
-                    '/html/body/main/div[3]/div[2]/div[1]/div[2]/div[2]/div/div/form/div[1]/div[1]/div/div/p/span'
-                ]
-                self.XPATHS['price'] = new_price_xpaths + self.XPATHS['price']
-                logger.info(f"✅ 새로운 XPath 추가됨. 총 price XPath: {len(self.XPATHS['price'])}개")
 
-            # title XPath 추가
-            if 'title' in self.XPATHS:
-                new_title_xpaths = [
-                    '//*[@id="main-content"]/div[1]/div[2]/div[1]/div/div[1]/h1'
-                ]
-                self.XPATHS['title'] = new_title_xpaths + self.XPATHS['title']
-                logger.info(f"✅ 새로운 title XPath 추가됨. 총 title XPath: {len(self.XPATHS['title'])}개")
-
-            # 기본값 설정 (DB에 없는 경우)
+            # 기본값 설정 (DB에 없는 경우) - DB에서 관리되므로 빈 배열로 설정
             if not self.XPATHS:
-                logger.warning("⚠️ DB에 선택자가 없어 기본값 사용")
+                logger.warning("⚠️ DB에 선택자가 없습니다. DB에 선택자를 추가해주세요.")
                 self.XPATHS = {
-                    'price': [
-                        '//*[@id="main-content"]/div[1]/div[2]/div[2]/div/div/form/div[1]/div[1]/div/div/p/span',
-                        '/html/body/main/div[3]/div[2]/div[1]/div[2]/div[2]/div/div/form/div[1]/div[1]/div/div/p/span',
-                        '/html/body/main/div[3]/div[2]/div[1]/div[2]/div[2]/div/div/form/div[1]/div[1]/div/div/span/span'
-                    ],
-                    'title': [
-                        '//*[@id="main-content"]/div[1]/div[2]/div[1]/div/div[1]/h1',
-                        '/html/body/main/div[4]/div/div[1]/div[2]/div[1]/div/div[1]/h1'
-                    ],
-                    'imageurl': [
-                        '/html/body/main/div[3]/div[2]/div[1]/div[2]/div[1]/div/div[2]/div/div[2]/div/ul/li[1]/div/div/div/div/img'
-                        
-                        
-                    ]
+                    'price': [],
+                    'title': [],
+                    'imageurl': []
                 }
                 
         except Exception as e:
