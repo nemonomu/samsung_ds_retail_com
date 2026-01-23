@@ -163,9 +163,8 @@ class AmazonIndiaScraper:
             query = """
             SELECT element_type, selector_value, priority
             FROM amazon_selectors
-            WHERE country_code = 'in' 
+            WHERE country_code = 'in'
               AND is_active = TRUE
-              AND selector_value NOT LIKE '/html/%'
             ORDER BY element_type, priority ASC
             """
             
