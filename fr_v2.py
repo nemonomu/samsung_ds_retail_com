@@ -64,98 +64,18 @@ class AmazonFRScraper:
             self.db_engine = None
     
     def setup_fr_selectors(self):
-        """프랑스 전용 선택자 설정 - 메인 상품 영역만 타겟팅"""
+        """프랑스 전용 선택자 설정 - DB에서 관리되지 않는 항목만"""
         self.selectors = {
-            'price': [
-                # 메인 가격 영역만 타겟팅 (우선순위 높음)
-                "//*[@id='corePriceDisplay_desktop_feature_div']/div[1]/span[1]",
-                "//*[@id='corePrice_feature_div']/div/div/div/div/span[1]/span[1]",
-                "//*[@id='corePrice_feature_div']/div/div/span[1]/span[1]",
-                
-                # 메인 가격 영역 (더 구체적인 순서로) - centerCol 내부만
-                "//*[@id='centerCol']//*[@id='corePrice_feature_div']//span[@class='a-offscreen']",
-                "//*[@id='centerCol']//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-offscreen']",
-                "//*[@id='centerCol']//*[@id='apex_desktop']//span[@class='a-price']//span[@class='a-offscreen']",
-                
-                # 기존 프랑스 Amazon 특화 가격 선택자 (centerCol 제한)
-                "//*[@id='centerCol']//span[@class='a-offscreen']",
-                
-                # 첫 번째 가격만 (centerCol 내부만, 개선된 선택자)
-                "(//*[@id='centerCol']//span[@class='a-price']//span[@class='a-offscreen'])[1]",
-                "(//*[@id='centerCol']//span[@class='a-price-whole'])[1]",
-                
-                # 기본 가격 요소들 (centerCol 내부만)
-                "//*[@id='centerCol']//*[@id='priceblock_ourprice']",
-                "//*[@id='centerCol']//*[@id='priceblock_dealprice']",
-                "//*[@id='centerCol']//*[@id='listPrice']",
-                
-                # whole 가격 (centerCol 내부만)
-                "//*[@id='centerCol']//*[@id='corePrice_feature_div']//span[@class='a-price-whole']",
-                "//*[@id='centerCol']//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-price-whole']",
-                "//*[@id='centerCol']//*[@id='apex_desktop']//span[@class='a-price-whole']",
-                
-                # 중고 제품 가격 (centerCol 내부만)
-                "//*[@id='centerCol']//*[@id='usedBuySection']/div[1]/div/span[2]",
-                "//*[@id='centerCol']//*[@id='usedBuySection']//span[@class='a-offscreen']",
-                
-                # 추가 가격 선택자
-                "/html/body/div[2]/div/div/div[4]/div[4]/div[13]/div/div/div[3]/div[1]/span[1]",
-                
-                # 백업용 일반 선택자 (최후 수단)
-                "//div[@id='centerCol']//span[@class='a-price']//span[@class='a-offscreen']",
-                "//div[@id='centerCol']//span[@class='a-price-whole']",
-            ],
-            'price_used': [
-                # 중고 제품 가격 (신품이 없을 때만 사용) - centerCol 내부만
-                "//*[@id='centerCol']//*[@id='usedBuySection']/div[1]/div/span[2]",
-                "//*[@id='centerCol']//*[@id='usedBuySection']//span[@class='a-offscreen']",
-                "//div[@id='centerCol']//div[@id='usedBuySection']//span[@class='a-price']//span[@class='a-offscreen']"
-            ],
-            'price_fraction': [
-                "//*[@id='centerCol']//*[@id='corePrice_feature_div']//span[@class='a-price-fraction']",
-                "//*[@id='centerCol']//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-price-fraction']",
-                "//*[@id='centerCol']//*[@id='apex_desktop']//span[@class='a-price-fraction']",
-                "//div[@id='centerCol']//span[@class='a-price-fraction']"
-            ],
-            'title': [
-                "#productTitle",
-                "//span[@id='productTitle']",
-                "//h1/span[@id='productTitle']"
-            ],
-            'ships_from': [
-                # 우선 추출 xpath (최우선순위)
-                "/html/body/div[2]/div/div/div[4]/div[1]/div[4]/div/div[1]/div/div[1]/div/div/div[1]/div/div[2]/div/form/div/div/div[21]/div/div/div[1]/div/div[2]/div[2]/div[1]/span",
-                # 기본 ships from 선택자들
-                "//*[@id='SSOFpopoverLink_ubb']",
-                "//*[@id='fulfillerInfoFeature_feature_div']/div[2]/div[1]/span",
-                "//div[@id='fulfillerInfoFeature_feature_div']//span",
-                "//a[@id='SSOFpopoverLink_ubb']"
-            ],
-            # ships from 제외 xpath들
-            'excluded_ships_from_xpaths': [
-                "/html/body/div[2]/div/div/div[4]/div[1]/div[4]/div/div[1]/div/div[1]/div/div/div[2]/div/div[1]/h5/div[4]/div/div[1]/div/span[2]"
-            ],
-            'sold_by': [
-                # 우선 추출 xpath (최우선순위)
-                "/html/body/div[2]/div/div/div[4]/div[1]/div[4]/div/div[1]/div/div[1]/div/div/div[1]/div/div[2]/div/form/div/div/div[21]/div/div/div[1]/div/div[3]/div[2]/div[1]/span",
-                # 2번째 우선순위
-                "/html/body/div[2]/div/div/div[4]/div[1]/div[4]/div/div[1]/div/div[1]/div/div/div[1]/div/div[2]/div/form/div/div/div[21]/div/div/div[1]/div/div[3]/div[2]/div[1]/a",
-                # 기본 sold by 선택자들
-                "//*[@id='sellerProfileTriggerId']",
-                "//*[@id='merchantInfoFeature_feature_div']/div[2]/div[1]/span",
-                "//div[@id='merchantInfoFeature_feature_div']//a",
-                "//div[@id='merchantInfoFeature_feature_div']//span",
-                "//a[@id='sellerProfileTriggerId']"
-            ],
-            # sold by 제외 xpath들
-            'excluded_sold_by_xpaths': [
-                "/html/body/div[2]/div/div/div[4]/div[1]/div[4]/div/div[1]/div/div[1]/div/div/div[3]/div/div[1]/h5/div[5]/div/div/div/div[3]/div[2]/div/span"
-            ],
-            'imageurl': [
-                "//div[@id='imageBlock']//img[@id='landingImage']",
-                "//div[@id='main-image-container']//img",
-                "//img[@class='a-dynamic-image']"
-            ],
+            # price, price_used, price_fraction, title, ships_from, sold_by, imageurl은 DB에서 로드
+            'price': [],
+            'price_used': [],
+            'price_fraction': [],
+            'title': [],
+            'ships_from': [],
+            'excluded_ships_from_xpaths': [],
+            'sold_by': [],
+            'excluded_sold_by_xpaths': [],
+            'imageurl': [],
             'availability': [
                 "//div[@id='availability']//span",
                 "//div[@id='availability_feature_div']//span"
