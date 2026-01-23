@@ -64,102 +64,15 @@ class AmazonITScraper:
             self.db_engine = None
     
     def setup_it_selectors(self):
-        """이탈리아 전용 선택자 설정 - 메인 상품 영역만 타겟팅"""
+        """이탈리아 전용 선택자 설정 - DB에서 관리되지 않는 항목만"""
         self.selectors = {
-            'price': [
-                # 메인 가격 영역만 타겟팅 (우선순위 높음)
-                "//*[@id='corePriceDisplay_desktop_feature_div']/div[1]/span[1]",
-                "//*[@id='corePrice_feature_div']/div/div/div/div/span[1]/span[1]",
-                "//*[@id='corePrice_feature_div']/div/div/span[1]/span[1]",
-                
-                # 메인 가격 영역 (더 구체적한 순서로) - centerCol 내부만
-                "//*[@id='centerCol']//*[@id='corePrice_feature_div']//span[@class='a-offscreen']",
-                "//*[@id='centerCol']//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-offscreen']",
-                "//*[@id='centerCol']//*[@id='apex_desktop']//span[@class='a-price']//span[@class='a-offscreen']",
-                
-                # 이탈리아 가격 선택자 (더 구체적인 제한)
-                "//*[@id='centerCol']//*[@id='corePrice_feature_div']//span[@class='a-offscreen'][1]",
-                
-                # 첫 번째 가격만 (centerCol 내부만, 개선된 선택자)
-                "(//*[@id='centerCol']//span[@class='a-price']//span[@class='a-offscreen'])[1]",
-                "(//*[@id='centerCol']//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-offscreen'])[1]",
-                
-                # 기본 가격 요소들 (centerCol 내부만)
-                "//*[@id='centerCol']//*[@id='priceblock_ourprice']",
-                "//*[@id='centerCol']//*[@id='priceblock_dealprice']",
-                "//*[@id='centerCol']//*[@id='listPrice']",
-                
-                # whole 가격 (centerCol 내부만)
-                "//*[@id='centerCol']//*[@id='corePrice_feature_div']//span[@class='a-price-whole']",
-                "//*[@id='centerCol']//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-price-whole']",
-                "//*[@id='centerCol']//*[@id='apex_desktop']//span[@class='a-price-whole']",
-                
-                # 이탈리아 전용 가격 선택자 (centerCol 제한)
-                "//*[@id='centerCol']//span[@class='a-price-symbol' and contains(text(), '€')]/following-sibling::span",
-                "//*[@id='centerCol']//span[contains(@class, 'a-price') and contains(text(), '€')]",
-                
-                # 백업용 일반 선택자 (최후 수단)
-                "//div[@id='centerCol']//span[@class='a-price']//span[@class='a-offscreen']",
-                "//div[@id='centerCol']//span[@class='a-price-whole']",
-            ],
-            'price_fraction': [
-                "//*[@id='centerCol']//*[@id='corePrice_feature_div']//span[@class='a-price-fraction']",
-                "//*[@id='centerCol']//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-price-fraction']",
-                "//*[@id='centerCol']//*[@id='apex_desktop']//span[@class='a-price-fraction']",
-                "//div[@id='centerCol']//span[@class='a-price-fraction']"
-            ],
-            'title': [
-                "#productTitle",
-                "//span[@id='productTitle']",
-                "//h1/span[@id='productTitle']",
-                "h1#title span",
-                "//div[@id='titleSection']//h1//span",
-                "//div[@id='title_feature_div']//h1//span"
-            ],
-            'ships_from': [
-                # 이탈리아 "Spedito da" 선택자 (centerCol 제한 제거 - 정상 영역)
-                "//*[@id='SSOFpopoverLink_ubb']",
-                "//a[@id='SSOFpopoverLink_ubb']",
-                "//*[@id='fulfillerInfoFeature_feature_div']/div[2]/div[1]/span",
-                "//div[@id='fulfillerInfoFeature_feature_div']//span",
-                "//*[@id='fulfillerInfoFeature_feature_div']//div[2]//span",
-                "//div[contains(@id, 'fulfillerInfo')]//span",
-                "//span[contains(text(), 'Spedito da')]/following-sibling::span",
-                "//span[contains(text(), 'Spedito da')]/parent::div//span[2]",
-                "//div[contains(text(), 'Spedito da')]//span",
-                "//div[@data-feature-name='shipsFromSoldBy']//span"
-            ],
-            'sold_by': [
-                # 우선 추출 xpath (최우선순위)
-                "/html/body/div[2]/div/div/div[4]/div[1]/div[4]/div/div[1]/div/div[1]/div/div/div[1]/div/div[2]/div/form/div/div/div[21]/div/div/div[1]/div/div[3]/div[2]/div[1]/span",
-                # 이탈리아 "Venduto da" 선택자 (기존)
-                "//a[@id='sellerProfileTriggerId']",
-                "//*[@id='sellerProfileTriggerId']",
-                "//*[@id='merchantInfoFeature_feature_div']/div[2]/div[1]/span",
-                "//div[@id='merchantInfoFeature_feature_div']//a",
-                "//div[@id='merchantInfoFeature_feature_div']//span",
-                "//*[@id='merchantInfoFeature_feature_div']//div[2]//span",
-                "//div[contains(@id, 'merchantInfo')]//span",
-                "//span[contains(text(), 'Venduto da')]/following-sibling::a",
-                "//span[contains(text(), 'Venduto da')]/following-sibling::span",
-                "//span[contains(text(), 'Venduto da')]/parent::div//span[2]",
-                "//div[contains(text(), 'Venduto da')]//span",
-                "//div[@data-feature-name='shipsFromSoldBy']//a"
-            ],
-            'imageurl': [
-                "//div[@id='imageBlock']//img[@id='landingImage']",
-                "//div[@id='main-image-container']//img",
-                "//img[@class='a-dynamic-image']",
-                "//div[@class='imgTagWrapper']//img",
-                "//div[@id='imageBlock_feature_div']//img"
-            ],
-            'availability': [
-                "//div[@id='availability']//span",
-                "//div[@id='availability_feature_div']//span",
-                "//span[@class='a-size-medium a-color-success']",
-                "//span[@class='a-size-medium a-color-price']",
-                "//div[@id='availability']//div[@class='a-row']//span"
-            ],
+            'price': [],
+            'price_fraction': [],
+            'title': [],
+            'ships_from': [],
+            'sold_by': [],
+            'imageurl': [],
+            'availability': [],
             'excluded_price_areas': [
                 'product-comparison',
                 'comparison-desktop',
@@ -244,15 +157,14 @@ class AmazonITScraper:
         if not self.db_engine:
             logger.warning("DB 연결이 없어 선택자 로드 불가")
             return
-            
+
         try:
             query = """
             SELECT element_type, selector_value, priority
             FROM amazon_selectors
-            WHERE country_code = 'it' 
+            WHERE country_code = 'it'
               AND is_active = TRUE
-              AND selector_value NOT LIKE '/html/%'
-            ORDER BY element_type, priority ASC
+            ORDER BY element_type, priority DESC
             """
             
             df = pd.read_sql(query, self.db_engine)
