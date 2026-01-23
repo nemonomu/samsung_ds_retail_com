@@ -162,7 +162,13 @@ class DanawaScraper:
             options = uc.ChromeOptions()
             options.add_argument('--accept-lang=ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7')
             options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36')
-            
+            # 메모리 최적화 옵션
+            options.add_argument('--disable-gpu')
+            options.add_argument('--disable-extensions')
+            options.add_argument('--disable-infobars')
+            options.add_argument('--disable-renderer-backgrounding')
+            options.add_argument('--js-flags=--max-old-space-size=512')
+
             self.driver = uc.Chrome(options=options)
             self.driver.maximize_window()
             logger.info("✅ 드라이버 설정 완료")

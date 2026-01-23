@@ -149,7 +149,15 @@ class CurrysScraper:
         logger.info("🔧 Chrome 드라이버 설정 중...")
         
         try:
-            self.driver = uc.Chrome()
+            options = uc.ChromeOptions()
+            # 메모리 최적화 옵션
+            options.add_argument('--disable-gpu')
+            options.add_argument('--disable-extensions')
+            options.add_argument('--disable-infobars')
+            options.add_argument('--disable-renderer-backgrounding')
+            options.add_argument('--js-flags=--max-old-space-size=512')
+
+            self.driver = uc.Chrome(options=options)
             self.driver.maximize_window()
             logger.info("✅ 드라이버 설정 완료")
             return True

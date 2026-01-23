@@ -205,7 +205,13 @@ class AmazonIndiaScraper:
             options.add_argument('--disable-setuid-sandbox')
             options.add_argument('--disable-web-security')
             options.add_argument('--disable-features=VizDisplayCompositor')
-            
+            # 메모리 최적화 옵션
+            options.add_argument('--disable-gpu')
+            options.add_argument('--disable-extensions')
+            options.add_argument('--disable-infobars')
+            options.add_argument('--disable-renderer-backgrounding')
+            options.add_argument('--js-flags=--max-old-space-size=512')
+
             # 인도 전용 User-Agent
             india_user_agents = [
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
