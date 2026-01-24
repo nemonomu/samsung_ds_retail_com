@@ -171,7 +171,7 @@ class BestBuyNullFixer:
             print(f"❌ 업로드 실패: {e}")
             return False
 
-    def export_and_upload(self, session_id):
+    def export_and_upload(self, session_id, custom_folder=None, custom_datetime=None):
         """전체 데이터 내보내기 및 파일서버 업로드"""
         df = self.get_all_records(session_id)
 
@@ -179,10 +179,17 @@ class BestBuyNullFixer:
             print("❌ 내보낼 데이터가 없습니다.")
             return False
 
-        # 파일명 생성 (세션 ID 기준: YYYYMMDDHH, 한국시간)
-        date_folder = session_id[:8]  # YYYYMMDD
-        time_str = session_id[8:10] + "0000"  # HH -> HH0000
-        base_filename = f"{date_folder}_{time_str}_usa_bestbuy"
+        # 파일명 생성
+        if custom_datetime:
+            # 사용자 지정 날짜시간 (예: 20260123_215429)
+            parts = custom_datetime.split('_')
+            date_folder = custom_folder if custom_folder else parts[0]
+            base_filename = f"{custom_datetime}_usa_bestbuy"
+        else:
+            # 세션 ID 기준 (YYYYMMDDHH, 한국시간)
+            date_folder = custom_folder if custom_folder else session_id[:8]
+            time_str = session_id[8:10] + "0000"  # HH -> HH0000
+            base_filename = f"{session_id[:8]}_{time_str}_usa_bestbuy"
 
         try:
             # CSV 생성
@@ -283,7 +290,7 @@ class BestBuyNullFixer:
             # 파일서버 업로드 여부 확인
             upload = input("\n📤 파일서버에 업로드하시겠습니까? (y/n): ").strip().lower()
             if upload == 'y':
-                self.export_and_upload(session_id)
+                self.prompt_and_upload(session_id)
             return
 
         print(f"\n⚠️ NULL 항목 {len(null_df)}개 발견\n")
@@ -368,9 +375,38 @@ class BestBuyNullFixer:
         # 파일서버 업로드
         upload = input("\n📤 파일서버에 업로드하시겠습니까? (y/n): ").strip().lower()
         if upload == 'y':
-            self.export_and_upload(session_id)
+            self.prompt_and_upload(session_id)
 
         print("\n👋 종료")
+
+    def prompt_and_upload(self, session_id):
+        """업로드 경로와 파일명 입력받아 업로드"""
+        # 기본값 계산
+        default_folder = session_id[:8]
+        default_datetime = f"{session_id[:8]}_{session_id[8:10]}0000"
+
+        print(f"\n📁 업로드 설정")
+        print(f"   기본 폴더: {default_folder}")
+        print(f"   기본 파일명: {default_datetime}_usa_bestbuy.zip")
+
+        # 폴더 입력
+        folder_input = input(f"\n📂 업로드 폴더 (엔터={default_folder}): ").strip()
+        custom_folder = folder_input if folder_input else None
+
+        # 날짜시간 입력
+        datetime_input = input(f"📄 파일명 날짜시간 (예: 20260123_215429, 엔터={default_datetime}): ").strip()
+        custom_datetime = datetime_input if datetime_input else None
+
+        # 확인
+        final_folder = custom_folder if custom_folder else default_folder
+        final_filename = f"{custom_datetime}_usa_bestbuy" if custom_datetime else f"{default_datetime}_usa_bestbuy"
+        print(f"\n📤 업로드 정보:")
+        print(f"   경로: /home/ftpuser/uploads/usa/{final_folder}/")
+        print(f"   파일: {final_filename}.zip")
+
+        confirm = input("\n진행하시겠습니까? (y/n): ").strip().lower()
+        if confirm == 'y':
+            self.export_and_upload(session_id, custom_folder, custom_datetime)
 
 
 def main():
