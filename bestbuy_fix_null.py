@@ -192,9 +192,25 @@ class BestBuyNullFixer:
             base_filename = f"{session_id[:8]}_{time_str}_usa_bestbuy"
 
         try:
+            # 컬럼 순서 정의 (bestbuy_v2.py와 동일)
+            column_order = [
+                'retailerid', 'country_code', 'ships_from', 'channel_name', 'channel',
+                'retailersku', 'brand', 'brand_eng', 'form_factor',
+                'segment_lv1', 'segment_lv2', 'segment_lv3', 'capacity', 'item',
+                'retailprice', 'sold_by', 'imageurl', 'producturl',
+                'crawl_datetime', 'crawl_strdatetime',
+                'kr_crawl_datetime', 'kr_crawl_strdatetime',
+                'title', 'vat'
+            ]
+
             # CSV 생성
             csv_filename = f'{base_filename}.csv'
             df_csv = df.copy()
+
+            # 컬럼 순서 맞추기 (존재하는 컬럼만)
+            existing_columns = [col for col in column_order if col in df_csv.columns]
+            df_csv = df_csv[existing_columns]
+
             df_csv.columns = df_csv.columns.str.upper()
             df_csv.to_csv(csv_filename, index=False, encoding='utf-8', lineterminator='\r\n')
 
