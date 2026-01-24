@@ -319,11 +319,38 @@ class MediaMarktInfiniteScraper:
                 except:
                     pass
             
-            # 쿠키 복원 실패 시 수동 로그인 필요
-            logger.warning("⚠️ 자동 재로그인 실패. 수동 로그인이 필요합니다.")
-            
-            # 수동 재로그인 프롬프트
-            return self.initial_manual_login()
+            # 쿠키 복원 실패 시 자동 로그인 시도
+            logger.warning("⚠️ 쿠키 복원 실패. 자동 로그인 시도 중...")
+
+            try:
+                # 메인 페이지 접속
+                self.driver.get("https://www.mediamarkt.de")
+                time.sleep(3)
+
+                # 쿠키 수락 자동 시도
+                self.accept_cookies()
+
+                # Cloudflare 체크
+                if not self.check_cloudflare_challenge():
+                    logger.info("✅ 자동 재로그인 성공")
+                    self.is_logged_in = True
+
+                    # 쿠키 다시 저장
+                    try:
+                        self.saved_cookies = self.driver.get_cookies()
+                        logger.info(f"💾 쿠키 {len(self.saved_cookies)}개 저장")
+                    except:
+                        pass
+
+                    return True
+                else:
+                    logger.error("❌ Cloudflare 감지됨. 크롤링 중단.")
+                    self.is_logged_in = False
+                    return False
+            except Exception as e:
+                logger.error(f"자동 로그인 실패: {e}")
+                self.is_logged_in = False
+                return False
             
         except Exception as e:
             logger.error(f"브라우저 재시작 실패: {e}")
