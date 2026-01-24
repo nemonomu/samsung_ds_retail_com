@@ -772,10 +772,10 @@ class MediaMarktInfiniteScraper:
                 wait_time = random.uniform(5, 10)
                 time.sleep(wait_time)
                 
-                # 25개마다 긴 휴식
+                # 25개마다 짧은 휴식
                 if (idx + 1) % 25 == 0:
-                    logger.info("☕ 25개 처리 완료, 30초 휴식...")
-                    time.sleep(30)
+                    logger.info("☕ 25개 처리 완료, 5초 휴식...")
+                    time.sleep(5)
         
         # 결과 저장
         if results:
@@ -853,7 +853,7 @@ class MediaMarktInfiniteScraper:
     def accept_cookies(self):
         """쿠키 수락 버튼 클릭"""
         try:
-            cookie_button = WebDriverWait(self.driver, 10).until(
+            cookie_button = WebDriverWait(self.driver, 5).until(
                 EC.element_to_be_clickable((By.XPATH, "//*[@id='pwa-consent-layer-accept-all-button']"))
             )
             cookie_button.click()
