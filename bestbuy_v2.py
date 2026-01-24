@@ -435,11 +435,8 @@ class BestBuyScraper:
                 'vat': row_data.get('vat', 'x')
             }
             
-            # 재고 상태 확인
-            page_source = self.driver.page_source
-            stock_available = True
-
             # 에러 페이지 감지 (retry 하지 않고 다음 제품으로)
+            page_source = self.driver.page_source
             try:
                 error_element = self.driver.find_element(By.XPATH, "//h1[contains(@class, 'VPT-title')]")
                 if error_element and "something went wrong" in error_element.text.lower():
@@ -484,12 +481,6 @@ class BestBuyScraper:
                 except:
                     continue
 
-            for stock_flag in self.XPATHS.get('stock_flag', []):
-                if stock_flag in page_source:
-                    logger.info(f"재고 없음: {stock_flag}")
-                    stock_available = False
-                    break
-            
             # 가격 추출
             price_found = False
             
@@ -540,15 +531,32 @@ class BestBuyScraper:
                 logger.warning("모든 가격 추출 방법 실패")
                 self.error_logs.append(f"[가격 추출 실패] URL: {url}")
             
-            # 제목 추출
+            # 제목 추출 (명시적 대기 후 시도)
             is_soldout_fallback = False  # 품절 fallback 여부 플래그
             try:
+                # title 요소 로딩 대기 (최대 10초)
+                title_loaded = False
+                for xpath in self.XPATHS.get('title', []):
+                    try:
+                        WebDriverWait(self.driver, 10).until(
+                            EC.presence_of_element_located((By.XPATH, xpath))
+                        )
+                        title_loaded = True
+                        logger.info(f"✅ title 요소 로딩 완료: {xpath}")
+                        break
+                    except:
+                        continue
+
+                if not title_loaded:
+                    logger.warning("⚠️ title 요소 로딩 대기 시간 초과, 그래도 추출 시도")
+
                 for xpath in self.XPATHS.get('title', []):
                     try:
                         title_element = self.driver.find_element(By.XPATH, xpath)
                         result['title'] = title_element.text.strip()
-                        logger.info(f"제목: {result['title'][:50]}...")
-                        break
+                        if result['title']:  # 빈 문자열이 아닌 경우만 성공
+                            logger.info(f"제목: {result['title'][:50]}...")
+                            break
                     except:
                         continue
 
@@ -589,7 +597,7 @@ class BestBuyScraper:
             # 가격 추출 실패 시 재시도 (exception 없이 price가 None인 경우)
             # 단, 품절 fallback으로 제목을 추출한 경우 재시도하지 않음 (품절 상품은 가격 없는 것이 정상)
             if result['retailprice'] is None and retry_count < max_retries and not is_soldout_fallback:
-                wait_time = 5
+                wait_time = 1
                 logger.warning(f"⚠️ 가격 추출 실패, {wait_time}초 후 재시도... (재시도 {retry_count + 1}/{max_retries})")
                 time.sleep(wait_time)
 
@@ -620,7 +628,7 @@ class BestBuyScraper:
 
             # 재시도 로직
             if retry_count < max_retries:
-                wait_time = 5
+                wait_time = 1
                 logger.info(f"🔄 {wait_time}초 후 재시도합니다... (재시도 {retry_count + 1}/{max_retries})")
                 time.sleep(wait_time)
 
@@ -951,15 +959,27 @@ class BestBuyScraper:
                     logger.info(f"⏳ {wait_time:.1f}초 대기 중...")
                     time.sleep(wait_time)
 
-                    # 10개마다 긴 휴식
+                    # 10개마다 짧은 휴식
                     if (idx + 1) % 10 == 0:
-                        logger.info("☕ 10개 처리 완료, 10초 휴식...")
-                        time.sleep(10)
+                        logger.info("☕ 10개 처리 완료, 1초 휴식...")
+                        time.sleep(1)
 
             except Exception as e:
                 logger.error(f"❌ 스크래핑 중 오류 (URL: {row.get('url', 'unknown')}): {e}")
                 self.error_logs.append(f"[스크래핑 오류] URL: {row.get('url', 'unknown')} | 오류: {str(e)}")
                 continue
+
+        # 남은 항목 저장 (10개 단위로 나누어 떨어지지 않는 경우)
+        if save_interim and len(results) % 10 != 0:
+            remaining_count = len(results) % 10
+            remaining_df = pd.DataFrame(results[-remaining_count:])
+            if self.db_engine:
+                try:
+                    remaining_df.to_sql('bestbuy_price_crawl_tbl_usa_v2', self.db_engine,
+                                       if_exists='append', index=False)
+                    logger.info(f"💾 남은 {remaining_count}개 레코드 DB 저장")
+                except Exception as e:
+                    logger.error(f"남은 항목 저장 실패: {e}")
 
         # 정리
         if failed_urls:
@@ -1073,8 +1093,8 @@ def main():
 
         logger.info(f"✅ 크롤링 대상: {len(urls_data)}개")
 
-        # 크롤링 실행 (중간 저장 비활성화 - 최종 결과만 한번에 저장)
-        first_results_df = scraper.scrape_urls(urls_data, save_interim=False)
+        # 크롤링 실행 (10개마다 DB 중간 저장)
+        first_results_df = scraper.scrape_urls(urls_data, save_interim=True)
 
         if first_results_df is None or first_results_df.empty:
             logger.error("크롤링 결과가 없습니다.")
@@ -1139,10 +1159,10 @@ def main():
                     retry_failed = retry_results_df['retailprice'].isna().sum()
                     logger.info(f"\n📊 재시도 결과: 성공 {retry_success}개, 실패 {retry_failed}개")
 
-                    # 기존 실패한 결과를 재시도 결과로 업데이트
+                    # 기존 실패한 결과를 재시도 결과로 업데이트 (메모리 + DB)
                     for _, retry_row in retry_results_df.iterrows():
                         if retry_row['retailprice'] is not None:
-                            # 성공한 경우 기존 데이터 업데이트
+                            # 메모리 데이터 업데이트
                             mask = final_results_df['producturl'] == retry_row['producturl']
                             if mask.any():
                                 final_results_df.loc[mask, 'retailprice'] = retry_row['retailprice']
@@ -1150,6 +1170,29 @@ def main():
                                 final_results_df.loc[mask, 'imageurl'] = retry_row['imageurl']
                                 final_results_df.loc[mask, 'crawl_datetime'] = retry_row['crawl_datetime']
                                 final_results_df.loc[mask, 'crawl_strdatetime'] = retry_row['crawl_strdatetime']
+
+                            # DB 레코드 UPDATE (1차에서 저장된 레코드 덮어쓰기)
+                            try:
+                                from sqlalchemy import text
+                                update_query = text("""
+                                UPDATE bestbuy_price_crawl_tbl_usa_v2
+                                SET retailprice = :retailprice, title = :title, imageurl = :imageurl,
+                                    crawl_datetime = :crawl_datetime, crawl_strdatetime = :crawl_strdatetime
+                                WHERE producturl = :producturl AND retailprice IS NULL
+                                """)
+                                with scraper.db_engine.connect() as conn:
+                                    conn.execute(update_query, {
+                                        'retailprice': retry_row['retailprice'],
+                                        'title': retry_row['title'],
+                                        'imageurl': retry_row['imageurl'],
+                                        'crawl_datetime': retry_row['crawl_datetime'],
+                                        'crawl_strdatetime': retry_row['crawl_strdatetime'],
+                                        'producturl': retry_row['producturl']
+                                    })
+                                    conn.commit()
+                                logger.info(f"✅ DB 업데이트: {retry_row['producturl'][:50]}...")
+                            except Exception as e:
+                                logger.error(f"DB 업데이트 실패: {e}")
 
         # 3단계: 최종 결과 저장
         logger.info("\n💾 3단계: 최종 결과 저장")
@@ -1180,7 +1223,7 @@ def main():
         # DB와 파일서버에 최종 결과 저장
         save_results = scraper.save_results(
             final_results_df,
-            save_db=True,
+            save_db=False,  # 중간 저장으로 이미 DB에 저장됨
             upload_server=True
         )
 
