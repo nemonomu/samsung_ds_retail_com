@@ -289,7 +289,7 @@ class BestBuyScraper:
             logger.warning(f"국가 팝업 처리 중 오류 (무시): {e}")
             return True
     
-    def wait_for_price_elements(self, max_wait=30):
+    def wait_for_price_elements(self, max_wait=10):
         """가격 요소들이 실제로 로드될 때까지 스마트 대기"""
         
         # 1단계: 기본 페이지 구조 대기
@@ -343,7 +343,7 @@ class BestBuyScraper:
             """
             
             start_time = time.time()
-            while time.time() - start_time < 20:  # 최대 20초
+            while time.time() - start_time < 10:  # 최대 10초
                 if self.driver.execute_script(script):
                     time.sleep(idle_time)  # 추가 안정화 시간
                     return True
@@ -374,7 +374,7 @@ class BestBuyScraper:
                 logger.warning("가격 요소 로딩 실패, 그래도 추출 시도")
             
             # 3. 추가 안정화 시간
-            time.sleep(random.uniform(2, 4))
+            time.sleep(random.uniform(1, 2))
             
             # 페이지 로드 대기
             wait = WebDriverWait(self.driver, 20)
