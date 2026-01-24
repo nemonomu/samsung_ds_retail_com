@@ -175,7 +175,10 @@ class MediaMarktInfiniteScraper:
         
         try:
             options = uc.ChromeOptions()
-            
+
+            # 페이지 로드 전략: eager (DOM 로드 완료 시 즉시 반환)
+            options.page_load_strategy = 'eager'
+
             # 기본 옵션
             options.add_argument('--no-sandbox')
             options.add_argument('--disable-dev-shm-usage')
