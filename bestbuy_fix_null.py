@@ -43,16 +43,16 @@ class BestBuyNullFixer:
             self.db_engine = None
 
     def get_crawl_sessions(self):
-        """크롤링 세션 목록 조회 (날짜+시간대별)"""
+        """크롤링 세션 목록 조회 (한국시간 기준, 시간 단위)"""
         try:
             query = """
             SELECT
-                LEFT(crawl_strdatetime, 12) as session_id,
-                MIN(crawl_datetime) as start_time,
+                LEFT(kr_crawl_strdatetime, 10) as session_id,
+                MIN(kr_crawl_datetime) as start_time,
                 COUNT(*) as total_count,
                 SUM(CASE WHEN retailprice IS NULL OR title IS NULL OR imageurl IS NULL THEN 1 ELSE 0 END) as null_count
             FROM bestbuy_price_crawl_tbl_usa_v2
-            GROUP BY LEFT(crawl_strdatetime, 12)
+            GROUP BY LEFT(kr_crawl_strdatetime, 10)
             ORDER BY session_id DESC
             LIMIT 10
             """
@@ -67,9 +67,9 @@ class BestBuyNullFixer:
         query = f"""
         SELECT *
         FROM bestbuy_price_crawl_tbl_usa_v2
-        WHERE LEFT(crawl_strdatetime, 12) = '{session_id}'
+        WHERE LEFT(kr_crawl_strdatetime, 10) = '{session_id}'
           AND (title IS NULL OR imageurl IS NULL OR retailprice IS NULL)
-        ORDER BY crawl_datetime DESC
+        ORDER BY kr_crawl_datetime DESC
         """
 
         try:
@@ -84,8 +84,8 @@ class BestBuyNullFixer:
         query = f"""
         SELECT *
         FROM bestbuy_price_crawl_tbl_usa_v2
-        WHERE LEFT(crawl_strdatetime, 12) = '{session_id}'
-        ORDER BY crawl_datetime DESC
+        WHERE LEFT(kr_crawl_strdatetime, 10) = '{session_id}'
+        ORDER BY kr_crawl_datetime DESC
         """
 
         try:
@@ -179,9 +179,9 @@ class BestBuyNullFixer:
             print("❌ 내보낼 데이터가 없습니다.")
             return False
 
-        # 파일명 생성 (세션 ID 기준: YYYYMMDDHHMM)
+        # 파일명 생성 (세션 ID 기준: YYYYMMDDHH, 한국시간)
         date_folder = session_id[:8]  # YYYYMMDD
-        time_str = session_id[8:12] + "00"  # HHMM -> HHMMSS
+        time_str = session_id[8:10] + "0000"  # HH -> HH0000
         base_filename = f"{date_folder}_{time_str}_usa_bestbuy"
 
         try:
@@ -247,12 +247,12 @@ class BestBuyNullFixer:
 
         # 세션 목록 표시
         print("\n┌─────┬──────────────────────┬───────┬──────────┐")
-        print("│ No. │ 크롤링 시간           │ 전체  │ NULL    │")
+        print("│ No. │ 크롤링 시간 (KST)     │ 전체  │ NULL    │")
         print("├─────┼──────────────────────┼───────┼──────────┤")
         for idx, row in sessions.iterrows():
             session_id = row['session_id']
-            # YYYYMMDDHHMM -> YYYY-MM-DD HH:MM 형식
-            formatted_time = f"{session_id[:4]}-{session_id[4:6]}-{session_id[6:8]} {session_id[8:10]}:{session_id[10:12]}"
+            # YYYYMMDDHH -> YYYY-MM-DD HH시 형식
+            formatted_time = f"{session_id[:4]}-{session_id[4:6]}-{session_id[6:8]} {session_id[8:10]}시"
             null_display = f"{int(row['null_count'])}개" if row['null_count'] > 0 else "없음"
             print(f"│ {idx+1:3} │ {formatted_time:20} │ {int(row['total_count']):5} │ {null_display:8} │")
         print("└─────┴──────────────────────┴───────┴──────────┘")
