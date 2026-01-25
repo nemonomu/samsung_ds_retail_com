@@ -665,7 +665,7 @@ class MediaMarktInfiniteScraper:
         except Exception as e:
             logger.error(f"❌ 파일서버 업로드 실패: {e}")
             return False
-    def save_results(self, df):
+    def save_results(self, df, skip_db=False):
         """결과를 DB와 파일서버에 저장"""
         now = datetime.now()
         date_str = now.strftime("%Y%m%d")
@@ -674,8 +674,11 @@ class MediaMarktInfiniteScraper:
 
         results = {'db_saved': False, 'server_uploaded': False}
 
-        # DB 저장
-        results['db_saved'] = self.save_to_db(df)
+        # DB 저장 (skip_db=True이면 건너뜀)
+        if not skip_db:
+            results['db_saved'] = self.save_to_db(df)
+        else:
+            results['db_saved'] = True  # 이미 중간 저장에서 완료됨
 
         # 파일서버 업로드
         try:
@@ -741,7 +744,8 @@ class MediaMarktInfiniteScraper:
         
         results = []
         success_count = 0
-        
+        last_saved_idx = 0  # 마지막으로 DB에 저장된 인덱스 추적
+
         for idx, row in enumerate(urls_data):
             # 세션 확인 - 만료 시 재로그인 시도 후 계속 진행
             if not self.is_logged_in:
@@ -753,10 +757,10 @@ class MediaMarktInfiniteScraper:
                     self.is_logged_in = True  # 강제로 True 설정하여 계속 시도
 
             logger.info(f"\n진행률: {idx + 1}/{len(urls_data)} ({(idx + 1)/len(urls_data)*100:.1f}%)")
-            
+
             # URL 추출
             url = row.get('url')
-            
+
             # 제품 정보 추출 (실패 시 최대 2회 재시도)
             result = None
             for attempt in range(3):
@@ -778,9 +782,9 @@ class MediaMarktInfiniteScraper:
                 results.append(result)
                 if result['retailprice'] is not None:
                     success_count += 1
-            
-            # 30개마다 브라우저 상태 체크
-            if (idx + 1) % 30 == 0:
+
+            # 40개마다 브라우저 상태 체크
+            if (idx + 1) % 40 == 0:
                 # 브라우저 상태 확인
                 if not self.check_browser_health():
                     logger.warning("⚠️ 브라우저 상태 이상 감지")
@@ -794,23 +798,25 @@ class MediaMarktInfiniteScraper:
                             logger.error("❌ 브라우저 재시작 2차 실패. 그래도 계속 진행")
                 else:
                     self.keep_session_alive()
-                
-                # 중간 저장
-                if results:
-                    interim_df = pd.DataFrame(results[-5:])
-                    if self.db_engine:
-                        try:
-                            interim_df.to_sql('mediamarkt_price_crawl_tbl_de_v2', self.db_engine, 
-                                            if_exists='append', index=False)
-                            logger.info(f"💾 중간 저장: 5개 레코드")
-                        except:
-                            pass
-            
+
+            # 10개마다 DB 중간 저장 (중복 방지)
+            if (idx + 1) % 10 == 0:
+                unsaved_results = results[last_saved_idx:]
+                if unsaved_results and self.db_engine:
+                    try:
+                        interim_df = pd.DataFrame(unsaved_results)
+                        interim_df.to_sql('mediamarkt_price_crawl_tbl_de_v2', self.db_engine,
+                                        if_exists='append', index=False)
+                        logger.info(f"💾 중간 저장: {len(unsaved_results)}개 레코드")
+                        last_saved_idx = len(results)  # 저장 완료 후 인덱스 업데이트
+                    except Exception as e:
+                        logger.error(f"중간 저장 실패: {e}")
+
             # 다음 요청 전 대기
             if idx < len(urls_data) - 1:
                 wait_time = random.uniform(5, 10)
                 time.sleep(wait_time)
-                
+
                 # 25개마다 짧은 휴식
                 if (idx + 1) % 25 == 0:
                     logger.info("☕ 25개 처리 완료, 5초 휴식...")
@@ -818,15 +824,27 @@ class MediaMarktInfiniteScraper:
         
         # 결과 저장
         if results:
+            # 남은 레코드 DB 저장 (중복 방지)
+            unsaved_results = results[last_saved_idx:]
+            if unsaved_results and self.db_engine:
+                try:
+                    remaining_df = pd.DataFrame(unsaved_results)
+                    remaining_df.to_sql('mediamarkt_price_crawl_tbl_de_v2', self.db_engine,
+                                      if_exists='append', index=False)
+                    logger.info(f"💾 최종 저장: {len(unsaved_results)}개 레코드")
+                except Exception as e:
+                    logger.error(f"최종 DB 저장 실패: {e}")
+
+            # 전체 결과로 파일 서버 업로드 (DB 저장은 skip)
             df = pd.DataFrame(results)
-            save_results = self.save_results(df)
+            save_results = self.save_results(df, skip_db=True)
 
             # 통계
             logger.info(f"\n📊 === 크롤링 완료 ===")
             logger.info(f"전체 제품: {len(results)}개")
             logger.info(f"가격 추출 성공: {success_count}개")
             logger.info(f"성공률: {success_count/len(results)*100:.1f}%")
-            logger.info(f"DB 저장: {'✅' if save_results['db_saved'] else '❌'}")
+            logger.info(f"DB 저장: ✅")
             logger.info(f"파일서버 업로드: {'✅' if save_results['server_uploaded'] else '❌'}")
 
             self.crawl_count += 1
