@@ -350,10 +350,13 @@ class DeLabelFixer:
                 if open_browser == 'y':
                     self.open_url(row['producturl'])
 
-                new_value = input("실제 판매자 이름 입력 (ships_from=sold_by로 저장, 엔터=스킵): ").strip()
+                new_ships_from = input("ships_from 입력 (엔터=변경없음): ").strip()
+                new_sold_by = input("sold_by 입력 (엔터=변경없음): ").strip()
 
-                if new_value:
-                    if self.update_record(row['producturl'], session_id, new_value, new_value):
+                if new_ships_from or new_sold_by:
+                    ships_from_val = new_ships_from if new_ships_from else None
+                    sold_by_val = new_sold_by if new_sold_by else None
+                    if self.update_record(row['producturl'], session_id, ships_from_val, sold_by_val):
                         print("DB 업데이트 완료")
                     else:
                         print("DB 업데이트 실패")
