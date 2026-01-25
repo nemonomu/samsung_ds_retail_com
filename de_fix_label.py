@@ -41,7 +41,7 @@ class DeLabelFixer:
             self.db_engine = None
 
     def get_label_error_sessions(self):
-        """라벨 오류가 있는 세션 조회 (23일, 24일)"""
+        """라벨 오류가 있는 세션 조회 (23일, 24일, title NULL 제외)"""
         try:
             query = """
             SELECT
@@ -52,6 +52,7 @@ class DeLabelFixer:
                          OR sold_by LIKE '%%Versender%%' OR sold_by LIKE '%%Verkäufer%%' THEN 1 ELSE 0 END) as label_error_count
             FROM amazon_price_crawl_tbl_de_v2
             WHERE LEFT(kr_crawl_strdatetime, 8) IN ('20260123', '20260124')
+              AND title IS NOT NULL
             GROUP BY LEFT(kr_crawl_strdatetime, 10)
             HAVING label_error_count > 0
             ORDER BY session_id DESC
