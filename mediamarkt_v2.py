@@ -757,23 +757,27 @@ class MediaMarktInfiniteScraper:
             # URL 추출
             url = row.get('url')
             
-            # 제품 정보 추출
-            result = self.extract_product_info(url, row)
-            
+            # 제품 정보 추출 (실패 시 최대 2회 재시도)
+            result = None
+            for attempt in range(3):
+                result = self.extract_product_info(url, row)
+                if result:
+                    break
+                else:
+                    if attempt < 2:
+                        logger.warning(f"⚠️ 제품 정보 추출 실패 (시도 {attempt + 1}/3): {url}. 재시도 중...")
+                        # Cloudflare 체크 및 브라우저 재시작
+                        if self.check_cloudflare_challenge():
+                            logger.warning("⚠️ Cloudflare 감지됨. 브라우저 재시작 시도...")
+                            self.restart_browser()
+                        time.sleep(3)
+                    else:
+                        logger.error(f"❌ 제품 정보 추출 최종 실패: {url}")
+
             if result:
                 results.append(result)
                 if result['retailprice'] is not None:
                     success_count += 1
-            else:
-                # result가 None인 경우 (세션 만료 또는 페이지 오류)
-                logger.warning(f"⚠️ 제품 정보 추출 실패: {url}")
-                # 세션 재확인 - Cloudflare 감지 시 브라우저 재시작 후 계속 진행
-                if self.check_cloudflare_challenge():
-                    logger.warning("⚠️ Cloudflare 감지됨. 브라우저 재시작 시도...")
-                    if self.restart_browser():
-                        logger.info("✅ 브라우저 재시작 완료. 계속 진행")
-                    else:
-                        logger.warning("⚠️ 브라우저 재시작 실패. 그래도 계속 진행")
             
             # 5개마다 keep-alive (더 자주)
             if (idx + 1) % 5 == 0:
