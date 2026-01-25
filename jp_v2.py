@@ -1291,14 +1291,14 @@ class AmazonScraper:
                 
                 # 다음 요청 전 대기
                 if idx < len(urls_data) - 1:
-                    wait_time = random.uniform(5, 10)
+                    wait_time = random.uniform(1, 2)
                     logger.info(f"⏳ {wait_time:.1f}초 대기 중...")
                     time.sleep(wait_time)
-                    
-                    # 20개마다 긴 휴식
+
+                    # 20개마다 짧은 휴식
                     if (idx + 1) % 20 == 0:
-                        logger.info("☕ 20개 처리 완료, 30초 휴식...")
-                        time.sleep(30)
+                        logger.info("☕ 20개 처리 완료, 5초 휴식...")
+                        time.sleep(5)
         
         except Exception as e:
             logger.error(f"❌ 스크래핑 중 오류: {e}")
