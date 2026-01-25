@@ -43,18 +43,25 @@ class JpNullFixer:
             self.db_engine = None
 
     def get_crawl_sessions(self):
-        """크롤링 세션 목록 조회 (한국시간 기준, 시간 단위)"""
+        """크롤링 세션 목록 조회 (한국시간 기준, 시간 단위) - 중복 제외"""
         try:
+            # 서브쿼리로 중복 제거 후 카운트
             query = """
             SELECT
-                LEFT(kr_crawl_strdatetime, 10) as session_id,
+                session_id,
                 MIN(kr_crawl_datetime) as start_time,
                 COUNT(*) as total_count,
                 SUM(CASE WHEN retailprice IS NULL OR title IS NULL OR imageurl IS NULL
                          OR (ships_from IS NULL AND sold_by IS NOT NULL)
                          OR (ships_from IS NOT NULL AND sold_by IS NULL) THEN 1 ELSE 0 END) as null_count
-            FROM amazon_price_crawl_tbl_jp_v2
-            GROUP BY LEFT(kr_crawl_strdatetime, 10)
+            FROM (
+                SELECT producturl,
+                       LEFT(kr_crawl_strdatetime, 10) as session_id,
+                       kr_crawl_datetime, retailprice, title, imageurl, ships_from, sold_by
+                FROM amazon_price_crawl_tbl_jp_v2
+                GROUP BY producturl, LEFT(kr_crawl_strdatetime, 10)
+            ) as unique_records
+            GROUP BY session_id
             ORDER BY session_id DESC
             LIMIT 10
             """
@@ -65,15 +72,21 @@ class JpNullFixer:
             return pd.DataFrame()
 
     def get_null_records(self, session_id):
-        """NULL 값이 있는 레코드 조회 (세션별) - ships_from/sold_by는 둘 중 하나만 NULL인 경우"""
+        """NULL 값이 있는 레코드 조회 (세션별, 중복 제외) - ships_from/sold_by는 둘 중 하나만 NULL인 경우"""
         query = f"""
-        SELECT *
-        FROM amazon_price_crawl_tbl_jp_v2
-        WHERE LEFT(kr_crawl_strdatetime, 10) = '{session_id}'
-          AND (title IS NULL OR imageurl IS NULL OR retailprice IS NULL
-               OR (ships_from IS NULL AND sold_by IS NOT NULL)
-               OR (ships_from IS NOT NULL AND sold_by IS NULL))
-        ORDER BY kr_crawl_datetime DESC
+        SELECT t1.*
+        FROM amazon_price_crawl_tbl_jp_v2 t1
+        INNER JOIN (
+            SELECT producturl, MAX(kr_crawl_datetime) as max_dt
+            FROM amazon_price_crawl_tbl_jp_v2
+            WHERE LEFT(kr_crawl_strdatetime, 10) = '{session_id}'
+            GROUP BY producturl
+        ) t2 ON t1.producturl = t2.producturl AND t1.kr_crawl_datetime = t2.max_dt
+        WHERE LEFT(t1.kr_crawl_strdatetime, 10) = '{session_id}'
+          AND (t1.title IS NULL OR t1.imageurl IS NULL OR t1.retailprice IS NULL
+               OR (t1.ships_from IS NULL AND t1.sold_by IS NOT NULL)
+               OR (t1.ships_from IS NOT NULL AND t1.sold_by IS NULL))
+        ORDER BY t1.kr_crawl_datetime DESC
         """
 
         try:
@@ -84,12 +97,18 @@ class JpNullFixer:
             return pd.DataFrame()
 
     def get_all_records(self, session_id):
-        """해당 세션 전체 레코드 조회"""
+        """해당 세션 전체 레코드 조회 (중복 제외, 최신 레코드만)"""
         query = f"""
-        SELECT *
-        FROM amazon_price_crawl_tbl_jp_v2
-        WHERE LEFT(kr_crawl_strdatetime, 10) = '{session_id}'
-        ORDER BY kr_crawl_datetime DESC
+        SELECT t1.*
+        FROM amazon_price_crawl_tbl_jp_v2 t1
+        INNER JOIN (
+            SELECT producturl, MAX(kr_crawl_datetime) as max_dt
+            FROM amazon_price_crawl_tbl_jp_v2
+            WHERE LEFT(kr_crawl_strdatetime, 10) = '{session_id}'
+            GROUP BY producturl
+        ) t2 ON t1.producturl = t2.producturl AND t1.kr_crawl_datetime = t2.max_dt
+        WHERE LEFT(t1.kr_crawl_strdatetime, 10) = '{session_id}'
+        ORDER BY t1.kr_crawl_datetime DESC
         """
 
         try:
