@@ -50,7 +50,8 @@ class JpNullFixer:
                 LEFT(kr_crawl_strdatetime, 10) as session_id,
                 MIN(kr_crawl_datetime) as start_time,
                 COUNT(*) as total_count,
-                SUM(CASE WHEN retailprice IS NULL OR title IS NULL OR imageurl IS NULL THEN 1 ELSE 0 END) as null_count
+                SUM(CASE WHEN retailprice IS NULL OR title IS NULL OR imageurl IS NULL
+                         OR ships_from IS NULL OR sold_by IS NULL THEN 1 ELSE 0 END) as null_count
             FROM amazon_price_crawl_tbl_jp_v2
             GROUP BY LEFT(kr_crawl_strdatetime, 10)
             ORDER BY session_id DESC
@@ -68,7 +69,8 @@ class JpNullFixer:
         SELECT *
         FROM amazon_price_crawl_tbl_jp_v2
         WHERE LEFT(kr_crawl_strdatetime, 10) = '{session_id}'
-          AND (title IS NULL OR imageurl IS NULL OR retailprice IS NULL)
+          AND (title IS NULL OR imageurl IS NULL OR retailprice IS NULL
+               OR ships_from IS NULL OR sold_by IS NULL)
         ORDER BY kr_crawl_datetime DESC
         """
 
@@ -95,7 +97,7 @@ class JpNullFixer:
             print(f"조회 실패: {e}")
             return pd.DataFrame()
 
-    def update_record(self, producturl, title=None, imageurl=None, retailprice=None):
+    def update_record(self, producturl, title=None, imageurl=None, retailprice=None, ships_from=None, sold_by=None):
         """레코드 업데이트"""
         try:
             updates = []
@@ -110,6 +112,12 @@ class JpNullFixer:
             if retailprice is not None:
                 updates.append("retailprice = :retailprice")
                 params['retailprice'] = retailprice
+            if ships_from is not None:
+                updates.append("ships_from = :ships_from")
+                params['ships_from'] = ships_from
+            if sold_by is not None:
+                updates.append("sold_by = :sold_by")
+                params['sold_by'] = sold_by
 
             if not updates:
                 return False
@@ -318,6 +326,8 @@ class JpNullFixer:
             title_status = "[OK]" if pd.notna(row['title']) else "[NULL]"
             img_status = "[OK]" if pd.notna(row['imageurl']) else "[NULL]"
             price_status = "[OK]" if pd.notna(row['retailprice']) else "[NULL]"
+            ships_status = "[OK]" if pd.notna(row['ships_from']) else "[NULL]"
+            sold_status = "[OK]" if pd.notna(row['sold_by']) else "[NULL]"
 
             print(f"  - title: {title_status}")
             if pd.notna(row['title']):
@@ -330,6 +340,14 @@ class JpNullFixer:
             print(f"  - retailprice: {price_status}")
             if pd.notna(row['retailprice']):
                 print(f"    -> {row['retailprice']} JPY")
+
+            print(f"  - ships_from: {ships_status}")
+            if pd.notna(row['ships_from']):
+                print(f"    -> {row['ships_from']}")
+
+            print(f"  - sold_by: {sold_status}")
+            if pd.notna(row['sold_by']):
+                print(f"    -> {row['sold_by']}")
 
             # 브라우저 열기 여부
             open_browser = input("\n브라우저에서 열기? (y/n/s=스킵): ").strip().lower()
@@ -345,6 +363,8 @@ class JpNullFixer:
             new_title = None
             new_imageurl = None
             new_price = None
+            new_ships_from = None
+            new_sold_by = None
 
             if pd.isna(row['title']):
                 title_input = input("title 입력 (엔터=스킵): ").strip()
@@ -364,9 +384,19 @@ class JpNullFixer:
                     except:
                         print("잘못된 가격 형식, 스킵")
 
+            if pd.isna(row['ships_from']):
+                ships_input = input("ships_from 입력 (엔터=스킵): ").strip()
+                if ships_input:
+                    new_ships_from = ships_input
+
+            if pd.isna(row['sold_by']):
+                sold_input = input("sold_by 입력 (엔터=스킵): ").strip()
+                if sold_input:
+                    new_sold_by = sold_input
+
             # 업데이트
-            if new_title or new_imageurl or new_price:
-                if self.update_record(row['producturl'], new_title, new_imageurl, new_price):
+            if new_title or new_imageurl or new_price or new_ships_from or new_sold_by:
+                if self.update_record(row['producturl'], new_title, new_imageurl, new_price, new_ships_from, new_sold_by):
                     print("DB 업데이트 완료")
                 else:
                     print("DB 업데이트 실패")
