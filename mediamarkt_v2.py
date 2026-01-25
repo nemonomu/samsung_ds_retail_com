@@ -779,8 +779,8 @@ class MediaMarktInfiniteScraper:
                 if result['retailprice'] is not None:
                     success_count += 1
             
-            # 5개마다 keep-alive (더 자주)
-            if (idx + 1) % 5 == 0:
+            # 30개마다 브라우저 상태 체크
+            if (idx + 1) % 30 == 0:
                 # 브라우저 상태 확인
                 if not self.check_browser_health():
                     logger.warning("⚠️ 브라우저 상태 이상 감지")
