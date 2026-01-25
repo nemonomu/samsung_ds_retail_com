@@ -51,7 +51,8 @@ class JpNullFixer:
                 MIN(kr_crawl_datetime) as start_time,
                 COUNT(*) as total_count,
                 SUM(CASE WHEN retailprice IS NULL OR title IS NULL OR imageurl IS NULL
-                         OR ships_from IS NULL OR sold_by IS NULL THEN 1 ELSE 0 END) as null_count
+                         OR (ships_from IS NULL AND sold_by IS NOT NULL)
+                         OR (ships_from IS NOT NULL AND sold_by IS NULL) THEN 1 ELSE 0 END) as null_count
             FROM amazon_price_crawl_tbl_jp_v2
             GROUP BY LEFT(kr_crawl_strdatetime, 10)
             ORDER BY session_id DESC
@@ -64,13 +65,14 @@ class JpNullFixer:
             return pd.DataFrame()
 
     def get_null_records(self, session_id):
-        """NULL 값이 있는 레코드 조회 (세션별)"""
+        """NULL 값이 있는 레코드 조회 (세션별) - ships_from/sold_by는 둘 중 하나만 NULL인 경우"""
         query = f"""
         SELECT *
         FROM amazon_price_crawl_tbl_jp_v2
         WHERE LEFT(kr_crawl_strdatetime, 10) = '{session_id}'
           AND (title IS NULL OR imageurl IS NULL OR retailprice IS NULL
-               OR ships_from IS NULL OR sold_by IS NULL)
+               OR (ships_from IS NULL AND sold_by IS NOT NULL)
+               OR (ships_from IS NOT NULL AND sold_by IS NULL))
         ORDER BY kr_crawl_datetime DESC
         """
 
