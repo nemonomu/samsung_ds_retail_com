@@ -64,22 +64,24 @@ class DeLabelFixer:
 
     def get_label_error_records(self, session_id):
         """라벨 오류 레코드 조회 (세션별, 중복 제외)"""
+        # ROW_NUMBER로 각 producturl에서 가장 최신 레코드만 선택 후 라벨 오류 필터
         query = f"""
-        SELECT t1.*
-        FROM amazon_price_crawl_tbl_de_v2 t1
-        INNER JOIN (
-            SELECT producturl, MAX(kr_crawl_datetime) as max_dt
+        SELECT *
+        FROM (
+            SELECT *,
+                   ROW_NUMBER() OVER (PARTITION BY producturl ORDER BY kr_crawl_datetime DESC) as rn
             FROM amazon_price_crawl_tbl_de_v2
             WHERE LEFT(kr_crawl_strdatetime, 10) = '{session_id}'
-            GROUP BY producturl
-        ) t2 ON t1.producturl = t2.producturl AND t1.kr_crawl_datetime = t2.max_dt
-        WHERE LEFT(t1.kr_crawl_strdatetime, 10) = '{session_id}'
-          AND (t1.ships_from LIKE '%%Versender%%' OR t1.ships_from LIKE '%%Verkäufer%%'
-               OR t1.sold_by LIKE '%%Versender%%' OR t1.sold_by LIKE '%%Verkäufer%%')
-        ORDER BY t1.kr_crawl_datetime DESC
+        ) ranked
+        WHERE rn = 1
+          AND (ships_from LIKE '%%Versender%%' OR ships_from LIKE '%%Verkäufer%%'
+               OR sold_by LIKE '%%Versender%%' OR sold_by LIKE '%%Verkäufer%%')
+        ORDER BY kr_crawl_datetime DESC
         """
         try:
             df = pd.read_sql(query, self.db_engine)
+            if 'rn' in df.columns:
+                df = df.drop(columns=['rn'])
             return df
         except Exception as e:
             print(f"조회 실패: {e}")
@@ -87,20 +89,23 @@ class DeLabelFixer:
 
     def get_all_records(self, session_id):
         """해당 세션 전체 레코드 조회 (중복 제외, 최신 레코드만)"""
+        # ROW_NUMBER로 각 producturl에서 가장 최신 레코드만 선택
         query = f"""
-        SELECT t1.*
-        FROM amazon_price_crawl_tbl_de_v2 t1
-        INNER JOIN (
-            SELECT producturl, MAX(kr_crawl_datetime) as max_dt
+        SELECT *
+        FROM (
+            SELECT *,
+                   ROW_NUMBER() OVER (PARTITION BY producturl ORDER BY kr_crawl_datetime DESC) as rn
             FROM amazon_price_crawl_tbl_de_v2
             WHERE LEFT(kr_crawl_strdatetime, 10) = '{session_id}'
-            GROUP BY producturl
-        ) t2 ON t1.producturl = t2.producturl AND t1.kr_crawl_datetime = t2.max_dt
-        WHERE LEFT(t1.kr_crawl_strdatetime, 10) = '{session_id}'
-        ORDER BY t1.kr_crawl_datetime DESC
+        ) ranked
+        WHERE rn = 1
+        ORDER BY kr_crawl_datetime DESC
         """
         try:
             df = pd.read_sql(query, self.db_engine)
+            # rn 컬럼 제거
+            if 'rn' in df.columns:
+                df = df.drop(columns=['rn'])
             return df
         except Exception as e:
             print(f"조회 실패: {e}")
@@ -189,6 +194,8 @@ class DeLabelFixer:
             print("내보낼 데이터가 없습니다.")
             return False
 
+        print(f"총 {len(df)}개 레코드 내보내기 준비")
+
         # 파일명 생성
         if custom_datetime:
             parts = custom_datetime.split('_')
@@ -200,7 +207,7 @@ class DeLabelFixer:
             base_filename = f"{session_id[:8]}_{time_str}_de_amazon"
 
         try:
-            # 컬럼 순서 정의
+            # de_v2.py의 result 딕셔너리 순서와 동일하게 맞춤
             column_order = [
                 'retailerid', 'country_code', 'ships_from', 'channel_name', 'channel',
                 'retailersku', 'brand', 'brand_eng', 'form_factor',
@@ -214,8 +221,14 @@ class DeLabelFixer:
             csv_filename = f'{base_filename}.csv'
             df_csv = df.copy()
 
+            # 컬럼명 소문자로 통일 (DB 반환값 대소문자 불일치 방지)
+            df_csv.columns = df_csv.columns.str.lower()
+
+            # 존재하는 컬럼만 순서대로 정렬
             existing_columns = [col for col in column_order if col in df_csv.columns]
             df_csv = df_csv[existing_columns]
+
+            print(f"CSV 컬럼 {len(existing_columns)}개: {existing_columns}")
 
             df_csv.columns = df_csv.columns.str.upper()
             df_csv.to_csv(csv_filename, index=False, encoding='utf-8', lineterminator='\r\n')
