@@ -761,13 +761,15 @@ class MediaMarktInfiniteScraper:
                 if result['retailprice'] is not None:
                     success_count += 1
             else:
-                # result가 None인 경우 (세션 만료)
+                # result가 None인 경우 (세션 만료 또는 페이지 오류)
                 logger.warning(f"⚠️ 제품 정보 추출 실패: {url}")
-                # 세션 재확인
+                # 세션 재확인 - Cloudflare 감지 시 브라우저 재시작 후 계속 진행
                 if self.check_cloudflare_challenge():
-                    logger.error("Cloudflare 감지됨")
-                    self.is_logged_in = False
-                    break
+                    logger.warning("⚠️ Cloudflare 감지됨. 브라우저 재시작 시도...")
+                    if self.restart_browser():
+                        logger.info("✅ 브라우저 재시작 완료. 계속 진행")
+                    else:
+                        logger.warning("⚠️ 브라우저 재시작 실패. 그래도 계속 진행")
             
             # 5개마다 keep-alive (더 자주)
             if (idx + 1) % 5 == 0:
