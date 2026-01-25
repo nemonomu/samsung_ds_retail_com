@@ -207,14 +207,13 @@ class DeLabelFixer:
             base_filename = f"{session_id[:8]}_{time_str}_de_amazon"
 
         try:
-            # de_v2.py의 result 딕셔너리 순서와 동일하게 맞춤
+            # de_v2.py 실제 출력 순서와 동일하게 맞춤 (22일 원본 기준)
             column_order = [
                 'retailerid', 'country_code', 'ships_from', 'channel_name', 'channel',
                 'retailersku', 'brand', 'brand_eng', 'form_factor',
                 'segment_lv1', 'segment_lv2', 'segment_lv3', 'capacity', 'item',
                 'retailprice', 'sold_by', 'imageurl', 'producturl',
-                'crawl_datetime', 'crawl_strdatetime',
-                'kr_crawl_datetime', 'kr_crawl_strdatetime',
+                'crawl_datetime', 'kr_crawl_datetime', 'kr_crawl_strdatetime', 'crawl_strdatetime',
                 'title', 'vat'
             ]
 
