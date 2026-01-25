@@ -949,6 +949,9 @@ class BestBuyScraper:
                 # 10개마다 DB에 중간 저장 (save_interim=True일 때만)
                 if save_interim and (idx + 1) % 10 == 0:
                     interim_df = pd.DataFrame(results[-10:])
+                    # no_longer_available 컬럼 제거 (DB 테이블에 없음)
+                    if 'no_longer_available' in interim_df.columns:
+                        interim_df = interim_df.drop(columns=['no_longer_available'])
                     if self.db_engine:
                         try:
                             interim_df.to_sql('bestbuy_price_crawl_tbl_usa_v2', self.db_engine,
@@ -977,6 +980,9 @@ class BestBuyScraper:
         if save_interim and len(results) % 10 != 0:
             remaining_count = len(results) % 10
             remaining_df = pd.DataFrame(results[-remaining_count:])
+            # no_longer_available 컬럼 제거 (DB 테이블에 없음)
+            if 'no_longer_available' in remaining_df.columns:
+                remaining_df = remaining_df.drop(columns=['no_longer_available'])
             if self.db_engine:
                 try:
                     remaining_df.to_sql('bestbuy_price_crawl_tbl_usa_v2', self.db_engine,
