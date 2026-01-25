@@ -48,8 +48,8 @@ class DeLabelFixer:
                 LEFT(kr_crawl_strdatetime, 10) as session_id,
                 MIN(kr_crawl_datetime) as start_time,
                 COUNT(DISTINCT producturl) as total_count,
-                SUM(CASE WHEN ships_from LIKE '%Versender%' OR ships_from LIKE '%Verkäufer%'
-                         OR sold_by LIKE '%Versender%' OR sold_by LIKE '%Verkäufer%' THEN 1 ELSE 0 END) as label_error_count
+                SUM(CASE WHEN ships_from LIKE '%%Versender%%' OR ships_from LIKE '%%Verkäufer%%'
+                         OR sold_by LIKE '%%Versender%%' OR sold_by LIKE '%%Verkäufer%%' THEN 1 ELSE 0 END) as label_error_count
             FROM amazon_price_crawl_tbl_de_v2
             WHERE LEFT(kr_crawl_strdatetime, 8) IN ('20260123', '20260124')
             GROUP BY LEFT(kr_crawl_strdatetime, 10)
@@ -74,8 +74,8 @@ class DeLabelFixer:
             GROUP BY producturl
         ) t2 ON t1.producturl = t2.producturl AND t1.kr_crawl_datetime = t2.max_dt
         WHERE LEFT(t1.kr_crawl_strdatetime, 10) = '{session_id}'
-          AND (t1.ships_from LIKE '%Versender%' OR t1.ships_from LIKE '%Verkäufer%'
-               OR t1.sold_by LIKE '%Versender%' OR t1.sold_by LIKE '%Verkäufer%')
+          AND (t1.ships_from LIKE '%%Versender%%' OR t1.ships_from LIKE '%%Verkäufer%%'
+               OR t1.sold_by LIKE '%%Versender%%' OR t1.sold_by LIKE '%%Verkäufer%%')
         ORDER BY t1.kr_crawl_datetime DESC
         """
         try:
