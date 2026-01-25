@@ -1232,8 +1232,14 @@ class AmazonScraper:
                 logger.error(f"파일 저장 실패: {e}")
 
         return results
-    def scrape_urls(self, urls_data, max_items=None):
-        """여러 URL 스크래핑"""
+    def scrape_urls(self, urls_data, max_items=None, save_interim=True):
+        """여러 URL 스크래핑
+
+        Args:
+            urls_data: 크롤링 대상 URL 목록
+            max_items: 최대 처리 개수 (None이면 전체)
+            save_interim: 중간 저장 여부
+        """
         if max_items:
             urls_data = urls_data[:max_items]
         
@@ -1276,14 +1282,14 @@ class AmazonScraper:
                     })
                 
                 results.append(result)
-                
-                # 10개마다 중간 저장
-                if (idx + 1) % 10 == 0:
+
+                # 10개마다 중간 저장 (save_interim=True일 때만)
+                if save_interim and (idx + 1) % 10 == 0:
                     interim_df = pd.DataFrame(results[-10:])
                     if self.db_engine:
                         try:
                             table_name = f'amazon_price_crawl_tbl_{self.country_code}_v2'
-                            interim_df.to_sql(table_name, self.db_engine, 
+                            interim_df.to_sql(table_name, self.db_engine,
                                             if_exists='append', index=False)
                             logger.info(f"💾 중간 저장: 10개 레코드 DB 저장")
                         except Exception as e:
@@ -1300,9 +1306,22 @@ class AmazonScraper:
                         logger.info("☕ 20개 처리 완료, 5초 휴식...")
                         time.sleep(5)
         
+            # 남은 항목 저장 (10개 단위로 나누어 떨어지지 않는 경우)
+            if save_interim and len(results) % 10 != 0:
+                remaining_count = len(results) % 10
+                remaining_df = pd.DataFrame(results[-remaining_count:])
+                if self.db_engine:
+                    try:
+                        table_name = f'amazon_price_crawl_tbl_{self.country_code}_v2'
+                        remaining_df.to_sql(table_name, self.db_engine,
+                                          if_exists='append', index=False)
+                        logger.info(f"💾 나머지 저장: {remaining_count}개 레코드 DB 저장")
+                    except Exception as e:
+                        logger.error(f"나머지 저장 실패: {e}")
+
         except Exception as e:
             logger.error(f"❌ 스크래핑 중 오류: {e}")
-        
+
         finally:
             # 실패 URL 요약
             if failed_urls:
@@ -1433,10 +1452,10 @@ def main():
     # 결과 분석
     scraper.analyze_results(results_df)
     
-    # 결과 저장
+    # 결과 저장 (DB는 중간 저장으로 이미 완료됨)
     save_results = scraper.save_results(
         results_df,
-        save_db=True,
+        save_db=False,  # 중간 저장으로 이미 DB에 저장됨
         upload_server=True
     )
     
