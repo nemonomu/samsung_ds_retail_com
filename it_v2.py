@@ -1045,38 +1045,59 @@ class AmazonITScraper:
             
             # 재고 확인
             has_stock = self.check_stock_availability()
-            
-            # Ships From 추출 (기본 추출만, 추가 필터링 없음)
-            result['ships_from'] = self.extract_element_text(
-                self.selectors['ships_from'], 
-                "Ships From"
-            )
-            
-            # Sold By 추출 (기본 추출만, 추가 필터링 없음)
-            result['sold_by'] = self.extract_element_text(
-                self.selectors['sold_by'],
-                "Sold By"
-            )
 
-            # ships_from이 None이거나 빈 문자열이고 sold_by가 있을 때, 통합 라벨 확인
-            if (not result['ships_from'] or not str(result['ships_from']).strip()) and result['sold_by']:
+            # 통합 라벨 확인 (Mittente / Venditore) - 먼저 확인
+            combined_label_selectors = [
+                "//*[@id='merchantInfoFeature_feature_div']/div[1]/div/span",
+                "//*[@id='merchantInfoFeature_feature_div']//span[contains(@class, 'a-color-tertiary')]"
+            ]
+            combined_patterns = [
+                'mittente / venditore',
+                'mittente/venditore',
+                'shipper / seller',
+                'shipper/seller'
+            ]
+
+            is_combined_label = False
+            for selector in combined_label_selectors:
                 try:
-                    # "Shipper / Seller" 라벨이 있는지 확인 (배송자/판매자 통합)
-                    label_element = self.driver.find_element(By.XPATH, "//*[@id='merchantInfoFeature_feature_div']/div[1]/div/span")
-                    if label_element:
-                        # text가 빈 경우 textContent, innerText 순으로 시도
-                        label_text = label_element.text.strip() if label_element.text else ""
-                        if not label_text:
-                            label_text = (label_element.get_attribute('textContent') or "").strip()
-                        if not label_text:
-                            label_text = (label_element.get_attribute('innerText') or "").strip()
-                        logger.info(f"통합 라벨 텍스트: '{label_text}'")
-                        if "Shipper" in label_text and "Seller" in label_text:
-                            # 통합 라벨 발견 - sold_by 값을 ships_from에도 저장
-                            result['ships_from'] = result['sold_by']
-                            logger.info(f"Shipper / Seller 통합 라벨 발견 - ships_from에 sold_by 값 복사: {result['ships_from']}")
-                except Exception as e:
-                    logger.info(f"통합 라벨 확인 중 오류: {e}")
+                    label_element = self.driver.find_element(By.XPATH, selector)
+                    label_text = label_element.text.strip().lower() if label_element else ""
+                    if not label_text:
+                        label_text = (label_element.get_attribute('textContent') or "").strip().lower()
+                    logger.info(f"라벨 텍스트: '{label_text}'")
+
+                    if any(pattern in label_text for pattern in combined_patterns):
+                        is_combined_label = True
+                        logger.info(f"통합 라벨 감지됨: {label_text}")
+                        break
+                except:
+                    continue
+
+            if is_combined_label:
+                # 통합 라벨인 경우: 값 위치(div[2])에서 추출해서 둘 다 할당
+                value_selectors = [
+                    "//*[@id='merchantInfoFeature_feature_div']/div[2]/span/a/span",
+                    "//*[@id='merchantInfoFeature_feature_div']/div[2]/span/a",
+                    "//*[@id='merchantInfoFeature_feature_div']/div[2]/span/span",
+                    "//*[@id='merchantInfoFeature_feature_div']/div[2]/span",
+                    "//a[@id='sellerProfileTriggerId']"
+                ]
+                combined_value = self.extract_element_text(value_selectors, "통합 판매자/배송자")
+                result['ships_from'] = combined_value
+                result['sold_by'] = combined_value
+                logger.info(f"통합 라벨 값 추출: ships_from={result['ships_from']}, sold_by={result['sold_by']}")
+            else:
+                # 통합 라벨이 아닌 경우: 각각 별도로 추출
+                result['ships_from'] = self.extract_element_text(
+                    self.selectors['ships_from'],
+                    "Ships From"
+                )
+                result['sold_by'] = self.extract_element_text(
+                    self.selectors['sold_by'],
+                    "Sold By"
+                )
+                logger.info(f"개별 추출: ships_from={result['ships_from']}, sold_by={result['sold_by']}")
 
             # Ships From과 Sold By가 모두 없으면 가격도 빈 값으로 처리
             if not result['ships_from'] and not result['sold_by']:
