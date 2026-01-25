@@ -777,9 +777,11 @@ class MediaMarktInfiniteScraper:
                     if self.restart_browser():
                         logger.info("✅ 브라우저 재시작 완료")
                     else:
-                        logger.error("❌ 브라우저 재시작 실패. 크롤링 중단")
-                        self.is_logged_in = False
-                        break
+                        logger.warning("⚠️ 브라우저 재시작 실패. 계속 진행 시도...")
+                        # 재시작 한 번 더 시도
+                        time.sleep(5)
+                        if not self.restart_browser():
+                            logger.error("❌ 브라우저 재시작 2차 실패. 그래도 계속 진행")
                 else:
                     self.keep_session_alive()
                 
