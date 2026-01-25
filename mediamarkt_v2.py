@@ -743,11 +743,15 @@ class MediaMarktInfiniteScraper:
         success_count = 0
         
         for idx, row in enumerate(urls_data):
-            # 세션 확인
+            # 세션 확인 - 만료 시 재로그인 시도 후 계속 진행
             if not self.is_logged_in:
-                logger.error("❌ 세션이 만료되었습니다. 재로그인이 필요합니다.")
-                break
-            
+                logger.warning("⚠️ 세션이 만료되었습니다. 재로그인 시도 중...")
+                if self.restart_browser():
+                    logger.info("✅ 재로그인 성공. 계속 진행")
+                else:
+                    logger.warning("⚠️ 재로그인 실패. 그래도 계속 진행")
+                    self.is_logged_in = True  # 강제로 True 설정하여 계속 시도
+
             logger.info(f"\n진행률: {idx + 1}/{len(urls_data)} ({(idx + 1)/len(urls_data)*100:.1f}%)")
             
             # URL 추출
