@@ -59,7 +59,11 @@ class BestBuyScraper:
                 f"mysql+pymysql://{DB_CONFIG['user']}:{DB_CONFIG['password']}@"
                 f"{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}"
             )
-            self.db_engine = create_engine(connection_string)
+            self.db_engine = create_engine(
+                connection_string,
+                pool_pre_ping=True,    # 쿼리 전 연결 상태 확인 (끊겼으면 자동 재연결)
+                pool_recycle=3600      # 1시간마다 커넥션 재활용
+            )
             logger.info("✅ DB 연결 설정 완료")
             
         except Exception as e:
