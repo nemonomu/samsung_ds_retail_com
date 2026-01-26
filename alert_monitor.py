@@ -59,7 +59,7 @@ COUNTRY_SHORT_NAMES = {
 }
 
 
-def analyze_crawl_results(country_code, target_count, results_df, error_logs=None, blocked_page_failures=0):
+def analyze_crawl_results(country_code, target_count, results_df, error_logs=None, blocked_page_failures=0, all_null_failures=0):
     """
     크롤링 결과 분석
 
@@ -69,6 +69,7 @@ def analyze_crawl_results(country_code, target_count, results_df, error_logs=Non
         results_df: 크롤링 결과 DataFrame
         error_logs: 크롤링 중 발생한 에러 로그 리스트 (선택)
         blocked_page_failures: 차단 페이지로 인한 최종 실패 개수 (선택)
+        all_null_failures: title, imageurl, retailprice 모두 NULL인 최종 실패 개수 (선택)
 
     Returns:
         dict: 분석 결과
@@ -82,6 +83,7 @@ def analyze_crawl_results(country_code, target_count, results_df, error_logs=Non
         'is_critical': False,
         'has_price_error': False,  # ships_from/sold_by 있는데 price 없는 경우
         'blocked_page_failures': blocked_page_failures,  # 차단 페이지로 인한 최종 실패 개수
+        'all_null_failures': all_null_failures,  # title, imageurl, retailprice 모두 NULL인 최종 실패 개수
         'field_stats': {},
         'error_logs': error_logs or []
     }
@@ -201,8 +203,13 @@ def send_alert_email(analysis, error_message=None):
         # 차단 페이지 실패 개수 확인
         blocked_failures = analysis.get('blocked_page_failures', 0)
 
-        # Failed 접두사 (차단 페이지 실패, title 누락이 있으면 "Failed X sku" 형식)
-        if blocked_failures > 0:
+        # title, imageurl, retailprice 모두 NULL인 최종 실패 개수 확인
+        all_null_failures = analysis.get('all_null_failures', 0)
+
+        # Failed 접두사 (우선순위: all_null_failures > blocked_failures > title_empty > price_empty)
+        if all_null_failures > 0:
+            failed_prefix = f"{all_null_failures} failed "
+        elif blocked_failures > 0:
             failed_prefix = f"Failed {blocked_failures} sku "
         elif title_empty_count > 0:
             failed_prefix = f"Failed {title_empty_count} sku "
@@ -371,7 +378,7 @@ def send_alert_email(analysis, error_message=None):
         return False
 
 
-def monitor_and_alert(country_code, target_count, results_df, error_message=None, error_logs=None, blocked_page_failures=0):
+def monitor_and_alert(country_code, target_count, results_df, error_message=None, error_logs=None, blocked_page_failures=0, all_null_failures=0):
     """
     크롤링 결과 모니터링 및 알림 (메인 함수)
 
@@ -384,6 +391,7 @@ def monitor_and_alert(country_code, target_count, results_df, error_message=None
         error_message: 추가 에러 메시지 (선택)
         error_logs: 크롤링 중 발생한 에러 로그 리스트 (선택)
         blocked_page_failures: 차단 페이지로 인한 최종 실패 개수 (선택)
+        all_null_failures: title, imageurl, retailprice 모두 NULL인 최종 실패 개수 (선택)
 
     Returns:
         bool: 알림 발송 성공 여부
@@ -402,10 +410,13 @@ def monitor_and_alert(country_code, target_count, results_df, error_message=None
 
         # 차단 페이지 실패 개수 포함
         monitor_and_alert('de', len(urls_data), results_df, blocked_page_failures=5)
+
+        # title, imageurl, retailprice 모두 NULL인 실패 개수 포함
+        monitor_and_alert('nl_coolblue', len(urls_data), results_df, all_null_failures=3)
     """
     try:
         # 결과 분석
-        analysis = analyze_crawl_results(country_code, target_count, results_df, error_logs, blocked_page_failures)
+        analysis = analyze_crawl_results(country_code, target_count, results_df, error_logs, blocked_page_failures, all_null_failures)
 
         # 항상 이메일 발송 (일일 리포트)
         return send_alert_email(analysis, error_message)

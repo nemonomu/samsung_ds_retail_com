@@ -859,23 +859,34 @@ class CoolblueScraper:
         """여러 URL 스크래핑"""
         if max_items:
             urls_data = urls_data[:max_items]
-        
+
         logger.info(f"📊 총 {len(urls_data)}개 제품 처리 시작")
-        
+
         results = []
         failed_urls = []  # 실패한 URL 추적
-        
+        all_null_failures = []  # title, imageurl, retailprice 모두 null인 경우
+
         try:
             for idx, row in enumerate(urls_data):
                 logger.info(f"\n{'='*50}")
                 logger.info(f"진행률: {idx + 1}/{len(urls_data)} ({(idx + 1)/len(urls_data)*100:.1f}%)")
-                
+
                 # URL 추출
                 url = row.get('url')
-                
+
                 # 제품 정보 추출 (재시도 로직 포함)
                 result = self.extract_product_info(url, row)
-                
+
+                # title, imageurl, retailprice 중 하나라도 null이면 재시도 대상
+                if result['retailprice'] is None or result['title'] is None or result['imageurl'] is None:
+                    all_null_failures.append({
+                        'url': url,
+                        'row_data': row,
+                        'item': row.get('item', ''),
+                        'brand': row.get('brand', ''),
+                        'result_idx': len(results)  # 결과 인덱스 저장
+                    })
+
                 # 실패한 URL 추적 로직 추가
                 if result['retailprice'] is None:
                     failed_urls.append({
@@ -883,35 +894,70 @@ class CoolblueScraper:
                         'item': row.get('item', ''),
                         'brand': row.get('brand', '')
                     })
-                    
+
                 results.append(result)
-                
-                
+
+
                 # 10개마다 DB에 중간 저장
                 if (idx + 1) % 10 == 0:
                     interim_df = pd.DataFrame(results[-10:])
                     if self.db_engine:
                         try:
-                            interim_df.to_sql('coolblue_price_crawl_tbl_nl_v2', self.db_engine, 
+                            interim_df.to_sql('coolblue_price_crawl_tbl_nl_v2', self.db_engine,
                                             if_exists='append', index=False)
                             logger.info(f"💾 중간 저장: 10개 레코드 DB 저장")
                         except Exception as e:
                             logger.error(f"중간 저장 실패: {e}")
-                
+
                 # 다음 요청 전 대기
                 if idx < len(urls_data) - 1:
                     wait_time = random.uniform(2, 5)
                     logger.info(f"⏳ {wait_time:.1f}초 대기 중...")
                     time.sleep(wait_time)
-                    
+
                     # 10개마다 휴식
                     if (idx + 1) % 10 == 0:
                         logger.info("☕ 10개 처리 완료, 10초 휴식...")
                         time.sleep(10)
-        
+
+            # NULL 값 재시도 (1회만)
+            if all_null_failures:
+                logger.info(f"\n{'='*60}")
+                logger.info(f"🔄 NULL 값 재시도 시작: {len(all_null_failures)}개 항목")
+                logger.info(f"{'='*60}")
+
+                final_all_null_failures = []
+
+                for fail_idx, fail_item in enumerate(all_null_failures):
+                    url = fail_item['url']
+                    row_data = fail_item['row_data']
+                    result_idx = fail_item['result_idx']
+
+                    logger.info(f"재시도 {fail_idx + 1}/{len(all_null_failures)}: {fail_item['brand']} {fail_item['item']}")
+
+                    # 5초 대기 후 재시도
+                    time.sleep(5)
+
+                    # 재시도 (max_retries=0으로 추가 재시도 방지)
+                    retry_result = self.extract_product_info(url, row_data, retry_count=0, max_retries=0)
+
+                    # 재시도 성공 여부 확인 (하나라도 값이 있으면 성공)
+                    if retry_result['retailprice'] is not None or retry_result['title'] is not None or retry_result['imageurl'] is not None:
+                        logger.info(f"✅ 재시도 성공: price={retry_result['retailprice']}, title={'있음' if retry_result['title'] else '없음'}, image={'있음' if retry_result['imageurl'] else '없음'}")
+                        # 기존 결과 업데이트
+                        results[result_idx] = retry_result
+                    else:
+                        logger.warning(f"❌ 재시도 실패: title, imageurl, retailprice 모두 NULL")
+                        # title, imageurl, retailprice 모두 null인 경우만 최종 실패로 기록
+                        final_all_null_failures.append(fail_item)
+
+                # 최종 실패 개수 업데이트
+                all_null_failures = final_all_null_failures
+                logger.info(f"\n🔄 NULL 재시도 완료: 최종 실패 {len(all_null_failures)}개")
+
         except Exception as e:
             logger.error(f"❌ 스크래핑 중 오류: {e}")
-        
+
         finally:
             # 실패 URL 로그
             if failed_urls:
@@ -920,12 +966,12 @@ class CoolblueScraper:
                     logger.warning(f"  - {fail['brand']} {fail['item']}: {fail['url']}")
                 if len(failed_urls) > 5:
                     logger.warning(f"  ... 외 {len(failed_urls) - 5}개")
-            
+
             if self.driver:
                 self.driver.quit()
                 logger.info("🔧 드라이버 종료")
-        
-        return pd.DataFrame(results)
+
+        return pd.DataFrame(results), len(all_null_failures)
     
     def analyze_results(self, df):
         """결과 분석"""
@@ -1042,6 +1088,7 @@ def main():
     # 변수 초기화 (except 블록에서 사용하기 위해)
     urls_data = []
     results_df = None
+    all_null_failures = 0
 
     try:
         # 크롤링 대상 조회
@@ -1058,7 +1105,7 @@ def main():
         start_time = datetime.now(scraper.korea_tz)
 
         # 크롤링 실행
-        results_df = scraper.scrape_urls(urls_data)
+        results_df, all_null_failures = scraper.scrape_urls(urls_data)
 
         if results_df is None or results_df.empty:
             logger.error("크롤링 결과가 없습니다.")
@@ -1111,7 +1158,7 @@ def main():
         logger.info(f"📍 업로드 위치: {FILE_SERVER_CONFIG['host']}:{FILE_SERVER_CONFIG['upload_path']}/")
 
         # 크롤링 완료 후 알림 (빈 값 50% 이상 시 경고)
-        monitor_and_alert('nl_coolblue', len(urls_data), results_df)
+        monitor_and_alert('nl_coolblue', len(urls_data), results_df, all_null_failures=all_null_failures)
 
     except Exception as e:
         # 예외 발생 시 알림
@@ -1120,7 +1167,7 @@ def main():
         error_detail = traceback.format_exc()
         logger.error(error_detail)
         monitor_and_alert('nl_coolblue', len(urls_data), results_df,
-                         error_message=str(e))
+                         error_message=str(e), all_null_failures=all_null_failures)
 
     finally:
         # 드라이버 종료
