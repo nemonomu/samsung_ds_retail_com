@@ -453,7 +453,7 @@ class AmazonUKScraper:
         except Exception:
             return True
     
-    def extract_product_info(self, url, row_data, retry_count=0, max_retries=3):
+    def extract_product_info(self, url, row_data, retry_count=0, max_retries=2):
         """제품 정보 추출"""
         try:
             logger.info("=" * 60)
@@ -790,15 +790,16 @@ class AmazonUKScraper:
         """URL 스크래핑"""
         if max_items:
             urls_data = urls_data[:max_items]
-        
+
         logger.info(f"UK 크롤링 시작 - {len(urls_data)}개 URL")
-        
+
         if not self.setup_driver():
             logger.error("드라이버 설정 실패")
-            return None
-        
+            return None, []
+
         results = []
         failed_urls = []
+        blocked_page_failures = []  # 차단 페이지로 인한 실패 목록
 
         for idx, row in enumerate(urls_data):
             try:
@@ -809,7 +810,16 @@ class AmazonUKScraper:
 
                 result = self.extract_product_info(url, row)
 
-                if result['retailprice'] == '0':
+                # 차단 페이지로 인한 실패 감지 (title과 price 모두 없음)
+                if result['retailprice'] is None and result['title'] is None:
+                    blocked_page_failures.append({
+                        'url': url,
+                        'row_data': row,
+                        'item': row.get('item', ''),
+                        'reason': '차단 페이지로 인한 실패 (가격과 제목 모두 없음)'
+                    })
+                    logger.warning(f"차단 페이지 실패 - 나중에 재시도 예정: {url}")
+                elif result['retailprice'] == '0' or result['retailprice'] is None:
                     failed_urls.append({
                         'url': url,
                         'item': row.get('item', ''),
@@ -818,14 +828,16 @@ class AmazonUKScraper:
 
                 results.append(result)
 
-                # 중간 저장
+                # 중간 저장 (title과 price 모두 null인 경우 제외)
                 if (idx + 1) % 10 == 0:
                     interim_df = pd.DataFrame(results[-10:])
-                    if self.db_engine:
+                    # null 제외: title 또는 price가 있는 것만 저장
+                    valid_df = interim_df[(interim_df['title'].notna()) | (interim_df['retailprice'].notna())]
+                    if len(valid_df) > 0 and self.db_engine:
                         try:
                             table_name = 'amazon_price_crawl_tbl_uk_v2'
-                            interim_df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
-                            logger.info("중간 저장: 10개 레코드")
+                            valid_df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
+                            logger.info(f"중간 저장: {len(valid_df)}개 레코드 (null 제외: {10 - len(valid_df)}개)")
                         except Exception as e:
                             logger.error(f"중간 저장 실패: {e}")
 
@@ -841,6 +853,89 @@ class AmazonUKScraper:
                 logger.error(f"스크래핑 중 오류 (URL: {row.get('url', 'unknown')}): {e}")
                 continue
 
+        # 마지막으로 저장되지 않은 나머지 데이터 저장 (10의 배수가 아닌 경우, null 제외)
+        remainder = len(results) % 10
+        if remainder > 0 and self.db_engine:
+            try:
+                remainder_df = pd.DataFrame(results[-remainder:])
+                # null 제외: title 또는 price가 있는 것만 저장
+                valid_df = remainder_df[(remainder_df['title'].notna()) | (remainder_df['retailprice'].notna())]
+                if len(valid_df) > 0:
+                    table_name = 'amazon_price_crawl_tbl_uk_v2'
+                    valid_df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
+                    logger.info(f"UK 마지막 저장: {len(valid_df)}개 레코드 (null 제외: {remainder - len(valid_df)}개)")
+            except Exception as e:
+                logger.error(f"마지막 저장 실패: {e}")
+
+        # 차단 페이지로 인한 실패 목록 재시도 (2회씩)
+        if blocked_page_failures:
+            logger.info("=" * 60)
+            logger.info(f"차단 페이지 실패 {len(blocked_page_failures)}개 재시도 시작")
+            logger.info("=" * 60)
+
+            final_blocked_failures = []  # 최종 실패 목록
+
+            for fail_idx, fail_item in enumerate(blocked_page_failures):
+                url = fail_item['url']
+                row_data = fail_item['row_data']
+                logger.info(f"재시도 진행: {fail_idx + 1}/{len(blocked_page_failures)} - {fail_item['item']}")
+
+                # 2회 재시도
+                retry_success = False
+                for retry in range(2):
+                    logger.info(f"차단 페이지 재시도 {retry + 1}/2: {url}")
+                    result = self.extract_product_info(url, row_data, retry_count=0, max_retries=1)
+
+                    # 성공 여부 확인 (title이나 price가 있으면 성공)
+                    if result['title'] is not None or (result['retailprice'] is not None and result['retailprice'] != '0'):
+                        logger.info(f"재시도 성공! title={result['title']}, price={result['retailprice']}")
+                        # 기존 결과에서 해당 URL 결과를 업데이트
+                        for i, r in enumerate(results):
+                            if r['producturl'] == url:
+                                results[i] = result
+                                break
+                        retry_success = True
+                        break
+                    else:
+                        logger.warning(f"재시도 {retry + 1}/2 실패")
+                        if retry < 1:  # 마지막 시도가 아니면 10초 대기
+                            time.sleep(10)
+
+                if not retry_success:
+                    logger.error(f"최종 실패 (2회 재시도 후에도 실패): {url}")
+                    final_blocked_failures.append({
+                        'url': url,
+                        'item': fail_item['item'],
+                        'reason': '차단 페이지로 인한 최종 실패 (2회 재시도 후)'
+                    })
+
+            # 재시도 성공한 데이터 DB 저장
+            retry_success_count = len(blocked_page_failures) - len(final_blocked_failures)
+            if retry_success_count > 0 and self.db_engine:
+                # 재시도 성공한 URL들의 결과를 찾아서 저장
+                retry_success_urls = set(f['url'] for f in blocked_page_failures) - set(f['url'] for f in final_blocked_failures)
+                retry_success_results = [r for r in results if r['producturl'] in retry_success_urls]
+                if retry_success_results:
+                    try:
+                        retry_df = pd.DataFrame(retry_success_results)
+                        table_name = 'amazon_price_crawl_tbl_uk_v2'
+                        retry_df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
+                        logger.info(f"재시도 성공 데이터 DB 저장: {len(retry_success_results)}개")
+                    except Exception as e:
+                        logger.error(f"재시도 성공 데이터 DB 저장 실패: {e}")
+
+            if final_blocked_failures:
+                logger.warning(f"차단 페이지 최종 실패 {len(final_blocked_failures)}개:")
+                for fail in final_blocked_failures:
+                    logger.warning(f"  - {fail['item']}: {fail['reason']}")
+            else:
+                logger.info("모든 차단 페이지 실패 항목 재시도 성공!")
+
+            # 최종 실패 목록을 failed_urls에 추가
+            failed_urls.extend(final_blocked_failures)
+            # blocked_page_failures를 final로 업데이트
+            blocked_page_failures = final_blocked_failures
+
         # 정리
         if failed_urls:
             logger.warning(f"실패 URL {len(failed_urls)}개")
@@ -851,7 +946,7 @@ class AmazonUKScraper:
             except:
                 pass
 
-        return pd.DataFrame(results)
+        return pd.DataFrame(results), blocked_page_failures
     
     def analyze_results(self, df):
         """결과 분석"""
@@ -904,22 +999,28 @@ def main():
         monitor_and_alert('gb', 0, None, error_message="크롤링 대상 없음")
         return
 
-    results_df = scraper.scrape_urls(urls_data, max_items)
+    results_df, blocked_failures = scraper.scrape_urls(urls_data, max_items)
     if results_df is None or results_df.empty:
         logger.error("크롤링 결과 없음")
         monitor_and_alert('gb', len(urls_data), None, error_message="크롤링 결과 없음")
         return
-    
+
     scraper.analyze_results(results_df)
-    save_results = scraper.save_results(results_df, save_db=True, upload_server=True)
-    
+    # 중간 저장(10개마다)에서 이미 DB 저장했으므로, 여기서는 파일 업로드만 수행
+    save_results = scraper.save_results(results_df, save_db=False, upload_server=True)
+
     logger.info("저장 결과:")
     logger.info(f"DB: {'성공' if save_results['db_saved'] else '실패'}")
     logger.info(f"파일: {'성공' if save_results['server_uploaded'] else '실패'}")
     logger.info("크롤링 완료!")
 
-    # 크롤링 결과 모니터링 및 알림
-    monitor_and_alert('gb', len(urls_data), results_df)
+    # title null 실패 개수 계산 (2회 재시도 후에도 title이 null인 경우)
+    title_null_count = results_df['title'].isna().sum()
+    if title_null_count > 0:
+        logger.warning(f"title null 실패: {title_null_count}개")
+
+    # 크롤링 결과 모니터링 및 알림 (차단 페이지 실패 개수 및 title null 실패 개수 전달)
+    monitor_and_alert('gb', len(urls_data), results_df, blocked_page_failures=len(blocked_failures), title_null_failures=title_null_count)
 
 if __name__ == "__main__":
     main()
