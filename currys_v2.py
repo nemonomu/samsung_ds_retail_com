@@ -586,16 +586,9 @@ class CurrysScraper:
                 
                 results.append(result)
                 
-                # 10개마다 DB에 중간 저장
+                # 10개마다 로그 출력 (중간 저장은 최종 저장에서 일괄 처리)
                 if (idx + 1) % 10 == 0:
-                    interim_df = pd.DataFrame(results[-10:])
-                    if self.db_engine:
-                        try:
-                            interim_df.to_sql('currys_price_crawl_tbl_gb_v2', self.db_engine, 
-                                            if_exists='append', index=False)
-                            logger.info(f"💾 중간 저장: 10개 레코드 DB 저장")
-                        except Exception as e:
-                            logger.error(f"중간 저장 실패: {e}")
+                    logger.info(f"💾 {idx + 1}개 처리 완료")
                 
                 # 다음 요청 전 대기
                 if idx < len(urls_data) - 1:
