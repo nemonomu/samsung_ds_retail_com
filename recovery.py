@@ -259,7 +259,14 @@ class RecoveryManager:
                     'original_kr_crawl_datetime': original_kr_crawl_datetime
                 })
                 conn.commit()
-                return result.rowcount > 0
+                if result.rowcount > 0:
+                    # DB에 저장한 시간값을 new_data에 반영 (파일 생성 시 동일한 값 사용)
+                    new_data['crawl_datetime'] = crawl_datetime_iso
+                    new_data['crawl_strdatetime'] = crawl_strdatetime
+                    new_data['kr_crawl_datetime'] = kr_crawl_datetime
+                    new_data['kr_crawl_strdatetime'] = kr_crawl_strdatetime
+                    return True
+                return False
         except Exception as e:
             logger.error(f"DB UPDATE 실패: {e}")
             return False
@@ -401,15 +408,23 @@ class RecoveryManager:
 
         logger.info(f"복구 대상: {len(null_records)}개")
 
-        # 2. 스크래퍼 로드
+        # 2. 복구 전 전체 세션 레코드 미리 조회 (파일 생성용)
+        all_records = self.get_session_all_records(target, session_start)
+        if all_records is None or all_records.empty:
+            logger.error("전체 세션 레코드 조회 실패")
+            return False
+        logger.info(f"전체 세션 레코드: {len(all_records)}개 (미리 조회 완료)")
+
+        # 3. 스크래퍼 로드
         scraper = self.load_scraper(target)
         if scraper is None:
             logger.error("스크래퍼 로드 실패")
             return False
 
-        # 3. 각 URL 재크롤링 및 DB UPDATE
+        # 4. 각 URL 재크롤링 및 DB UPDATE
         success_count = 0
         fail_count = 0
+        recovered_results = {}  # producturl -> 복구된 result
 
         try:
             for i, (idx, row) in enumerate(null_records.iterrows()):
@@ -425,6 +440,7 @@ class RecoveryManager:
                     if self.update_db_record(target, original_kr_crawl_datetime, result):
                         logger.info(f"  -> 성공: title={result.get('title', '')[:30]}")
                         success_count += 1
+                        recovered_results[url] = result
                     else:
                         logger.warning(f"  -> DB UPDATE 실패")
                         fail_count += 1
@@ -438,7 +454,7 @@ class RecoveryManager:
             traceback.print_exc()
 
         finally:
-            # 4. 브라우저 종료 (항상 실행)
+            # 5. 브라우저 종료 (항상 실행)
             if scraper and scraper.driver:
                 try:
                     scraper.driver.quit()
@@ -446,20 +462,29 @@ class RecoveryManager:
                 except Exception:
                     pass
 
-        # 5. 결과 요약
+        # 6. 결과 요약
         logger.info(f"\n{'='*60}")
         logger.info(f"복구 완료: 성공 {success_count}개, 실패 {fail_count}개")
         logger.info(f"{'='*60}")
 
-        # 6. 파일서버 업로드 (전체 세션 데이터)
+        # 7. 파일서버 업로드 (미리 조회한 전체 레코드 + 복구 결과 merge)
         if success_count > 0:
             logger.info("\n파일서버 업로드 시작...")
-            all_records = self.get_session_all_records(target, session_start)
-            if all_records is not None and not all_records.empty:
-                if self.generate_and_upload_file(target, all_records, session_start):
-                    logger.info("파일서버 업로드 완료")
-                else:
-                    logger.error("파일서버 업로드 실패")
+            # 복구된 레코드를 미리 조회한 전체 레코드에 merge
+            for url, result in recovered_results.items():
+                mask = all_records['producturl'] == url
+                if mask.any():
+                    for col in ['title', 'imageurl', 'retailprice', 'ships_from', 'sold_by',
+                                'crawl_datetime', 'crawl_strdatetime', 'kr_crawl_datetime', 'kr_crawl_strdatetime']:
+                        if col in result:
+                            all_records.loc[mask, col] = result.get(col)
+                    logger.info(f"  merge 완료: {url[:60]}")
+
+            logger.info(f"파일 생성 대상: {len(all_records)}개 레코드")
+            if self.generate_and_upload_file(target, all_records, session_start):
+                logger.info("파일서버 업로드 완료")
+            else:
+                logger.error("파일서버 업로드 실패")
 
         return success_count > 0 or fail_count == 0
 
