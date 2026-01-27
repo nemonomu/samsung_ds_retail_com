@@ -828,16 +828,15 @@ class AmazonUKScraper:
 
                 results.append(result)
 
-                # 중간 저장 (title이 null인 경우 제외 - 재시도 후 저장)
+                # 중간 저장 (title null 포함 - recovery.py로 복구 가능)
                 if (idx + 1) % 10 == 0:
                     interim_df = pd.DataFrame(results[-10:])
-                    # title이 있는 것만 저장 (title null은 재시도 후 저장)
-                    valid_df = interim_df[interim_df['title'].notna()]
+                    valid_df = interim_df
                     if len(valid_df) > 0 and self.db_engine:
                         try:
                             table_name = 'amazon_price_crawl_tbl_uk_v2'
                             valid_df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
-                            logger.info(f"중간 저장: {len(valid_df)}개 레코드 (title null 제외: {10 - len(valid_df)}개)")
+                            logger.info(f"중간 저장: {len(valid_df)}개 레코드")
                         except Exception as e:
                             logger.error(f"중간 저장 실패: {e}")
 
@@ -846,24 +845,22 @@ class AmazonUKScraper:
                     time.sleep(wait_time)
 
                     if (idx + 1) % 20 == 0:
-                        logger.info("20개 처리 완료, 30초 휴식")
-                        time.sleep(30)
+                        logger.info("20개 처리 완료, 5초 휴식")
+                        time.sleep(5)
 
             except Exception as e:
                 logger.error(f"스크래핑 중 오류 (URL: {row.get('url', 'unknown')}): {e}")
                 continue
 
-        # 마지막으로 저장되지 않은 나머지 데이터 저장 (10의 배수가 아닌 경우, title null 제외)
+        # 마지막으로 저장되지 않은 나머지 데이터 저장 (10의 배수가 아닌 경우, title null 포함)
         remainder = len(results) % 10
         if remainder > 0 and self.db_engine:
             try:
                 remainder_df = pd.DataFrame(results[-remainder:])
-                # title이 있는 것만 저장 (title null은 재시도 후 저장)
-                valid_df = remainder_df[remainder_df['title'].notna()]
-                if len(valid_df) > 0:
+                if len(remainder_df) > 0:
                     table_name = 'amazon_price_crawl_tbl_uk_v2'
-                    valid_df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
-                    logger.info(f"UK 마지막 저장: {len(valid_df)}개 레코드 (title null 제외: {remainder - len(valid_df)}개)")
+                    remainder_df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
+                    logger.info(f"UK 마지막 저장: {len(remainder_df)}개 레코드")
             except Exception as e:
                 logger.error(f"마지막 저장 실패: {e}")
 
