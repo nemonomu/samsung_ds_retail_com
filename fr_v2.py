@@ -1222,15 +1222,15 @@ class AmazonFRScraper:
                 url = row.get('url')
                 result = self.extract_product_info(url, row)
 
-                # 차단 페이지로 인한 실패 감지 (title과 price 모두 없음)
-                if result['retailprice'] is None and result['title'] is None:
+                # title이 null인 경우 재시도 대상으로 추가 (비정상 상황)
+                if result['title'] is None:
                     blocked_page_failures.append({
                         'url': url,
                         'row_data': row,
                         'item': row.get('item', ''),
-                        'reason': '차단 페이지로 인한 실패 (가격과 제목 모두 없음)'
+                        'reason': 'title null - 재시도 필요'
                     })
-                    logger.warning(f"차단 페이지 실패 - 나중에 재시도 예정: {url}")
+                    logger.warning(f"title null - 나중에 재시도 예정: {url}")
                 elif result['retailprice'] is None:
                     failed_urls.append({
                         'url': url,
@@ -1240,16 +1240,16 @@ class AmazonFRScraper:
 
                 results.append(result)
 
-                # 10개마다 중간 저장 (title과 price 모두 null인 경우 제외)
+                # 10개마다 중간 저장 (title이 null인 경우 제외 - 재시도 후 저장)
                 if (idx + 1) % 10 == 0:
                     interim_df = pd.DataFrame(results[-10:])
-                    # null 제외: title 또는 price가 있는 것만 저장
-                    valid_df = interim_df[(interim_df['title'].notna()) | (interim_df['retailprice'].notna())]
+                    # title이 있는 것만 저장 (title null은 재시도 후 저장)
+                    valid_df = interim_df[interim_df['title'].notna()]
                     if len(valid_df) > 0 and self.db_engine:
                         try:
                             table_name = 'amazon_price_crawl_tbl_fr_v2'
                             valid_df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
-                            logger.info(f"프랑스 중간 저장: {len(valid_df)}개 레코드 (null 제외: {10 - len(valid_df)}개)")
+                            logger.info(f"프랑스 중간 저장: {len(valid_df)}개 레코드 (title null 제외: {10 - len(valid_df)}개)")
                         except Exception as e:
                             logger.error(f"중간 저장 실패: {e}")
 
@@ -1261,17 +1261,17 @@ class AmazonFRScraper:
                         logger.info("20개 처리 완료, 30초 휴식")
                         time.sleep(30)
 
-            # 마지막으로 저장되지 않은 나머지 데이터 저장 (10의 배수가 아닌 경우, null 제외)
+            # 마지막으로 저장되지 않은 나머지 데이터 저장 (10의 배수가 아닌 경우, title null 제외)
             remainder = len(results) % 10
             if remainder > 0 and self.db_engine:
                 try:
                     remainder_df = pd.DataFrame(results[-remainder:])
-                    # null 제외: title 또는 price가 있는 것만 저장
-                    valid_df = remainder_df[(remainder_df['title'].notna()) | (remainder_df['retailprice'].notna())]
+                    # title이 있는 것만 저장 (title null은 재시도 후 저장)
+                    valid_df = remainder_df[remainder_df['title'].notna()]
                     if len(valid_df) > 0:
                         table_name = 'amazon_price_crawl_tbl_fr_v2'
                         valid_df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
-                        logger.info(f"프랑스 마지막 저장: {len(valid_df)}개 레코드 (null 제외: {remainder - len(valid_df)}개)")
+                        logger.info(f"프랑스 마지막 저장: {len(valid_df)}개 레코드 (title null 제외: {remainder - len(valid_df)}개)")
                 except Exception as e:
                     logger.error(f"마지막 저장 실패: {e}")
 
@@ -1288,33 +1288,29 @@ class AmazonFRScraper:
                     row_data = fail_item['row_data']
                     logger.info(f"재시도 진행: {fail_idx + 1}/{len(blocked_page_failures)} - {fail_item['item']}")
 
-                    # 2회 재시도
+                    # 1회 재시도
                     retry_success = False
-                    for retry in range(2):
-                        logger.info(f"차단 페이지 재시도 {retry + 1}/2: {url}")
-                        result = self.extract_product_info(url, row_data, retry_count=0, max_retries=1)
+                    logger.info(f"차단 페이지 재시도: {url}")
+                    result = self.extract_product_info(url, row_data, retry_count=0, max_retries=1)
 
-                        # 성공 여부 확인 (title이나 price가 있으면 성공)
-                        if result['title'] is not None or result['retailprice'] is not None:
-                            logger.info(f"재시도 성공! title={result['title']}, price={result['retailprice']}")
-                            # 기존 결과에서 해당 URL 결과를 업데이트
-                            for i, r in enumerate(results):
-                                if r['producturl'] == url:
-                                    results[i] = result
-                                    break
-                            retry_success = True
-                            break
-                        else:
-                            logger.warning(f"재시도 {retry + 1}/2 실패")
-                            if retry < 1:  # 마지막 시도가 아니면 10초 대기
-                                time.sleep(10)
+                    # 성공 여부 확인 (title이 있으면 성공)
+                    if result['title'] is not None:
+                        logger.info(f"재시도 성공! title={result['title']}")
+                        # 기존 결과에서 해당 URL 결과를 업데이트
+                        for i, r in enumerate(results):
+                            if r['producturl'] == url:
+                                results[i] = result
+                                break
+                        retry_success = True
+                    else:
+                        logger.warning(f"재시도 실패")
 
                     if not retry_success:
-                        logger.error(f"최종 실패 (2회 재시도 후에도 실패): {url}")
+                        logger.error(f"최종 실패 (재시도 후에도 실패): {url}")
                         final_blocked_failures.append({
                             'url': url,
                             'item': fail_item['item'],
-                            'reason': '차단 페이지로 인한 최종 실패 (2회 재시도 후)'
+                            'reason': '차단 페이지로 인한 최종 실패 (재시도 후)'
                         })
 
                 # 재시도 성공한 데이터 DB 저장

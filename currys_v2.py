@@ -552,30 +552,36 @@ class CurrysScraper:
                 logger.error(f"파일 저장 실패: {e}")
 
         return results
-    def scrape_urls(self, urls_data, max_items=None):
-        """여러 URL 스크래핑"""
+    def scrape_urls(self, urls_data, max_items=None, is_retry=False):
+        """여러 URL 스크래핑
+
+        Args:
+            urls_data: 크롤링 대상 URL 데이터
+            max_items: 최대 처리 개수
+            is_retry: 재시도 여부 (True면 중간 저장 건너뜀)
+        """
         if max_items:
             urls_data = urls_data[:max_items]
-        
-        logger.info(f"📊 총 {len(urls_data)}개 제품 처리 시작")
-        
+
+        logger.info(f"📊 총 {len(urls_data)}개 제품 처리 시작" + (" (재시도)" if is_retry else ""))
+
         if not self.setup_driver():
             return None
-        
+
         results = []
         failed_urls = []  # 실패한 URL 추적
-        
+
         try:
             for idx, row in enumerate(urls_data):
                 logger.info(f"\n{'='*50}")
                 logger.info(f"진행률: {idx + 1}/{len(urls_data)} ({(idx + 1)/len(urls_data)*100:.1f}%)")
-                
+
                 # URL 추출
                 url = row.get('url')
-                
+
                 # 제품 정보 추출 (재시도 로직 포함)
                 result = self.extract_product_info(url, row)
-                
+
                 # 실패 여부 확인
                 if result['retailprice'] is None:
                     failed_urls.append({
@@ -583,27 +589,51 @@ class CurrysScraper:
                         'item': row.get('item', ''),
                         'brand': row.get('brand', '')
                     })
-                
+
                 results.append(result)
-                
-                # 10개마다 로그 출력 (중간 저장은 최종 저장에서 일괄 처리)
-                if (idx + 1) % 10 == 0:
-                    logger.info(f"💾 {idx + 1}개 처리 완료")
-                
+
+                # 10개마다 중간 저장 (재시도가 아닐 때만, title이 null인 경우 제외 - 재시도 후 저장)
+                if not is_retry and (idx + 1) % 10 == 0:
+                    interim_df = pd.DataFrame(results[-10:])
+                    # title이 있는 것만 저장 (title null은 재시도 후 저장)
+                    valid_df = interim_df[interim_df['title'].notna()]
+                    if len(valid_df) > 0 and self.db_engine:
+                        try:
+                            table_name = 'currys_price_crawl_tbl_gb_v2'
+                            valid_df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
+                            logger.info(f"💾 중간 저장: {len(valid_df)}개 레코드 (null 제외: {10 - len(valid_df)}개)")
+                        except Exception as e:
+                            logger.error(f"중간 저장 실패: {e}")
+
                 # 다음 요청 전 대기
                 if idx < len(urls_data) - 1:
                     wait_time = random.uniform(5, 10)
                     logger.info(f"⏳ {wait_time:.1f}초 대기 중...")
                     time.sleep(wait_time)
-                    
+
                     # 10개마다 긴 휴식
                     if (idx + 1) % 10 == 0:
                         logger.info("☕ 10개 처리 완료, 30초 휴식...")
                         time.sleep(30)
-        
+
+            # 마지막으로 저장되지 않은 나머지 데이터 저장 (재시도가 아닐 때만, 10의 배수가 아닌 경우, title null 제외)
+            if not is_retry:
+                remainder = len(results) % 10
+                if remainder > 0 and self.db_engine:
+                    try:
+                        remainder_df = pd.DataFrame(results[-remainder:])
+                        # title이 있는 것만 저장 (title null은 재시도 후 저장)
+                        valid_df = remainder_df[remainder_df['title'].notna()]
+                        if len(valid_df) > 0:
+                            table_name = 'currys_price_crawl_tbl_gb_v2'
+                            valid_df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
+                            logger.info(f"💾 마지막 저장: {len(valid_df)}개 레코드 (title null 제외: {remainder - len(valid_df)}개)")
+                    except Exception as e:
+                        logger.error(f"마지막 저장 실패: {e}")
+
         except Exception as e:
             logger.error(f"❌ 스크래핑 중 오류: {e}")
-        
+
         finally:
             # 실패 URL 로그
             if failed_urls:
@@ -612,11 +642,11 @@ class CurrysScraper:
                     logger.warning(f"  - {fail['brand']} {fail['item']}: {fail['url']}")
                 if len(failed_urls) > 5:
                     logger.warning(f"  ... 외 {len(failed_urls) - 5}개")
-            
+
             if self.driver:
                 self.driver.quit()
                 logger.info("🔧 드라이버 종료")
-        
+
         return pd.DataFrame(results)
     
     def analyze_results(self, df):
@@ -725,44 +755,45 @@ def main():
 
         # 첫 번째 결과 분석
         logger.info("\n📊 1단계 결과:")
-        first_failed = first_results_df['retailprice'].isna().sum()
-        first_success = first_results_df['retailprice'].notna().sum()
-        logger.info(f"성공: {first_success}개, 실패: {first_failed}개")
+        title_null_count = first_results_df['title'].isna().sum()
+        title_success_count = first_results_df['title'].notna().sum()
+        logger.info(f"title 성공: {title_success_count}개, title null: {title_null_count}개")
 
-        # 2단계: 실패한 URL 재시도 (실패가 있는 경우만)
+        # 2단계: title null이 4개 이상인 경우에만 재시도
         final_results_df = first_results_df.copy()
 
-        if first_failed > 0:
-            logger.info(f"\n🔄 2단계: 실패한 {first_failed}개 URL 재시도")
-            logger.info("60초 대기 후 재시도합니다...")
-            time.sleep(60)
+        if title_null_count >= 4:
+            logger.info(f"\n🔄 2단계: title null {title_null_count}개 (4개 이상) - 재시도 진행")
 
-            # 실패한 URL들만 추출 (원본 urls_data에서)
-            failed_product_urls = first_results_df[first_results_df['retailprice'].isna()]['producturl'].tolist()
+            # title null인 URL들만 추출 (원본 urls_data에서)
+            title_null_urls = first_results_df[first_results_df['title'].isna()]['producturl'].tolist()
 
-            # 원본 urls_data에서 실패한 URL에 해당하는 데이터만 추출
+            # 원본 urls_data에서 title null URL에 해당하는 데이터만 추출
             failed_urls_data = [
                 row for row in urls_data
-                if row.get('url') in failed_product_urls
+                if row.get('url') in title_null_urls
             ]
 
             if failed_urls_data:
-                logger.info(f"재시도 대상: {len(failed_urls_data)}개 (실패한 URL만)")
+                logger.info(f"재시도 대상: {len(failed_urls_data)}개 (title null URL만)")
 
-                # 새 드라이버로 재시도
+                # 새 드라이버로 재시도 (is_retry=True로 중간 저장 건너뜀)
                 scraper.driver = None
-                retry_results_df = scraper.scrape_urls(failed_urls_data)
+                retry_results_df = scraper.scrape_urls(failed_urls_data, is_retry=True)
 
                 if retry_results_df is not None and not retry_results_df.empty:
                     # 재시도 결과 분석
-                    retry_success = retry_results_df['retailprice'].notna().sum()
-                    retry_failed = retry_results_df['retailprice'].isna().sum()
-                    logger.info(f"\n📊 재시도 결과: 성공 {retry_success}개, 실패 {retry_failed}개")
+                    retry_title_success = retry_results_df['title'].notna().sum()
+                    retry_title_null = retry_results_df['title'].isna().sum()
+                    logger.info(f"\n📊 재시도 결과: title 성공 {retry_title_success}개, title null {retry_title_null}개")
+
+                    # 재시도 성공한 데이터 수집 (DB 저장용)
+                    retry_success_data = []
 
                     # 기존 실패한 결과를 재시도 결과로 업데이트
                     for _, retry_row in retry_results_df.iterrows():
-                        if retry_row['retailprice'] is not None:
-                            # 성공한 경우 기존 데이터 업데이트
+                        if retry_row['title'] is not None:
+                            # title 성공한 경우 기존 데이터 업데이트
                             mask = final_results_df['producturl'] == retry_row['producturl']
                             if mask.any():
                                 final_results_df.loc[mask, 'retailprice'] = retry_row['retailprice']
@@ -770,30 +801,51 @@ def main():
                                 final_results_df.loc[mask, 'imageurl'] = retry_row['imageurl']
                                 final_results_df.loc[mask, 'crawl_datetime'] = retry_row['crawl_datetime']
                                 final_results_df.loc[mask, 'crawl_strdatetime'] = retry_row['crawl_strdatetime']
+                                retry_success_data.append(retry_row)
+
+                    # 재시도 성공 데이터 DB 저장
+                    if retry_success_data and scraper.db_engine:
+                        try:
+                            retry_df = pd.DataFrame(retry_success_data)
+                            retry_df.to_sql('currys_price_crawl_tbl_gb_v2', scraper.db_engine, if_exists='append', index=False)
+                            logger.info(f"💾 재시도 성공 데이터 DB 저장: {len(retry_success_data)}개")
+                        except Exception as e:
+                            logger.error(f"재시도 성공 데이터 DB 저장 실패: {e}")
+        elif title_null_count > 0:
+            # 3개 이하: 재시도 없이 title null인 것도 DB에 저장
+            logger.info(f"\n📊 title null {title_null_count}개 (3개 이하) - 재시도 없이 저장")
+            title_null_df = first_results_df[first_results_df['title'].isna()]
+            if len(title_null_df) > 0 and scraper.db_engine:
+                try:
+                    title_null_df.to_sql('currys_price_crawl_tbl_gb_v2', scraper.db_engine, if_exists='append', index=False)
+                    logger.info(f"💾 title null 데이터 DB 저장 (재시도 없이): {len(title_null_df)}개")
+                except Exception as e:
+                    logger.error(f"title null 데이터 DB 저장 실패: {e}")
 
         # 3단계: 최종 결과 저장
         logger.info("\n💾 3단계: 최종 결과 저장")
 
         # 최종 통계
-        final_success = final_results_df['retailprice'].notna().sum()
-        final_failed = final_results_df['retailprice'].isna().sum()
-        success_rate = (final_success / len(final_results_df) * 100) if len(final_results_df) > 0 else 0
+        final_title_success = final_results_df['title'].notna().sum()
+        final_title_null = final_results_df['title'].isna().sum()
+        final_price_success = final_results_df['retailprice'].notna().sum()
+        title_success_rate = (final_title_success / len(final_results_df) * 100) if len(final_results_df) > 0 else 0
 
         logger.info(f"\n📊 === 최종 결과 ===")
         logger.info(f"전체: {len(final_results_df)}개")
-        logger.info(f"성공: {final_success}개")
-        logger.info(f"실패: {final_failed}개")
-        logger.info(f"성공률: {success_rate:.1f}%")
+        logger.info(f"title 성공: {final_title_success}개, title null: {final_title_null}개")
+        logger.info(f"price 성공: {final_price_success}개")
+        logger.info(f"title 성공률: {title_success_rate:.1f}%")
 
         # 개선율 표시
-        if first_failed > 0 and first_failed > final_failed:
-            improvement = first_failed - final_failed
-            logger.info(f"✨ 재시도로 {improvement}개 추가 성공!")
+        if title_null_count >= 4 and title_null_count > final_title_null:
+            improvement = title_null_count - final_title_null
+            logger.info(f"✨ 재시도로 title {improvement}개 추가 성공!")
 
-        # DB와 파일서버에 최종 결과 저장
+        # 중간 저장(10개마다)에서 이미 DB 저장했으므로, 여기서는 파일 업로드만 수행
         save_results = scraper.save_results(
             final_results_df,
-            save_db=True,
+            save_db=False,
             upload_server=True
         )
 
@@ -816,7 +868,7 @@ def main():
         logger.info("\n✅ 크롤링 프로세스 완료!")
 
         # 크롤링 완료 후 알림 (빈 값 50% 이상 시 경고)
-        monitor_and_alert('gb_currys', len(urls_data), final_results_df)
+        monitor_and_alert('gb_currys', len(urls_data), final_results_df, title_null_failures=final_title_null)
 
     except Exception as e:
         # 예외 발생 시 알림
