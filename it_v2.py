@@ -1409,8 +1409,8 @@ class AmazonITScraper:
 
                     # 20개마다 긴 휴식
                     if (idx + 1) % 20 == 0:
-                        logger.info("이탈리아 20개 처리 완료, 30초 휴식...")
-                        time.sleep(30)
+                        logger.info("이탈리아 20개 처리 완료, 5초 휴식...")
+                        time.sleep(5)
 
             # 마지막으로 저장되지 않은 나머지 데이터 저장 (10의 배수가 아닌 경우)
             remainder = len(results) % 10

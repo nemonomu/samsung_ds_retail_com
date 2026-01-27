@@ -60,6 +60,15 @@ TARGET_CONFIG = {
         'local_tz': 'Europe/London',
         'scraper_module': 'currys_v2',
         'scraper_class': 'CurrysScraper'
+    },
+    'it': {
+        'name': '이탈리아 Amazon',
+        'table': 'amazon_price_crawl_tbl_it_v2',
+        'country_code': 'it',
+        'file_prefix': 'it_amazon',
+        'local_tz': 'Europe/Rome',
+        'scraper_module': 'it_v2',
+        'scraper_class': 'AmazonITScraper'
     }
 }
 
@@ -457,6 +466,7 @@ def select_target():
     print("1. fr (프랑스 Amazon)")
     print("2. gb (영국 Amazon)")
     print("3. currys (영국 Currys)")
+    print("4. it (이탈리아 Amazon)")
     print("0. 종료")
 
     while True:
@@ -470,6 +480,8 @@ def select_target():
                 return 'gb'
             elif choice == '3':
                 return 'currys'
+            elif choice == '4':
+                return 'it'
             else:
                 print("올바른 번호를 입력하세요.")
         except KeyboardInterrupt:
