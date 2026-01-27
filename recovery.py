@@ -336,9 +336,21 @@ class RecoveryManager:
         base_filename = f"{date_str}_{time_str}_{config['file_prefix']}"
 
         try:
-            # 1. CSV 파일 생성
+            # 1. CSV 파일 생성 (원본 스크래퍼와 동일한 컬럼 순서 유지)
             csv_filename = f'{base_filename}.csv'
+            column_order = [
+                'retailerid', 'country_code', 'ships_from', 'channel_name', 'channel',
+                'retailersku', 'brand', 'brand_eng', 'form_factor',
+                'segment_lv1', 'segment_lv2', 'segment_lv3', 'capacity', 'item',
+                'retailprice', 'sold_by', 'imageurl', 'producturl',
+                'crawl_datetime', 'crawl_strdatetime', 'kr_crawl_datetime', 'kr_crawl_strdatetime',
+                'title', 'vat'
+            ]
             df_copy = df.copy()
+            # DB 컬럼명이 대소문자 다를 수 있으므로 소문자로 통일 후 정렬
+            df_copy.columns = df_copy.columns.str.lower()
+            existing_cols = [c for c in column_order if c in df_copy.columns]
+            df_copy = df_copy[existing_cols]
             df_copy.columns = df_copy.columns.str.upper()
             df_copy.to_csv(csv_filename, index=False, encoding='utf-8', lineterminator='\r\n')
             logger.info(f"CSV 생성: {csv_filename}")
