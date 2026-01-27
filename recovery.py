@@ -202,10 +202,10 @@ class RecoveryManager:
             return None
 
     def update_db_record(self, target, original_kr_crawl_datetime, new_data):
-        """DB 레코드 UPDATE (7개 컬럼)
+        """DB 레코드 UPDATE (9개 컬럼)
 
         Args:
-            target: 대상 (fr/gb/currys)
+            target: 대상 (fr/gb/currys/it)
             original_kr_crawl_datetime: 원본 레코드의 kr_crawl_datetime 값 (정확한 매칭용)
             new_data: 새로 크롤링한 데이터
         """
@@ -233,6 +233,8 @@ class RecoveryManager:
         SET title = :title,
             imageurl = :imageurl,
             retailprice = :retailprice,
+            ships_from = :ships_from,
+            sold_by = :sold_by,
             crawl_datetime = :crawl_datetime,
             crawl_strdatetime = :crawl_strdatetime,
             kr_crawl_datetime = :kr_crawl_datetime,
@@ -247,6 +249,8 @@ class RecoveryManager:
                     'title': new_data.get('title'),
                     'imageurl': new_data.get('imageurl'),
                     'retailprice': new_data.get('retailprice'),
+                    'ships_from': new_data.get('ships_from'),
+                    'sold_by': new_data.get('sold_by'),
                     'crawl_datetime': crawl_datetime_iso,
                     'crawl_strdatetime': crawl_strdatetime,
                     'kr_crawl_datetime': kr_crawl_datetime,

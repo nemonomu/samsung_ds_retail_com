@@ -736,6 +736,11 @@ class AmazonITScraper:
             if not cleaned:
                 return None
             
+            # 쉼표로 끝나는 경우 (예: '304,') - 정수부만 있는 분리된 가격
+            if cleaned.endswith(','):
+                logger.debug(f"쉼표로 끝나는 분리된 가격 감지: '{cleaned}' - None 반환")
+                return None
+
             # 이탈리아 형식: 61,84 또는 1.234,56
             if ',' in cleaned:
                 # 쉼표가 있으면 마지막 쉼표를 소수점으로 처리
@@ -1054,6 +1059,8 @@ class AmazonITScraper:
             combined_patterns = [
                 'mittente / venditore',
                 'mittente/venditore',
+                'speditore / venditore',
+                'speditore/venditore',
                 'shipper / seller',
                 'shipper/seller'
             ]
