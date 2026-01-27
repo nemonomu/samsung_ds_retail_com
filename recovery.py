@@ -93,7 +93,7 @@ class RecoveryManager:
         query = f"""
         SELECT
             DATE(kr_crawl_datetime) as crawl_date,
-            DATE_FORMAT(MIN(kr_crawl_datetime), '%Y-%m-%d %H:%i:%s') as session_start,
+            DATE_FORMAT(MIN(kr_crawl_datetime), '%%Y-%%m-%%d %%H:%%i:%%s') as session_start,
             COUNT(*) as total_count,
             SUM(CASE WHEN title IS NULL THEN 1 ELSE 0 END) as title_null_count,
             SUM(CASE WHEN imageurl IS NULL OR imageurl = '' THEN 1 ELSE 0 END) as imageurl_null_count
