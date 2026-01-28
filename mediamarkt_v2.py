@@ -254,26 +254,45 @@ class MediaMarktInfiniteScraper:
             logger.error(f"초기 로그인 오류: {e}")
             return False
     
-    def check_cloudflare_challenge(self):
-        """Cloudflare 챌린지 페이지인지 확인"""
+    def kill_chrome_processes(self):
+        """잔여 Chrome/chromedriver 프로세스 강제 종료"""
         try:
-            indicators = [
-                "Verifying you are human",
-                "사람인지 확인",
-                "cf-challenge",
-                "Just a moment",
-                "einen Moment"
+            import subprocess
+            subprocess.run(['taskkill', '/F', '/IM', 'chromedriver.exe'],
+                         capture_output=True, timeout=10)
+            subprocess.run(['taskkill', '/F', '/IM', 'chrome.exe'],
+                         capture_output=True, timeout=10)
+            logger.info("잔여 Chrome 프로세스 정리 완료")
+        except Exception as e:
+            logger.debug(f"프로세스 정리 중 오류 (무시 가능): {e}")
+
+    def check_cloudflare_challenge(self):
+        """Cloudflare 챌린지 페이지인지 확인 (title 1차 → page_source 2차)"""
+        try:
+            # 1차: title만으로 판별 (메모리 절약)
+            title_indicators = [
+                "just a moment",
+                "einen moment",
+                "verifying you are human",
             ]
-            
-            page_source = self.driver.page_source.lower()
             page_title = self.driver.title.lower()
-            
-            for indicator in indicators:
-                if indicator.lower() in page_source or indicator.lower() in page_title:
+            for indicator in title_indicators:
+                if indicator in page_title:
                     return True
-                    
+
+            # 2차: title이 비정상적이면 page_source로 확인
+            if not page_title or 'mediamarkt' not in page_title:
+                source_indicators = [
+                    "cf-challenge",
+                    "verifying you are human",
+                ]
+                page_source = self.driver.page_source.lower()
+                for indicator in source_indicators:
+                    if indicator in page_source:
+                        return True
+
             return False
-            
+
         except Exception:
             return False
     
@@ -286,8 +305,9 @@ class MediaMarktInfiniteScraper:
             try:
                 self.driver.quit()
             except:
-                pass
-            
+                logger.warning("driver.quit() 실패 - 강제 종료 시도")
+                self.kill_chrome_processes()
+
             time.sleep(5)
             
             # 드라이버 재설정
@@ -926,6 +946,9 @@ class MediaMarktInfiniteScraper:
         logger.info("\n🚀 MediaMarkt 크롤러 시작")
         logger.info("="*60)
 
+        # 시작 전 잔여 프로세스 정리
+        self.kill_chrome_processes()
+
         # 드라이버 설정
         if not self.setup_driver():
             logger.error("드라이버 설정 실패로 종료합니다.")
@@ -955,9 +978,13 @@ class MediaMarktInfiniteScraper:
             logger.error(traceback.format_exc())
             return None
         finally:
-            if self.driver:
-                self.driver.quit()
-                logger.info("🔧 드라이버 종료")
+            try:
+                if self.driver:
+                    self.driver.quit()
+                logger.info("드라이버 종료 완료")
+            except:
+                logger.warning("driver.quit() 실패 - 강제 종료 시도")
+                self.kill_chrome_processes()
 
 def main():
     """메인 실행 함수"""
