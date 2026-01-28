@@ -1,6 +1,6 @@
 """
 Title/ImageURL NULL 복구 스크립트
-- fr_v2, uk_v2, currys_v2 크롤링 결과 중 title 또는 imageurl이 NULL인 레코드 복구
+- fr_v2, uk_v2, currys_v2, it_v2, de_v2 크롤링 결과 중 title 또는 imageurl이 NULL인 레코드 복구
 - DB UPDATE + 파일서버 재업로드
 
 사용법:
@@ -69,6 +69,15 @@ TARGET_CONFIG = {
         'local_tz': 'Europe/Rome',
         'scraper_module': 'it_v2',
         'scraper_class': 'AmazonITScraper'
+    },
+    'de': {
+        'name': '독일 Amazon',
+        'table': 'amazon_price_crawl_tbl_de_v2',
+        'country_code': 'de',
+        'file_prefix': 'de_amazon',
+        'local_tz': 'Europe/Berlin',
+        'scraper_module': 'de_v2',
+        'scraper_class': 'AmazonDEScraper'
     }
 }
 
@@ -508,6 +517,7 @@ def select_target():
     print("2. gb (영국 Amazon)")
     print("3. currys (영국 Currys)")
     print("4. it (이탈리아 Amazon)")
+    print("5. de (독일 Amazon)")
     print("0. 종료")
 
     while True:
@@ -523,6 +533,8 @@ def select_target():
                 return 'currys'
             elif choice == '4':
                 return 'it'
+            elif choice == '5':
+                return 'de'
             else:
                 print("올바른 번호를 입력하세요.")
         except KeyboardInterrupt:

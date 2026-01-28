@@ -807,7 +807,7 @@ class AmazonDEScraper:
             logger.warning(f"재고 확인 중 오류: {e}")
             return True
 
-    def extract_product_info(self, url, row_data, retry_count=0, max_retries=10):
+    def extract_product_info(self, url, row_data, retry_count=0, max_retries=2):
         """제품 정보 추출"""
         try:
             logger.info("=" * 60)
@@ -1027,7 +1027,7 @@ class AmazonDEScraper:
             logger.error(f"독일 페이지 처리 오류: {e}")
             
             if retry_count < max_retries - 1:
-                wait_time = 10  # 고정 10초 대기
+                wait_time = (retry_count + 1) * 10  # 점진적 대기
                 logger.info(f"{wait_time}초 후 재시도... ({retry_count + 2}/{max_retries})")
                 time.sleep(wait_time)
                 return self.extract_product_info(url, row_data, retry_count + 1, max_retries)
@@ -1263,8 +1263,8 @@ class AmazonDEScraper:
                     time.sleep(wait_time)
 
                     if (idx + 1) % 20 == 0:
-                        logger.info("20개 처리 완료, 30초 휴식")
-                        time.sleep(30)
+                        logger.info("20개 처리 완료, 5초 휴식")
+                        time.sleep(5)
 
             # 마지막으로 저장되지 않은 나머지 데이터 저장 (10의 배수가 아닌 경우)
             remainder = len(results) % 10
@@ -1277,7 +1277,7 @@ class AmazonDEScraper:
                 except Exception as e:
                     logger.error(f"마지막 저장 실패: {e}")
 
-            # 차단 페이지로 인한 실패 목록 재시도 (10회씩)
+            # 차단 페이지로 인한 실패 목록 재시도 (1회씩)
             if blocked_page_failures:
                 logger.info("=" * 60)
                 logger.info(f"차단 페이지 실패 {len(blocked_page_failures)}개 재시도 시작")
@@ -1290,33 +1290,24 @@ class AmazonDEScraper:
                     row_data = fail_item['row_data']
                     logger.info(f"재시도 진행: {fail_idx + 1}/{len(blocked_page_failures)} - {fail_item['item']}")
 
-                    # 10회 재시도
-                    retry_success = False
-                    for retry in range(10):
-                        logger.info(f"차단 페이지 재시도 {retry + 1}/10: {url}")
-                        result = self.extract_product_info(url, row_data, retry_count=0, max_retries=1)
+                    # 1회 재시도
+                    logger.info(f"차단 페이지 재시도 1/1: {url}")
+                    result = self.extract_product_info(url, row_data, retry_count=0, max_retries=1)
 
-                        # 성공 여부 확인 (title이나 price가 있으면 성공)
-                        if result['title'] is not None or result['retailprice'] is not None:
-                            logger.info(f"재시도 성공! title={result['title']}, price={result['retailprice']}")
-                            # 기존 결과에서 해당 URL 결과를 업데이트
-                            for i, r in enumerate(results):
-                                if r['producturl'] == url:
-                                    results[i] = result
-                                    break
-                            retry_success = True
-                            break
-                        else:
-                            logger.warning(f"재시도 {retry + 1}/10 실패")
-                            if retry < 9:  # 마지막 시도가 아니면 10초 대기
-                                time.sleep(10)
-
-                    if not retry_success:
-                        logger.error(f"최종 실패 (10회 재시도 후에도 실패): {url}")
+                    # 성공 여부 확인 (title이나 price가 있으면 성공)
+                    if result['title'] is not None or result['retailprice'] is not None:
+                        logger.info(f"재시도 성공! title={result['title']}, price={result['retailprice']}")
+                        # 기존 결과에서 해당 URL 결과를 업데이트
+                        for i, r in enumerate(results):
+                            if r['producturl'] == url:
+                                results[i] = result
+                                break
+                    else:
+                        logger.error(f"최종 실패 (재시도 후에도 실패): {url}")
                         final_blocked_failures.append({
                             'url': url,
                             'item': fail_item['item'],
-                            'reason': '차단 페이지로 인한 최종 실패 (10회 재시도 후)'
+                            'reason': '차단 페이지로 인한 최종 실패 (재시도 후)'
                         })
 
                 if final_blocked_failures:
@@ -1453,8 +1444,13 @@ def main():
     logger.info(f"파일: {'성공' if save_results['server_uploaded'] else '실패'}")
     logger.info("독일 크롤링 완료!")
 
-    # 크롤링 결과 모니터링 및 알림 (차단 페이지 실패 개수 전달)
-    monitor_and_alert('de', len(urls_data), results_df, blocked_page_failures=len(blocked_failures))
+    # title null 실패 개수 계산 (재시도 후에도 title이 null인 경우)
+    title_null_count = results_df['title'].isna().sum()
+    if title_null_count > 0:
+        logger.warning(f"title null 실패: {title_null_count}개")
+
+    # 크롤링 결과 모니터링 및 알림 (차단 페이지 실패 개수 및 title null 실패 개수 전달)
+    monitor_and_alert('de', len(urls_data), results_df, blocked_page_failures=len(blocked_failures), title_null_failures=title_null_count)
 
 if __name__ == "__main__":
     print("필요 패키지:")

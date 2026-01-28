@@ -1641,8 +1641,13 @@ def main():
     logger.info("이탈리아 크롤링 프로세스 완료!")
     logger.info("=" * 80)
 
-    # 크롤링 완료 후 알림 (차단 페이지 실패 개수 전달)
-    monitor_and_alert('it', len(urls_data), results_df, blocked_page_failures=len(blocked_failures))
+    # title null 실패 개수 계산 (재시도 후에도 title이 null인 경우)
+    title_null_count = results_df['title'].isna().sum()
+    if title_null_count > 0:
+        logger.warning(f"title null 실패: {title_null_count}개")
+
+    # 크롤링 완료 후 알림 (차단 페이지 실패 개수 및 title null 실패 개수 전달)
+    monitor_and_alert('it', len(urls_data), results_df, blocked_page_failures=len(blocked_failures), title_null_failures=title_null_count)
 
 if __name__ == "__main__":
     required_packages = [
