@@ -213,9 +213,9 @@ class BestBuyScraper:
             options.add_argument('--disable-renderer-backgrounding')
             options.add_argument('--js-flags=--max-old-space-size=512')
 
-            self.driver = uc.Chrome(options=options)
+            self.driver = uc.Chrome(options=options, version_main=144)
             self.driver.maximize_window()
-            
+
             # 추가 스텔스 설정
             self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
             self.driver.execute_script("Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3]})")

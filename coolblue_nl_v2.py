@@ -159,7 +159,7 @@ class CoolblueScraper:
             options.add_argument('--disable-renderer-backgrounding')
             options.add_argument('--js-flags=--max-old-space-size=512')
 
-            self.driver = uc.Chrome(options=options)
+            self.driver = uc.Chrome(options=options, version_main=144)
             self.driver.maximize_window()
 
             # 스텔스 모드 설정

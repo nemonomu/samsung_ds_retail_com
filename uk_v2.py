@@ -143,10 +143,10 @@ class AmazonUKScraper:
             options.add_argument(f'--user-agent={random.choice(user_agents)}')
             options.add_experimental_option('prefs', {'intl.accept_languages': 'en-GB,en,de-DE,de'})
             
-            self.driver = uc.Chrome(options=options)
+            self.driver = uc.Chrome(options=options, version_main=144)
             self.driver.maximize_window()
             self.wait = WebDriverWait(self.driver, 20)
-            
+
             logger.info("드라이버 설정 완료")
             return True
         except Exception as e:

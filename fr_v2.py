@@ -180,10 +180,10 @@ class AmazonFRScraper:
             # 프랑스어 언어 설정
             options.add_experimental_option('prefs', {'intl.accept_languages': 'fr-FR,fr'})
             
-            self.driver = uc.Chrome(options=options)
+            self.driver = uc.Chrome(options=options, version_main=144)
             self.driver.maximize_window()
             self.wait = WebDriverWait(self.driver, 20)
-            
+
             logger.info("드라이버 설정 완료")
             return True
         except Exception as e:

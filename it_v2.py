@@ -216,10 +216,10 @@ class AmazonITScraper:
                 'intl.accept_languages': 'it-IT,it,en-US,en'
             })
             
-            self.driver = uc.Chrome(options=options)
+            self.driver = uc.Chrome(options=options, version_main=144)
             self.driver.maximize_window()
             self.wait = WebDriverWait(self.driver, 20)
-            
+
             logger.info("이탈리아 드라이버 설정 완료")
             return True
             

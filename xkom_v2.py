@@ -182,7 +182,7 @@ class XKomScraper:
                 "intl.accept_languages": "pl-PL,pl"
             })
             
-            self.driver = uc.Chrome(options=options)
+            self.driver = uc.Chrome(options=options, version_main=144)
             self.driver.maximize_window()
             self.driver.set_page_load_timeout(30)
 

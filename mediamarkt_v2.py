@@ -197,10 +197,10 @@ class MediaMarktInfiniteScraper:
                 "intl.accept_languages": "de-DE,de"
             })
             
-            self.driver = uc.Chrome(options=options)
+            self.driver = uc.Chrome(options=options, version_main=144)
             self.driver.maximize_window()
             self.driver.set_page_load_timeout(30)
-            
+
             logger.info("✅ 드라이버 설정 완료")
             return True
             
