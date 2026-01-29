@@ -181,7 +181,7 @@ class AmazonScraper:
             options.add_experimental_option('prefs', {'intl.accept_languages': lang})
             
             # Chrome 드라이버 생성
-            self.driver = uc.Chrome(options=options)
+            self.driver = uc.Chrome(options=options, version_main=144)
             self.driver.maximize_window()
             
             # WebDriverWait 객체 생성
