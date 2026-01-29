@@ -136,7 +136,7 @@ class CentrecomScraper:
             # 호주 영어 설정
             options.add_experimental_option('prefs', {'intl.accept_languages': 'en-AU,en'})
 
-            self.driver = uc.Chrome(options=options)
+            self.driver = uc.Chrome(options=options, version_main=144)
             self.driver.maximize_window()
 
             self.wait = WebDriverWait(self.driver, 20)
