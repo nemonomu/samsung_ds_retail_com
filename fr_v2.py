@@ -1240,15 +1240,16 @@ class AmazonFRScraper:
 
                 results.append(result)
 
-                # 10개마다 중간 저장
+                # 10개마다 중간 저장 (title null 제외 - 재시도 후 저장)
                 if (idx + 1) % 10 == 0:
                     interim_df = pd.DataFrame(results[-10:])
-                    if len(interim_df) > 0 and self.db_engine:
+                    # title이 있는 것만 저장 (title null은 재시도 후 저장)
+                    valid_df = interim_df[interim_df['title'].notna()]
+                    if len(valid_df) > 0 and self.db_engine:
                         try:
                             table_name = 'amazon_price_crawl_tbl_fr_v2'
-                            interim_df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
-                            title_null_count = interim_df['title'].isna().sum()
-                            logger.info(f"프랑스 중간 저장: {len(interim_df)}개 레코드 (title null: {title_null_count}개)")
+                            valid_df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
+                            logger.info(f"프랑스 중간 저장: {len(valid_df)}개 레코드 (title null 제외: {10 - len(valid_df)}개)")
                         except Exception as e:
                             logger.error(f"중간 저장 실패: {e}")
 
@@ -1260,16 +1261,17 @@ class AmazonFRScraper:
                         logger.info("20개 처리 완료, 30초 휴식")
                         time.sleep(30)
 
-            # 마지막으로 저장되지 않은 나머지 데이터 저장 (10의 배수가 아닌 경우)
+            # 마지막으로 저장되지 않은 나머지 데이터 저장 (10의 배수가 아닌 경우, title null 제외)
             remainder = len(results) % 10
             if remainder > 0 and self.db_engine:
                 try:
                     remainder_df = pd.DataFrame(results[-remainder:])
-                    if len(remainder_df) > 0:
+                    # title이 있는 것만 저장 (title null은 재시도 후 저장)
+                    valid_df = remainder_df[remainder_df['title'].notna()]
+                    if len(valid_df) > 0:
                         table_name = 'amazon_price_crawl_tbl_fr_v2'
-                        remainder_df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
-                        title_null_count = remainder_df['title'].isna().sum()
-                        logger.info(f"프랑스 마지막 저장: {len(remainder_df)}개 레코드 (title null: {title_null_count}개)")
+                        valid_df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
+                        logger.info(f"프랑스 마지막 저장: {len(valid_df)}개 레코드 (title null 제외: {remainder - len(valid_df)}개)")
                 except Exception as e:
                     logger.error(f"마지막 저장 실패: {e}")
 
@@ -1311,11 +1313,19 @@ class AmazonFRScraper:
                             'reason': '차단 페이지로 인한 최종 실패 (재시도 후)'
                         })
 
-                # 재시도 성공 데이터는 이미 중간/마지막 저장에서 저장됨 (title null 포함)
-                # recovery.py로 title null 데이터 복구 예정
-                retry_success_count = len(blocked_page_failures) - len(final_blocked_failures)
-                if retry_success_count > 0:
-                    logger.info(f"재시도 성공: {retry_success_count}개 (이미 저장됨, recovery.py로 복구 예정)")
+                # 재시도한 데이터 DB 저장 (성공/실패 모두 - 실패는 recovery.py로 복구)
+                retry_urls = set(f['url'] for f in blocked_page_failures)
+                retry_results = [r for r in results if r['producturl'] in retry_urls]
+                if retry_results and self.db_engine:
+                    try:
+                        retry_df = pd.DataFrame(retry_results)
+                        table_name = 'amazon_price_crawl_tbl_fr_v2'
+                        retry_df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
+                        retry_success_count = len(blocked_page_failures) - len(final_blocked_failures)
+                        retry_fail_count = len(final_blocked_failures)
+                        logger.info(f"재시도 데이터 DB 저장: {len(retry_results)}개 (성공: {retry_success_count}, 실패(title null): {retry_fail_count}개 - recovery.py로 복구 예정)")
+                    except Exception as e:
+                        logger.error(f"재시도 데이터 DB 저장 실패: {e}")
 
                 if final_blocked_failures:
                     logger.warning(f"차단 페이지 최종 실패 {len(final_blocked_failures)}개:")
