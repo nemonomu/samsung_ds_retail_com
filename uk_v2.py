@@ -828,15 +828,16 @@ class AmazonUKScraper:
 
                 results.append(result)
 
-                # 중간 저장 (title null 포함 - recovery.py로 복구 가능)
+                # 중간 저장 (title null 제외 - 재시도 후 저장)
                 if (idx + 1) % 10 == 0:
                     interim_df = pd.DataFrame(results[-10:])
-                    valid_df = interim_df
+                    # title이 있는 것만 저장 (title null은 재시도 후 저장)
+                    valid_df = interim_df[interim_df['title'].notna()]
                     if len(valid_df) > 0 and self.db_engine:
                         try:
                             table_name = 'amazon_price_crawl_tbl_uk_v2'
                             valid_df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
-                            logger.info(f"중간 저장: {len(valid_df)}개 레코드")
+                            logger.info(f"UK 중간 저장: {len(valid_df)}개 레코드 (title null 제외: {10 - len(valid_df)}개)")
                         except Exception as e:
                             logger.error(f"중간 저장 실패: {e}")
 
@@ -852,15 +853,17 @@ class AmazonUKScraper:
                 logger.error(f"스크래핑 중 오류 (URL: {row.get('url', 'unknown')}): {e}")
                 continue
 
-        # 마지막으로 저장되지 않은 나머지 데이터 저장 (10의 배수가 아닌 경우, title null 포함)
+        # 마지막으로 저장되지 않은 나머지 데이터 저장 (10의 배수가 아닌 경우, title null 제외)
         remainder = len(results) % 10
         if remainder > 0 and self.db_engine:
             try:
                 remainder_df = pd.DataFrame(results[-remainder:])
-                if len(remainder_df) > 0:
+                # title이 있는 것만 저장 (title null은 재시도 후 저장)
+                valid_df = remainder_df[remainder_df['title'].notna()]
+                if len(valid_df) > 0:
                     table_name = 'amazon_price_crawl_tbl_uk_v2'
-                    remainder_df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
-                    logger.info(f"UK 마지막 저장: {len(remainder_df)}개 레코드")
+                    valid_df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
+                    logger.info(f"UK 마지막 저장: {len(valid_df)}개 레코드 (title null 제외: {remainder - len(valid_df)}개)")
             except Exception as e:
                 logger.error(f"마지막 저장 실패: {e}")
 
@@ -902,20 +905,19 @@ class AmazonUKScraper:
                         'reason': '차단 페이지로 인한 최종 실패 (재시도 후)'
                     })
 
-            # 재시도 성공한 데이터 DB 저장
-            retry_success_count = len(blocked_page_failures) - len(final_blocked_failures)
-            if retry_success_count > 0 and self.db_engine:
-                # 재시도 성공한 URL들의 결과를 찾아서 저장
-                retry_success_urls = set(f['url'] for f in blocked_page_failures) - set(f['url'] for f in final_blocked_failures)
-                retry_success_results = [r for r in results if r['producturl'] in retry_success_urls]
-                if retry_success_results:
-                    try:
-                        retry_df = pd.DataFrame(retry_success_results)
-                        table_name = 'amazon_price_crawl_tbl_uk_v2'
-                        retry_df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
-                        logger.info(f"재시도 성공 데이터 DB 저장: {len(retry_success_results)}개")
-                    except Exception as e:
-                        logger.error(f"재시도 성공 데이터 DB 저장 실패: {e}")
+            # 재시도한 데이터 DB 저장 (성공/실패 모두 - 실패는 recovery.py로 복구)
+            retry_urls = set(f['url'] for f in blocked_page_failures)
+            retry_results = [r for r in results if r['producturl'] in retry_urls]
+            if retry_results and self.db_engine:
+                try:
+                    retry_df = pd.DataFrame(retry_results)
+                    table_name = 'amazon_price_crawl_tbl_uk_v2'
+                    retry_df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
+                    retry_success_count = len(blocked_page_failures) - len(final_blocked_failures)
+                    retry_fail_count = len(final_blocked_failures)
+                    logger.info(f"재시도 데이터 DB 저장: {len(retry_results)}개 (성공: {retry_success_count}, 실패(title null): {retry_fail_count}개 - recovery.py로 복구 예정)")
+                except Exception as e:
+                    logger.error(f"재시도 데이터 DB 저장 실패: {e}")
 
             if final_blocked_failures:
                 logger.warning(f"차단 페이지 최종 실패 {len(final_blocked_failures)}개:")
