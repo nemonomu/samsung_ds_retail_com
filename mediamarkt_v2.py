@@ -790,10 +790,9 @@ class MediaMarktInfiniteScraper:
                 else:
                     if attempt < 2:
                         logger.warning(f"⚠️ 제품 정보 추출 실패 (시도 {attempt + 1}/3): {url}. 재시도 중...")
-                        # Cloudflare 체크 및 브라우저 재시작
-                        if self.check_cloudflare_challenge():
-                            logger.warning("⚠️ Cloudflare 감지됨. 브라우저 재시작 시도...")
-                            self.restart_browser()
+                        # 타임아웃/에러 발생 시 브라우저 재시작 (Chrome 먹통 방지)
+                        logger.warning("⚠️ 브라우저 재시작 시도...")
+                        self.restart_browser()
                         time.sleep(3)
                     else:
                         logger.error(f"❌ 제품 정보 추출 최종 실패: {url}")
