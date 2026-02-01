@@ -381,7 +381,6 @@ def get_anomaly_urls(retailer, crawl_date):
                 SELECT id, producturl, retailersku
                 FROM ssd_crawl_db.ds_monitoring_report_anomaly
                 WHERE retailer = %s AND crawl_date = %s
-                LIMIT 1
             """
             cursor.execute(query, (retailer, crawl_date))
             results = cursor.fetchall()
