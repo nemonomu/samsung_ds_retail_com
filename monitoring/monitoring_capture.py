@@ -33,12 +33,15 @@ logger = logging.getLogger(__name__)
 class ScreenshotMonitor:
     """스크린샷 캡쳐 및 S3 업로드"""
 
-    def __init__(self, retailer):
+    def __init__(self, retailer, crawl_date):
         self.retailer = retailer
+        self.crawl_date = crawl_date  # 크롤링 날짜 (폴더 경로용)
         self.driver = None
         self.settings = None
         self.s3_client = None
+        self.db_conn = None
         self.setup_s3_client()
+        self.setup_db_connection()
 
     def setup_s3_client(self):
         """S3 클라이언트 설정"""
@@ -53,6 +56,64 @@ class ScreenshotMonitor:
         except Exception as e:
             logger.error(f"❌ S3 클라이언트 설정 실패: {e}")
             raise
+
+    def setup_db_connection(self):
+        """DB 연결 설정"""
+        try:
+            self.db_conn = pymysql.connect(
+                host=DB_CONFIG['host'],
+                port=DB_CONFIG['port'],
+                user=DB_CONFIG['user'],
+                password=DB_CONFIG['password'],
+                database='ssd_crawl_db',
+                charset='utf8mb4',
+                autocommit=True
+            )
+            logger.info("✅ DB 연결 설정 완료")
+        except Exception as e:
+            logger.error(f"❌ DB 연결 실패: {e}")
+            raise
+
+    def insert_file_record(self, file_name, file_path, file_size):
+        """파일 정보를 DB에 저장하고 file_id 반환"""
+        try:
+            with self.db_conn.cursor() as cursor:
+                query = """
+                    INSERT INTO ssd_crawl_db.ds_monitoring_file
+                    (file_name, file_path, file_size, file_type, is_del, created_at, created_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """
+                cursor.execute(query, (
+                    file_name,
+                    file_path,
+                    file_size,
+                    'image/png',
+                    0,
+                    datetime.now(),
+                    'crawl'
+                ))
+                file_id = cursor.lastrowid
+                logger.info(f"✅ 파일 레코드 저장 완료: file_id={file_id}")
+                return file_id
+        except Exception as e:
+            logger.error(f"❌ 파일 레코드 저장 실패: {e}")
+            return None
+
+    def update_anomaly_screenshot(self, anomaly_id, file_id):
+        """anomaly 레코드의 screenshot_id 업데이트"""
+        try:
+            with self.db_conn.cursor() as cursor:
+                query = """
+                    UPDATE ssd_crawl_db.ds_monitoring_report_anomaly
+                    SET screenshot_id = %s
+                    WHERE id = %s
+                """
+                cursor.execute(query, (file_id, anomaly_id))
+                logger.info(f"✅ anomaly 레코드 업데이트 완료: id={anomaly_id}, screenshot_id={file_id}")
+                return True
+        except Exception as e:
+            logger.error(f"❌ anomaly 레코드 업데이트 실패: {e}")
+            return False
 
     def setup_driver(self):
         """리테일러별 드라이버 설정"""
@@ -72,32 +133,43 @@ class ScreenshotMonitor:
             logger.error(f"❌ 드라이버 설정 실패: {e}")
             return False
 
-    def add_timestamp_watermark(self, screenshot_bytes):
-        """스크린샷 우측 하단에 타임스탬프 워터마크 추가"""
+    def add_watermark(self, screenshot_bytes, url):
+        """스크린샷에 URL(상단)과 타임스탬프(우측 하단) 워터마크 추가"""
         try:
             image = Image.open(io.BytesIO(screenshot_bytes))
             draw = ImageDraw.Draw(image)
 
-            timestamp_text = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
             try:
-                font = ImageFont.truetype("arial.ttf", 20)
+                font = ImageFont.truetype("arial.ttf", 28)
             except:
                 font = ImageFont.load_default()
 
-            bbox = draw.textbbox((0, 0), timestamp_text, font=font)
-            text_width = bbox[2] - bbox[0]
-            text_height = bbox[3] - bbox[1]
-
-            x = image.width - text_width - 10
-            y = image.height - text_height - 10
-
             padding = 5
+
+            # 상단: URL
+            url_bbox = draw.textbbox((0, 0), url, font=font)
+            url_width = url_bbox[2] - url_bbox[0]
+            url_height = url_bbox[3] - url_bbox[1]
+            url_x = 10
+            url_y = 10
             draw.rectangle(
-                [x - padding, y - padding, x + text_width + padding, y + text_height + padding],
-                fill=(0, 0, 0, 180)
+                [url_x - padding, url_y - padding, url_x + url_width + padding, url_y + url_height + padding],
+                fill=(0, 0, 0, 200)
             )
-            draw.text((x, y), timestamp_text, font=font, fill=(255, 255, 255))
+            draw.text((url_x, url_y), url, font=font, fill=(255, 255, 255))
+
+            # 우측 하단: 타임스탬프
+            timestamp_text = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            ts_bbox = draw.textbbox((0, 0), timestamp_text, font=font)
+            ts_width = ts_bbox[2] - ts_bbox[0]
+            ts_height = ts_bbox[3] - ts_bbox[1]
+            ts_x = image.width - ts_width - 10
+            ts_y = image.height - ts_height - 10
+            draw.rectangle(
+                [ts_x - padding, ts_y - padding, ts_x + ts_width + padding, ts_y + ts_height + padding],
+                fill=(0, 0, 0, 200)
+            )
+            draw.text((ts_x, ts_y), timestamp_text, font=font, fill=(255, 255, 255))
 
             output = io.BytesIO()
             image.save(output, format='PNG')
@@ -132,8 +204,8 @@ class ScreenshotMonitor:
             else:
                 raise ValueError(f"지원하지 않는 드라이버 타입: {driver_type}")
 
-            screenshot_bytes = self.add_timestamp_watermark(screenshot_bytes)
-            logger.info("✅ 스크린샷 캡쳐 완료 (워터마크 포함)")
+            screenshot_bytes = self.add_watermark(screenshot_bytes, url)
+            logger.info("✅ 스크린샷 캡쳐 완료 (URL + 타임스탬프 워터마크 포함)")
             return screenshot_bytes
 
         except Exception as e:
@@ -156,23 +228,45 @@ class ScreenshotMonitor:
             logger.error(f"❌ S3 업로드 실패: {e}")
             return False
 
-    def process_url(self, url, identifier=None):
-        """단일 URL 처리: 캡쳐 -> S3 업로드 -> 메모리 해제"""
+    def process_url(self, url, identifier=None, anomaly_id=None):
+        """단일 URL 처리: 캡쳐 -> S3 업로드 -> DB 저장 -> 메모리 해제"""
         screenshot_bytes = None
         try:
             screenshot_bytes = self.capture_screenshot(url)
             if screenshot_bytes is None:
                 return False
 
-            # S3 키 생성
-            s3_prefix = self.settings.get('s3_prefix', self.retailer)
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            if identifier:
-                s3_key = f"{s3_prefix}/{timestamp}_{identifier}.png"
-            else:
-                s3_key = f"{s3_prefix}/{timestamp}.png"
+            # S3 키 생성: 리테일러명/년도/년월/년월일/리테일러명_retailersku_생성타임스탬프.png
+            # 폴더: 크롤링 날짜 기준, 파일명 타임스탬프: 생성 시점
+            crawl_dt = datetime.strptime(self.crawl_date, '%Y-%m-%d')
+            year = crawl_dt.strftime('%Y')
+            year_month = crawl_dt.strftime('%Y%m')
+            year_month_day = crawl_dt.strftime('%Y%m%d')
+            creation_timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
 
-            return self.upload_to_s3(screenshot_bytes, s3_key)
+            # 폴더 경로 (file_path)
+            file_path = f"{self.retailer}/{year}/{year_month}/{year_month_day}/"
+
+            if identifier:
+                file_name = f"{self.retailer}_{identifier}_{creation_timestamp}.png"
+            else:
+                file_name = f"{self.retailer}_{creation_timestamp}.png"
+
+            s3_key = f"{file_path}{file_name}"
+
+            # S3 업로드
+            upload_success = self.upload_to_s3(screenshot_bytes, s3_key)
+
+            if upload_success and anomaly_id:
+                # 파일 레코드 저장
+                file_size = len(screenshot_bytes)
+                file_id = self.insert_file_record(file_name, file_path, file_size)
+
+                if file_id:
+                    # anomaly 레코드 업데이트
+                    self.update_anomaly_screenshot(anomaly_id, file_id)
+
+            return upload_success
 
         finally:
             if screenshot_bytes:
@@ -199,11 +293,13 @@ class ScreenshotMonitor:
                 if isinstance(item, dict):
                     url = item.get('url')
                     identifier = item.get('identifier') or item.get('retailersku')
+                    anomaly_id = item.get('id')
                 else:
                     url = item
                     identifier = None
+                    anomaly_id = None
 
-                success = self.process_url(url, identifier)
+                success = self.process_url(url, identifier, anomaly_id)
                 results.append({
                     'url': url,
                     'identifier': identifier,
@@ -227,7 +323,17 @@ class ScreenshotMonitor:
         if self.driver:
             try:
                 if driver_type == 'selenium':
-                    self.driver.quit()
+                    # undetected-chromedriver Windows 오류 방지
+                    try:
+                        self.driver.service.process.kill()
+                    except:
+                        pass
+                    try:
+                        self.driver.quit()
+                    except:
+                        pass
+                    # __del__ 중복 호출 방지
+                    self.driver.service = None
                 elif driver_type == 'drission':
                     self.driver.quit()
                 elif driver_type == 'playwright':
@@ -238,6 +344,13 @@ class ScreenshotMonitor:
 
         if self.s3_client:
             self.s3_client = None
+
+        if self.db_conn:
+            try:
+                self.db_conn.close()
+            except:
+                pass
+            self.db_conn = None
 
         gc.collect()
         logger.info("✅ 리소스 정리 완료")
@@ -265,9 +378,10 @@ def get_anomaly_urls(retailer, crawl_date):
 
         with connection.cursor(pymysql.cursors.DictCursor) as cursor:
             query = """
-                SELECT product_url, retailersku
+                SELECT id, producturl, retailersku
                 FROM ssd_crawl_db.ds_monitoring_report_anomaly
                 WHERE retailer = %s AND crawl_date = %s
+                LIMIT 1
             """
             cursor.execute(query, (retailer, crawl_date))
             results = cursor.fetchall()
@@ -291,8 +405,23 @@ def main():
 
     # 인수 없으면 직접 입력 받기
     if not args.retailer:
-        print("\n📋 지원 리테일러:", list(RETAILERS.keys()))
-        args.retailer = input("리테일러 입력: ").strip()
+        retailer_list = list(RETAILERS.keys())
+        print("\n📋 지원 리테일러:")
+        for idx, name in enumerate(retailer_list, 1):
+            print(f"  {idx}. {name}")
+        choice = input("리테일러 번호 선택: ").strip()
+        try:
+            choice_idx = int(choice) - 1
+            if 0 <= choice_idx < len(retailer_list):
+                args.retailer = retailer_list[choice_idx]
+            else:
+                logger.error("❌ 잘못된 번호입니다.")
+                input("\n종료하려면 Enter를 누르세요...")
+                return
+        except ValueError:
+            logger.error("❌ 숫자를 입력해주세요.")
+            input("\n종료하려면 Enter를 누르세요...")
+            return
     if not args.crawl_date:
         args.crawl_date = input("크롤링 날짜 입력 (예: 2026-01-31): ").strip()
 
@@ -311,13 +440,13 @@ def main():
 
     # URL 데이터 변환
     urls_to_capture = [
-        {'url': row['product_url'], 'identifier': row.get('retailersku')}
+        {'id': row['id'], 'url': row['producturl'], 'identifier': row.get('retailersku')}
         for row in urls_data
     ]
 
     logger.info(f"📸 캡쳐 대상: {len(urls_to_capture)}개")
 
-    monitor = ScreenshotMonitor(args.retailer)
+    monitor = ScreenshotMonitor(args.retailer, args.crawl_date)
     try:
         results = monitor.process_urls(urls_to_capture)
 
