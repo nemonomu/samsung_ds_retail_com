@@ -180,29 +180,183 @@ class ScreenshotMonitor:
             logger.error(f"❌ 워터마크 추가 실패: {e}")
             return screenshot_bytes
 
-    def capture_screenshot(self, url):
-        """페이지 스크린샷 캡쳐"""
+    def handle_continue_popup(self):
+        """Continue shopping 팝업 처리"""
+        try:
+            driver_type = self.settings.get('driver_type', 'selenium')
+            if driver_type != 'selenium':
+                return False
+
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+
+            # Continue shopping 버튼 셀렉터들 (다른 Amazon 크롤러에서 검증된 셀렉터)
+            continue_selectors = [
+                # 버튼 직접 선택
+                '//button[contains(text(), "Continue shopping")]',
+                '//a[contains(text(), "Continue shopping")]',
+                '//input[@value="Continue shopping"]',
+                # span 텍스트 -> ancestor 버튼/링크
+                '//span[contains(text(), "Continue shopping")]/ancestor::button',
+                '//span[contains(text(), "Continue shopping")]/ancestor::a',
+                '//span[contains(text(), "Continue shopping")]/ancestor::input',
+                # 다국어 지원 (쇼핑 계속하기)
+                '//button[contains(text(), "쇼핑 계속하기")]',
+                '//a[contains(text(), "쇼핑 계속하기")]',
+                '//span[contains(text(), "쇼핑 계속하기")]/ancestor::button',
+                # CSS 셀렉터
+                'input[value="Continue shopping"]',
+                'a[href*="continue"]',
+            ]
+
+            for selector in continue_selectors:
+                try:
+                    if selector.startswith('//'):
+                        element = WebDriverWait(self.driver, 2).until(
+                            EC.element_to_be_clickable((By.XPATH, selector))
+                        )
+                    else:
+                        element = WebDriverWait(self.driver, 2).until(
+                            EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
+                        )
+                    element.click()
+                    logger.info(f"✅ Continue shopping 클릭 완료 (selector: {selector})")
+                    time.sleep(2)
+                    return True
+                except:
+                    continue
+            return False
+        except:
+            return False
+
+    def handle_cookie_popup(self):
+        """쿠키 동의 팝업 처리 (Accept 클릭)"""
+        try:
+            driver_type = self.settings.get('driver_type', 'selenium')
+            if driver_type != 'selenium':
+                return
+
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+
+            # 쿠키 팝업 버튼 셀렉터들 (Accept 버튼)
+            cookie_selectors = [
+                'input#sp-cc-accept',                   # Amazon Accept 버튼
+                'button#sp-cc-accept',
+                'input[data-action="sp-cc-accept"]',
+                'button[data-action="sp-cc-accept"]',
+                '//input[@value="Accept"]',            # XPath
+                '//input[@value="Accept Cookies"]',
+                '//button[text()="Accept"]',
+                '//button[text()="Accept Cookies"]',
+                '//span[text()="Accept"]/ancestor::button',
+                '//span[text()="Accept Cookies"]/ancestor::button',
+                'button.accept-all',
+                '#sp-cc-accept',
+                '#accept-all-btn'
+            ]
+
+            for selector in cookie_selectors:
+                try:
+                    if selector.startswith('//'):
+                        element = WebDriverWait(self.driver, 2).until(
+                            EC.element_to_be_clickable((By.XPATH, selector))
+                        )
+                    else:
+                        element = WebDriverWait(self.driver, 2).until(
+                            EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
+                        )
+                    element.click()
+                    logger.info(f"✅ 쿠키 팝업 Accept 클릭 완료 (selector: {selector})")
+                    time.sleep(1)
+                    return
+                except:
+                    continue
+        except Exception as e:
+            pass  # 팝업이 없으면 무시
+
+    def is_error_page(self):
+        """에러 페이지 여부 확인"""
+        try:
+            driver_type = self.settings.get('driver_type', 'selenium')
+            if driver_type == 'selenium':
+                page_source = self.driver.page_source
+            elif driver_type == 'drission':
+                page_source = self.driver.html
+            elif driver_type == 'playwright':
+                page_source = self.driver.content()
+            else:
+                return False
+
+            # 에러 페이지 키워드 검사
+            error_keywords = [
+                'We are sorry',
+                'An error occurred',
+                'Something went wrong',
+                'Page not found',
+                'Access Denied',
+                'Service Unavailable',
+                '503 Service',
+                '502 Bad Gateway',
+                'Robot Check',
+                'Enter the characters you see below'
+            ]
+            for keyword in error_keywords:
+                if keyword.lower() in page_source.lower():
+                    return True
+            return False
+        except:
+            return False
+
+    def capture_screenshot(self, url, max_retries=3):
+        """페이지 스크린샷 캡쳐 (에러 페이지 재시도)"""
         try:
             logger.info(f"📸 스크린샷 캡쳐: {url}")
 
             wait_time = self.settings.get('wait_time', 3)
             driver_type = self.settings.get('driver_type', 'selenium')
 
-            # 드라이버 타입별 처리
+            for attempt in range(max_retries):
+                # 드라이버 타입별 처리
+                if driver_type == 'selenium':
+                    self.driver.get(url)
+                    time.sleep(wait_time)
+                elif driver_type == 'drission':
+                    self.driver.get(url)
+                    time.sleep(wait_time)
+                elif driver_type == 'playwright':
+                    self.driver.goto(url)
+                    time.sleep(wait_time)
+                else:
+                    raise ValueError(f"지원하지 않는 드라이버 타입: {driver_type}")
+
+                # 1. 에러 페이지 확인
+                if self.is_error_page():
+                    if attempt < max_retries - 1:
+                        logger.warning(f"⚠️ 에러 페이지 감지, 재시도 중... ({attempt + 1}/{max_retries})")
+                        time.sleep(2)
+                        continue
+                    else:
+                        logger.warning(f"⚠️ 에러 페이지 - 최대 재시도 횟수 초과, 현재 상태로 캡쳐")
+                        break
+
+                # 2. Continue shopping 팝업 처리
+                if self.handle_continue_popup():
+                    time.sleep(wait_time)  # 페이지 로드 대기
+
+                # 3. 쿠키 팝업 처리
+                self.handle_cookie_popup()
+                break
+
+            # 스크린샷 캡쳐
             if driver_type == 'selenium':
-                self.driver.get(url)
-                time.sleep(wait_time)
                 screenshot_bytes = self.driver.get_screenshot_as_png()
             elif driver_type == 'drission':
-                self.driver.get(url)
-                time.sleep(wait_time)
                 screenshot_bytes = self.driver.get_screenshot(as_bytes=True)
             elif driver_type == 'playwright':
-                self.driver.goto(url)
-                time.sleep(wait_time)
                 screenshot_bytes = self.driver.screenshot()
-            else:
-                raise ValueError(f"지원하지 않는 드라이버 타입: {driver_type}")
 
             screenshot_bytes = self.add_watermark(screenshot_bytes, url)
             logger.info("✅ 스크린샷 캡쳐 완료 (URL + 타임스탬프 워터마크 포함)")
