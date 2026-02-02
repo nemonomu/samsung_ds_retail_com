@@ -552,7 +552,7 @@ class ScreenshotMonitor:
             if screenshot_bytes is None:
                 return False
 
-            # S3 키 생성: 리테일러명/년도/년월/년월일/리테일러명_retailersku_생성타임스탬프.png
+            # S3 키 생성: 년도/년월/년월일/리테일러명/리테일러명_retailersku_생성타임스탬프.png
             # 폴더: 크롤링 날짜 기준, 파일명 타임스탬프: 생성 시점
             crawl_dt = datetime.strptime(self.crawl_date, '%Y-%m-%d')
             year = crawl_dt.strftime('%Y')
@@ -561,7 +561,7 @@ class ScreenshotMonitor:
             creation_timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
 
             # 폴더 경로 (file_path)
-            file_path = f"{self.retailer}/{year}/{year_month}/{year_month_day}/"
+            file_path = f"{year}/{year_month}/{year_month_day}/{self.retailer}/"
 
             if identifier:
                 file_name = f"{self.retailer}_{identifier}_{creation_timestamp}.png"
