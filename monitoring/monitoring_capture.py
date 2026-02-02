@@ -180,9 +180,17 @@ class ScreenshotMonitor:
             logger.error(f"❌ 워터마크 추가 실패: {e}")
             return screenshot_bytes
 
+    def is_amazon_retailer(self):
+        """Amazon 리테일러 여부 확인"""
+        return self.retailer.startswith('amazon_')
+
     def handle_continue_popup(self):
-        """Continue shopping 팝업 처리"""
+        """Continue shopping 팝업 처리 (Amazon 리테일러 전용) - 국가별 셀렉터 적용"""
         try:
+            # Amazon 리테일러가 아니면 스킵
+            if not self.is_amazon_retailer():
+                return False
+
             driver_type = self.settings.get('driver_type', 'selenium')
             if driver_type != 'selenium':
                 return False
@@ -191,28 +199,76 @@ class ScreenshotMonitor:
             from selenium.webdriver.support.ui import WebDriverWait
             from selenium.webdriver.support import expected_conditions as EC
 
-            # Continue shopping 버튼 셀렉터들 (다른 Amazon 크롤러에서 검증된 셀렉터)
-            continue_selectors = [
-                # 버튼 직접 선택
+            # 리테일러별 Continue shopping 셀렉터 (국가별 언어 지원)
+            retailer_continue_selectors = {
+                'amazon_usa': [
+                    '//button[contains(text(), "Continue shopping")]',
+                    '//a[contains(text(), "Continue shopping")]',
+                    '//span[contains(text(), "Continue shopping")]/ancestor::button',
+                    '//span[contains(text(), "Continue shopping")]/ancestor::a',
+                    '//input[@type="submit" and contains(@value, "Continue")]',
+                ],
+                'amazon_gb': [
+                    '//button[contains(text(), "Continue shopping")]',
+                    '//a[contains(text(), "Continue shopping")]',
+                    '//span[contains(text(), "Continue shopping")]/ancestor::button',
+                    '//button[contains(text(), "Continue")]',
+                ],
+                'amazon_jp': [
+                    # 일본어: ショッピングを続ける
+                    '/html/body/center/center/p/table/tbody/tr/td/p[5]/a/img',  # 실제 일본 아마존 XPath
+                    '//a[contains(text(), "ショッピングを続ける")]',
+                    '//button[contains(text(), "ショッピングを続ける")]',
+                    '//span[contains(text(), "ショッピングを続ける")]/ancestor::button',
+                    '//a[contains(@alt, "ショッピングを続ける")]',
+                    '//img[contains(@alt, "ショッピングを続ける")]/ancestor::a',
+                    '//button[contains(text(), "Continue shopping")]',
+                ],
+                'amazon_in': [
+                    '//button[contains(text(), "Continue shopping")]',
+                    '//a[contains(text(), "Continue shopping")]',
+                    '//span[contains(text(), "Continue shopping")]/ancestor::button',
+                ],
+                'amazon_it': [
+                    # 이탈리아어: Continua lo shopping
+                    '//button[contains(text(), "Continua lo shopping")]',
+                    '//a[contains(text(), "Continua lo shopping")]',
+                    '//span[contains(text(), "Continua lo shopping")]/ancestor::button',
+                    '//button[contains(text(), "Continue shopping")]',
+                ],
+                'amazon_es': [
+                    # 스페인어: Seguir comprando
+                    '//button[contains(text(), "Seguir comprando")]',
+                    '//a[contains(text(), "Seguir comprando")]',
+                    '//span[contains(text(), "Seguir comprando")]/ancestor::button',
+                    '//button[contains(text(), "Continue shopping")]',
+                ],
+                'amazon_fr': [
+                    # 프랑스어: Continuer vos achats
+                    '//button[contains(text(), "Continuer vos achats")]',
+                    '//a[contains(text(), "Continuer vos achats")]',
+                    '//span[contains(text(), "Continuer vos achats")]/ancestor::button',
+                    '//button[contains(text(), "Continue shopping")]',
+                ],
+            }
+
+            # 리테일러별 셀렉터 가져오기
+            continue_selectors = retailer_continue_selectors.get(self.retailer, [])
+
+            # 공통 셀렉터 추가 (fallback)
+            common_selectors = [
                 '//button[contains(text(), "Continue shopping")]',
                 '//a[contains(text(), "Continue shopping")]',
-                '//input[@value="Continue shopping"]',
-                # span 텍스트 -> ancestor 버튼/링크
                 '//span[contains(text(), "Continue shopping")]/ancestor::button',
-                '//span[contains(text(), "Continue shopping")]/ancestor::a',
-                '//span[contains(text(), "Continue shopping")]/ancestor::input',
-                # 다국어 지원 (쇼핑 계속하기)
-                '//button[contains(text(), "쇼핑 계속하기")]',
-                '//a[contains(text(), "쇼핑 계속하기")]',
-                '//span[contains(text(), "쇼핑 계속하기")]/ancestor::button',
-                # CSS 셀렉터
+                '//input[@value="Continue shopping"]',
                 'input[value="Continue shopping"]',
-                'a[href*="continue"]',
+                'button.a-button-primary',
             ]
+            continue_selectors.extend(common_selectors)
 
             for selector in continue_selectors:
                 try:
-                    if selector.startswith('//'):
+                    if selector.startswith('//') or selector.startswith('/html'):
                         element = WebDriverWait(self.driver, 2).until(
                             EC.element_to_be_clickable((By.XPATH, selector))
                         )
@@ -231,7 +287,7 @@ class ScreenshotMonitor:
             return False
 
     def handle_cookie_popup(self):
-        """쿠키 동의 팝업 처리 (Accept 클릭)"""
+        """쿠키 동의 팝업 처리 (Accept 클릭) - 리테일러별 셀렉터 적용"""
         try:
             driver_type = self.settings.get('driver_type', 'selenium')
             if driver_type != 'selenium':
@@ -241,22 +297,69 @@ class ScreenshotMonitor:
             from selenium.webdriver.support.ui import WebDriverWait
             from selenium.webdriver.support import expected_conditions as EC
 
-            # 쿠키 팝업 버튼 셀렉터들 (Accept 버튼)
-            cookie_selectors = [
-                'input#sp-cc-accept',                   # Amazon Accept 버튼
-                'button#sp-cc-accept',
-                'input[data-action="sp-cc-accept"]',
-                'button[data-action="sp-cc-accept"]',
-                '//input[@value="Accept"]',            # XPath
-                '//input[@value="Accept Cookies"]',
-                '//button[text()="Accept"]',
-                '//button[text()="Accept Cookies"]',
-                '//span[text()="Accept"]/ancestor::button',
-                '//span[text()="Accept Cookies"]/ancestor::button',
-                'button.accept-all',
+            # 리테일러별 쿠키 셀렉터
+            retailer_cookie_selectors = {
+                'amazon_usa': [
+                    '#sp-cc-accept',
+                    'input#sp-cc-accept',
+                    'input[data-action="sp-cc-accept"]',
+                ],
+                'amazon_gb': [
+                    '#sp-cc-accept',
+                    'input#sp-cc-accept',
+                    'input[data-action="sp-cc-accept"]',
+                ],
+                'amazon_jp': [
+                    '#sp-cc-accept',
+                    'input#sp-cc-accept',
+                ],
+                'amazon_in': [
+                    '#sp-cc-accept',
+                    'input#sp-cc-accept',
+                ],
+                'amazon_it': [
+                    '#sp-cc-accept',
+                    'input#sp-cc-accept',
+                ],
+                'amazon_es': [
+                    '#sp-cc-accept',
+                    'input#sp-cc-accept',
+                ],
+                'amazon_fr': [
+                    '#sp-cc-accept',
+                    'input#sp-cc-accept',
+                ],
+                'currys': [
+                    '#onetrust-accept-btn-handler',
+                    'button#onetrust-accept-btn-handler',
+                    "button[aria-label='Accept all cookies']",
+                    '//button[contains(text(), "Accept")]',
+                ],
+                'bestbuy': [
+                    '#onetrust-accept-btn-handler',
+                    'button.accept-all',
+                ],
+                'centrecom': [
+                    '#onetrust-accept-btn-handler',
+                    'button.accept-all',
+                    '//button[contains(text(), "Accept")]',
+                ],
+                'danawa': [],  # 다나와는 쿠키 팝업 없음
+            }
+
+            # 리테일러별 셀렉터 가져오기
+            cookie_selectors = retailer_cookie_selectors.get(self.retailer, [])
+
+            # 공통 셀렉터 추가
+            common_selectors = [
                 '#sp-cc-accept',
-                '#accept-all-btn'
+                '#onetrust-accept-btn-handler',
+                'button.accept-all',
+                '//button[contains(text(), "Accept")]',
+                '//button[text()="Accept"]',
+                '//span[text()="Accept"]/ancestor::button',
             ]
+            cookie_selectors.extend(common_selectors)
 
             for selector in cookie_selectors:
                 try:
@@ -278,8 +381,12 @@ class ScreenshotMonitor:
             pass  # 팝업이 없으면 무시
 
     def is_error_page(self):
-        """에러 페이지 여부 확인"""
+        """에러 페이지 여부 확인 (Amazon 리테일러 전용) - 국가별 키워드 적용"""
         try:
+            # Amazon 리테일러가 아니면 항상 False
+            if not self.is_amazon_retailer():
+                return False
+
             driver_type = self.settings.get('driver_type', 'selenium')
             if driver_type == 'selenium':
                 page_source = self.driver.page_source
@@ -290,22 +397,77 @@ class ScreenshotMonitor:
             else:
                 return False
 
-            # 에러 페이지 키워드 검사
-            error_keywords = [
-                'We are sorry',
-                'An error occurred',
-                'Something went wrong',
-                'Page not found',
-                'Access Denied',
-                'Service Unavailable',
-                '503 Service',
-                '502 Bad Gateway',
-                'Robot Check',
-                'Enter the characters you see below'
+            page_source_lower = page_source.lower()
+
+            # 리테일러별 에러 페이지 키워드
+            retailer_error_keywords = {
+                'amazon_usa': [
+                    'sorry', 'robot check', '503 service unavailable',
+                    'something went wrong', 'access denied',
+                ],
+                'amazon_gb': [
+                    'sorry', 'robot check', '503 service unavailable',
+                    'something went wrong', 'access denied',
+                ],
+                'amazon_jp': [
+                    'sorry', 'robot check', '503 service unavailable',
+                    'something went wrong', 'access denied',
+                    'エラーが発生しました',  # 에러가 발생했습니다
+                ],
+                'amazon_in': [
+                    'sorry', 'robot check', '503 service unavailable',
+                    'something went wrong', 'access denied',
+                ],
+                'amazon_it': [
+                    'sorry', 'robot check', '503 service unavailable',
+                    'something went wrong', 'access denied',
+                    'si è verificato un errore',  # 에러가 발생했습니다
+                ],
+                'amazon_es': [
+                    'sorry', 'robot check', '503 service unavailable',
+                    'something went wrong', 'access denied',
+                    'se ha producido un error',  # 에러가 발생했습니다
+                ],
+                'amazon_fr': [
+                    'sorry', 'robot check', '503 service unavailable',
+                    'something went wrong', 'access denied',
+                    'une erreur s\'est produite',  # 에러가 발생했습니다
+                ],
+            }
+
+            # 리테일러별 키워드 가져오기
+            error_keywords = retailer_error_keywords.get(self.retailer, [])
+
+            # 공통 키워드 추가
+            common_keywords = [
+                'sorry', 'robot check', '503 service', '502 bad gateway',
+                'access denied', 'service unavailable',
+                'enter the characters you see below',
             ]
+            error_keywords.extend(common_keywords)
+
+            # 키워드 검사
             for keyword in error_keywords:
-                if keyword.lower() in page_source.lower():
+                if keyword.lower() in page_source_lower:
+                    logger.warning(f"⚠️ 에러 페이지 키워드 감지: {keyword}")
                     return True
+
+            # Continue shopping 페이지도 에러 페이지로 간주 (재시도 필요)
+            continue_keywords = {
+                'amazon_usa': ['continue shopping'],
+                'amazon_gb': ['continue shopping'],
+                'amazon_jp': ['ショッピングを続ける', 'continue shopping'],
+                'amazon_in': ['continue shopping'],
+                'amazon_it': ['continua lo shopping', 'continue shopping'],
+                'amazon_es': ['seguir comprando', 'continue shopping'],
+                'amazon_fr': ['continuer vos achats', 'continue shopping'],
+            }
+
+            for keyword in continue_keywords.get(self.retailer, ['continue shopping']):
+                if keyword.lower() in page_source_lower:
+                    logger.warning(f"⚠️ Continue shopping 페이지 감지: {keyword}")
+                    return True
+
             return False
         except:
             return False

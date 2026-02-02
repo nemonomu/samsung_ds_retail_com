@@ -6,3 +6,5 @@ undetected-chromedriver
 selenium
 pytz
 openpyxl
+boto3
+Pillow
