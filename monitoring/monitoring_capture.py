@@ -4,7 +4,9 @@
 """
 import io
 import gc
+import os
 import sys
+import json
 import time
 import logging
 import argparse
@@ -728,11 +730,11 @@ def get_anomaly_urls(retailer, crawl_date):
     """DB에서 이상 감지된 URL 조회
 
     Args:
-        retailer: 리테일러 이름 (예: danawa)
+        retailer: 리테일러 이름 (예: danawa, currys)
         crawl_date: 크롤링 날짜 (예: 2026-01-31)
 
     Returns:
-        list of dict: [{'product_url': '...', 'retailersku': '...'}, ...]
+        list of dict: [{'id': ..., 'producturl': '...', 'retailersku': '...'}, ...]
     """
     try:
         connection = pymysql.connect(
@@ -745,10 +747,12 @@ def get_anomaly_urls(retailer, crawl_date):
         )
 
         with connection.cursor(pymysql.cursors.DictCursor) as cursor:
+            # retailer_id를 통해 ds_monitoring_targets와 JOIN
             query = """
-                SELECT id, producturl, retailersku
-                FROM ssd_crawl_db.ds_monitoring_report_anomaly
-                WHERE retailer = %s AND crawl_date = %s
+                SELECT a.id, a.producturl, a.retailersku
+                FROM ssd_crawl_db.ds_monitoring_report_anomaly a
+                JOIN ssd_crawl_db.ds_monitoring_targets t ON a.retailer_id = t.retailer_id
+                WHERE LOWER(t.retailer) = LOWER(%s) AND a.crawl_date = %s
             """
             cursor.execute(query, (retailer, crawl_date))
             results = cursor.fetchall()
@@ -769,6 +773,24 @@ def main():
     parser.add_argument('--crawl_date', '-d', help='크롤링 날짜 (예: 2026-01-31)')
 
     args = parser.parse_args()
+
+    # 자동 실행 모드 플래그 (SSM 원격 실행 시 True)
+    is_auto_mode = False
+
+    # CLI 인수가 없으면 파라미터 파일에서 읽기 (SSM 원격 실행용)
+    param_file = os.path.join(os.path.dirname(__file__), 'capture_params.json')
+    if not args.retailer and os.path.exists(param_file):
+        try:
+            with open(param_file, 'r', encoding='utf-8-sig') as f:
+                params = json.load(f)
+                args.retailer = params.get('retailer')
+                args.crawl_date = params.get('crawl_date')
+                logger.info(f"📁 파라미터 파일에서 로드: retailer={args.retailer}, crawl_date={args.crawl_date}")
+            # 사용 후 파일 삭제 (다음 실행 시 수동 입력 모드로 동작)
+            os.remove(param_file)
+            is_auto_mode = True  # 파라미터 파일에서 로드 = 자동 실행 모드
+        except Exception as e:
+            logger.error(f"❌ 파라미터 파일 읽기 실패: {e}")
 
     # 인수 없으면 직접 입력 받기
     if not args.retailer:
@@ -794,7 +816,8 @@ def main():
 
     if not args.retailer or not args.crawl_date:
         logger.error("❌ 리테일러와 크롤링 날짜를 입력해주세요.")
-        input("\n종료하려면 Enter를 누르세요...")
+        if not is_auto_mode:
+            input("\n종료하려면 Enter를 누르세요...")
         return
 
     # DB에서 URL 조회
@@ -803,6 +826,8 @@ def main():
 
     if not urls_data:
         logger.warning("⚠️ 조회된 URL이 없습니다.")
+        if not is_auto_mode:
+            input("\n종료하려면 Enter를 누르세요...")
         return
 
     # URL 데이터 변환
@@ -827,7 +852,8 @@ def main():
     finally:
         monitor.cleanup()
 
-    input("\n종료하려면 Enter를 누르세요...")
+    if not is_auto_mode:
+        input("\n종료하려면 Enter를 누르세요...")
 
 
 if __name__ == "__main__":
