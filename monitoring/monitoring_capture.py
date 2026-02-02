@@ -250,6 +250,20 @@ class ScreenshotMonitor:
                     '//span[contains(text(), "Continuer vos achats")]/ancestor::button',
                     '//button[contains(text(), "Continue shopping")]',
                 ],
+                'amazon_de': [
+                    # 독일어: Weiter einkaufen
+                    '//button[contains(text(), "Weiter einkaufen")]',
+                    '//a[contains(text(), "Weiter einkaufen")]',
+                    '//span[contains(text(), "Weiter einkaufen")]/ancestor::button',
+                    '//button[contains(text(), "Continue shopping")]',
+                ],
+                'amazon_nl': [
+                    # 네덜란드어: Doorgaan met winkelen
+                    '//button[contains(text(), "Doorgaan met winkelen")]',
+                    '//a[contains(text(), "Doorgaan met winkelen")]',
+                    '//span[contains(text(), "Doorgaan met winkelen")]/ancestor::button',
+                    '//button[contains(text(), "Continue shopping")]',
+                ],
             }
 
             # 리테일러별 셀렉터 가져오기
@@ -329,6 +343,14 @@ class ScreenshotMonitor:
                     '#sp-cc-accept',
                     'input#sp-cc-accept',
                 ],
+                'amazon_de': [
+                    '#sp-cc-accept',
+                    'input#sp-cc-accept',
+                ],
+                'amazon_nl': [
+                    '#sp-cc-accept',
+                    'input#sp-cc-accept',
+                ],
                 'currys': [
                     '#onetrust-accept-btn-handler',
                     'button#onetrust-accept-btn-handler',
@@ -345,6 +367,24 @@ class ScreenshotMonitor:
                     '//button[contains(text(), "Accept")]',
                 ],
                 'danawa': [],  # 다나와는 쿠키 팝업 없음
+                'fnac': [
+                    '#onetrust-accept-btn-handler',
+                    '//button[contains(text(), "J\'accepte")]',
+                    '//button[contains(text(), "Accepter")]',
+                ],
+                'coolblue': [
+                    '#onetrust-accept-btn-handler',
+                    'button[name="accept"]',
+                    '//button[contains(text(), "Oké")]',
+                ],
+                'mediamarkt': [
+                    '#pwa-consent-layer-accept-all-button',
+                    '//button[contains(text(), "Alle akzeptieren")]',
+                ],
+                'xkom': [
+                    '#onetrust-accept-btn-handler',
+                    '//button[contains(text(), "Akceptuję")]',
+                ],
             }
 
             # 리테일러별 셀렉터 가져오기
@@ -433,6 +473,16 @@ class ScreenshotMonitor:
                     'something went wrong', 'access denied',
                     'une erreur s\'est produite',  # 에러가 발생했습니다
                 ],
+                'amazon_de': [
+                    'sorry', 'robot check', '503 service unavailable',
+                    'something went wrong', 'access denied',
+                    'ein fehler ist aufgetreten',  # 에러가 발생했습니다
+                ],
+                'amazon_nl': [
+                    'sorry', 'robot check', '503 service unavailable',
+                    'something went wrong', 'access denied',
+                    'er is een fout opgetreden',  # 에러가 발생했습니다
+                ],
             }
 
             # 리테일러별 키워드 가져오기
@@ -461,6 +511,8 @@ class ScreenshotMonitor:
                 'amazon_it': ['continua lo shopping', 'continue shopping'],
                 'amazon_es': ['seguir comprando', 'continue shopping'],
                 'amazon_fr': ['continuer vos achats', 'continue shopping'],
+                'amazon_de': ['weiter einkaufen', 'continue shopping'],
+                'amazon_nl': ['doorgaan met winkelen', 'continue shopping'],
             }
 
             for keyword in continue_keywords.get(self.retailer, ['continue shopping']):

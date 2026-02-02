@@ -326,6 +326,174 @@ def setup_centrecom():
     return driver, settings
 
 
+def setup_amazon_de():
+    """Amazon Germany - undetected-chromedriver"""
+    chrome_version = get_chrome_version()
+
+    options = uc.ChromeOptions()
+    options.add_argument('--disable-blink-features=AutomationControlled')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-setuid-sandbox')
+    options.add_argument('--disable-gpu')
+    options.add_argument('--disable-extensions')
+    options.add_argument('--disable-infobars')
+    options.add_argument('--disable-renderer-backgrounding')
+    options.add_argument('--js-flags=--max-old-space-size=512')
+    options.add_experimental_option('prefs', {'intl.accept_languages': 'de-DE,de'})
+
+    driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
+    driver.maximize_window()
+
+    settings = {
+        'wait_time': 3,
+        's3_prefix': 'amazon_de',
+        'driver_type': 'selenium'
+    }
+
+    return driver, settings
+
+
+def setup_fnac():
+    """Fnac France - undetected-chromedriver"""
+    chrome_version = get_chrome_version()
+
+    options = uc.ChromeOptions()
+    options.add_argument('--disable-blink-features=AutomationControlled')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-setuid-sandbox')
+    options.add_argument('--disable-gpu')
+    options.add_argument('--disable-extensions')
+    options.add_argument('--disable-infobars')
+    options.add_argument('--disable-renderer-backgrounding')
+    options.add_argument('--js-flags=--max-old-space-size=512')
+    options.add_experimental_option('prefs', {'intl.accept_languages': 'fr-FR,fr'})
+
+    driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
+    driver.maximize_window()
+
+    settings = {
+        'wait_time': 3,
+        's3_prefix': 'fnac',
+        'driver_type': 'selenium'
+    }
+
+    return driver, settings
+
+
+def setup_amazon_nl():
+    """Amazon Netherlands - undetected-chromedriver"""
+    chrome_version = get_chrome_version()
+
+    options = uc.ChromeOptions()
+    options.add_argument('--disable-blink-features=AutomationControlled')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-setuid-sandbox')
+    options.add_argument('--disable-gpu')
+    options.add_argument('--disable-extensions')
+    options.add_argument('--disable-infobars')
+    options.add_argument('--disable-renderer-backgrounding')
+    options.add_argument('--js-flags=--max-old-space-size=512')
+    options.add_experimental_option('prefs', {'intl.accept_languages': 'nl-NL,nl'})
+
+    driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
+    driver.maximize_window()
+
+    settings = {
+        'wait_time': 3,
+        's3_prefix': 'amazon_nl',
+        'driver_type': 'selenium'
+    }
+
+    return driver, settings
+
+
+def setup_coolblue():
+    """Coolblue Netherlands - undetected-chromedriver"""
+    chrome_version = get_chrome_version()
+
+    options = uc.ChromeOptions()
+    options.add_argument('--disable-blink-features=AutomationControlled')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-setuid-sandbox')
+    options.add_argument('--disable-gpu')
+    options.add_argument('--disable-extensions')
+    options.add_argument('--disable-infobars')
+    options.add_argument('--disable-renderer-backgrounding')
+    options.add_argument('--js-flags=--max-old-space-size=512')
+    options.add_experimental_option('prefs', {'intl.accept_languages': 'nl-NL,nl'})
+
+    driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
+    driver.maximize_window()
+
+    settings = {
+        'wait_time': 3,
+        's3_prefix': 'coolblue',
+        'driver_type': 'selenium'
+    }
+
+    return driver, settings
+
+
+def setup_mediamarkt():
+    """MediaMarkt Germany - undetected-chromedriver"""
+    chrome_version = get_chrome_version()
+
+    options = uc.ChromeOptions()
+    options.add_argument('--disable-blink-features=AutomationControlled')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-setuid-sandbox')
+    options.add_argument('--disable-gpu')
+    options.add_argument('--disable-extensions')
+    options.add_argument('--disable-infobars')
+    options.add_argument('--disable-renderer-backgrounding')
+    options.add_argument('--js-flags=--max-old-space-size=512')
+    options.add_experimental_option('prefs', {'intl.accept_languages': 'de-DE,de'})
+
+    driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
+    driver.maximize_window()
+
+    settings = {
+        'wait_time': 3,
+        's3_prefix': 'mediamarkt',
+        'driver_type': 'selenium'
+    }
+
+    return driver, settings
+
+
+def setup_xkom():
+    """X-Kom Poland - undetected-chromedriver"""
+    chrome_version = get_chrome_version()
+
+    options = uc.ChromeOptions()
+    options.add_argument('--disable-blink-features=AutomationControlled')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-setuid-sandbox')
+    options.add_argument('--disable-gpu')
+    options.add_argument('--disable-extensions')
+    options.add_argument('--disable-infobars')
+    options.add_argument('--disable-renderer-backgrounding')
+    options.add_argument('--js-flags=--max-old-space-size=512')
+    options.add_experimental_option('prefs', {'intl.accept_languages': 'pl-PL,pl'})
+
+    driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
+    driver.maximize_window()
+
+    settings = {
+        'wait_time': 3,
+        's3_prefix': 'xkom',
+        'driver_type': 'selenium'
+    }
+
+    return driver, settings
+
+
 # 리테일러 매핑 (번호 순서)
 RETAILERS = {
     'amazon_usa': setup_amazon_usa,      # 1
@@ -338,5 +506,11 @@ RETAILERS = {
     'amazon_it': setup_amazon_it,        # 8
     'amazon_es': setup_amazon_es,        # 9
     'amazon_fr': setup_amazon_fr,        # 10
-    'centrecom': setup_centrecom,        # 11
+    'fnac': setup_fnac,                  # 11
+    'amazon_nl': setup_amazon_nl,        # 12
+    'coolblue': setup_coolblue,          # 13
+    'amazon_de': setup_amazon_de,        # 14
+    'mediamarkt': setup_mediamarkt,      # 15
+    'xkom': setup_xkom,                  # 16
+    'centrecom': setup_centrecom,        # 17
 }
