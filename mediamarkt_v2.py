@@ -189,7 +189,6 @@ class MediaMarktInfiniteScraper:
             options.add_argument('--disable-extensions')
             options.add_argument('--disable-infobars')
             options.add_argument('--disable-renderer-backgrounding')
-            options.add_argument('--js-flags=--max-old-space-size=512')
 
             # 독일 설정
             options.add_argument('--lang=de-DE')
