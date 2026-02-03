@@ -747,12 +747,13 @@ def get_anomaly_urls(retailer, crawl_date):
         )
 
         with connection.cursor(pymysql.cursors.DictCursor) as cursor:
-            # retailer_id를 통해 ds_monitoring_targets와 JOIN
+            # retailer_id를 통해 ds_monitoring_targets와 JOIN (screenshot_id 없는 것만)
             query = """
                 SELECT a.id, a.producturl, a.retailersku
                 FROM ssd_crawl_db.ds_monitoring_report_anomaly a
                 JOIN ssd_crawl_db.ds_monitoring_targets t ON a.retailer_id = t.retailer_id
                 WHERE LOWER(t.retailer) = LOWER(%s) AND a.crawl_date = %s
+                  AND a.screenshot_id IS NULL
             """
             cursor.execute(query, (retailer, crawl_date))
             results = cursor.fetchall()
