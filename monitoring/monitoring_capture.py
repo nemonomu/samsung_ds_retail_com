@@ -380,6 +380,7 @@ class ScreenshotMonitor:
                     '#onetrust-accept-btn-handler',
                     'button#onetrust-accept-btn-handler',
                     "button[aria-label='Accept all cookies']",
+                    '//button[contains(text(), "Allow all")]',
                     '//button[contains(text(), "Accept")]',
                 ],
                 'bestbuy': [
