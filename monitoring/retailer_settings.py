@@ -466,7 +466,7 @@ def setup_mediamarkt():
     return driver, settings
 
 
-def setup_xkom():
+def setup_x_kom():
     """X-Kom Poland - undetected-chromedriver"""
     chrome_version = get_chrome_version()
 
@@ -487,7 +487,7 @@ def setup_xkom():
 
     settings = {
         'wait_time': 3,
-        's3_prefix': 'xkom',
+        's3_prefix': 'x-kom',
         'driver_type': 'selenium'
     }
 
@@ -511,6 +511,6 @@ RETAILERS = {
     'coolblue': setup_coolblue,          # 13
     'amazon_de': setup_amazon_de,        # 14
     'mediamarkt': setup_mediamarkt,      # 15
-    'xkom': setup_xkom,                  # 16
+    'x-kom': setup_x_kom,                 # 16
     'centrecom': setup_centrecom,        # 17
 }

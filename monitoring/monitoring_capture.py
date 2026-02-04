@@ -253,10 +253,11 @@ class ScreenshotMonitor:
                     '//button[contains(text(), "Continue shopping")]',
                 ],
                 'amazon_de': [
-                    # 독일어: Weiter einkaufen
-                    '//button[contains(text(), "Weiter einkaufen")]',
-                    '//a[contains(text(), "Weiter einkaufen")]',
-                    '//span[contains(text(), "Weiter einkaufen")]/ancestor::button',
+                    # 독일어: Weiter shoppen
+                    '//input[@data-nav-ref="dismissBtn"]',
+                    '//button[contains(text(), "Weiter shoppen")]',
+                    '//a[contains(text(), "Weiter shoppen")]',
+                    '//span[contains(text(), "Weiter shoppen")]/ancestor::button',
                     '//button[contains(text(), "Continue shopping")]',
                 ],
                 'amazon_nl': [
@@ -319,39 +320,61 @@ class ScreenshotMonitor:
                     '#sp-cc-accept',
                     'input#sp-cc-accept',
                     'input[data-action="sp-cc-accept"]',
+                    '//input[@name="accept"]',
+                    '//span[text()="Accept"]/ancestor::button',
                 ],
                 'amazon_gb': [
                     '#sp-cc-accept',
                     'input#sp-cc-accept',
                     'input[data-action="sp-cc-accept"]',
+                    '//input[@name="accept"]',
+                    '//span[text()="Accept"]/ancestor::button',
                 ],
                 'amazon_jp': [
                     '#sp-cc-accept',
                     'input#sp-cc-accept',
+                    '//input[@name="accept"]',
+                    '//span[text()="同意する"]/ancestor::button',
                 ],
                 'amazon_in': [
                     '#sp-cc-accept',
                     'input#sp-cc-accept',
+                    '//input[@name="accept"]',
+                    '//span[text()="Accept"]/ancestor::button',
                 ],
                 'amazon_it': [
                     '#sp-cc-accept',
                     'input#sp-cc-accept',
+                    '//input[@name="accept"]',
+                    '//span[text()="Accetta"]/ancestor::button',
                 ],
                 'amazon_es': [
                     '#sp-cc-accept',
                     'input#sp-cc-accept',
+                    '//input[@name="accept"]',
+                    '//span[text()="Aceptar"]/ancestor::button',
+                    '//button[contains(text(), "Aceptar")]',
                 ],
                 'amazon_fr': [
                     '#sp-cc-accept',
                     'input#sp-cc-accept',
+                    '//input[@name="accept"]',
+                    '//span[text()="Accepter"]/ancestor::button',
+                    '//button[contains(text(), "Accepter")]',
                 ],
                 'amazon_de': [
                     '#sp-cc-accept',
                     'input#sp-cc-accept',
+                    '//input[@name="accept"]',
+                    '//span[text()="Annehmen"]/ancestor::button',
+                    '//button[contains(text(), "Annehmen")]',
                 ],
                 'amazon_nl': [
                     '#sp-cc-accept',
                     'input#sp-cc-accept',
+                    '//input[@name="accept"]',
+                    '//span[text()="Accepteren"]/ancestor::button',
+                    '//button[contains(text(), "Accepteren")]',
                 ],
                 'currys': [
                     '#onetrust-accept-btn-handler',
@@ -373,6 +396,9 @@ class ScreenshotMonitor:
                     '#onetrust-accept-btn-handler',
                     '//button[contains(text(), "J\'accepte")]',
                     '//button[contains(text(), "Accepter")]',
+                    '//button[contains(text(), "Non, merci")]',
+                    '//a[contains(text(), "Non, merci")]',
+                    '//span[contains(text(), "Non, merci")]/ancestor::button',
                 ],
                 'coolblue': [
                     '#onetrust-accept-btn-handler',
@@ -383,7 +409,7 @@ class ScreenshotMonitor:
                     '#pwa-consent-layer-accept-all-button',
                     '//button[contains(text(), "Alle akzeptieren")]',
                 ],
-                'xkom': [
+                'x-kom': [
                     '#onetrust-accept-btn-handler',
                     '//button[contains(text(), "Akceptuję")]',
                 ],
@@ -422,14 +448,86 @@ class ScreenshotMonitor:
         except Exception as e:
             pass  # 팝업이 없으면 무시
 
+    def handle_newsletter_popup(self):
+        """뉴스레터 구독 팝업 처리 (centrecom 전용)"""
+        if self.retailer != 'centrecom':
+            return
+
+        try:
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+
+            newsletter_selectors = [
+                '//button[contains(text(), "Nope")]',
+                '//a[contains(text(), "Nope")]',
+                '//button[contains(text(), "No thanks")]',
+                '//button[contains(text(), "No Thanks")]',
+                '//a[contains(text(), "No thanks")]',
+                '.modal .close',
+                '.popup .close',
+                'button.close[data-dismiss="modal"]',
+                '//button[@aria-label="Close"]',
+            ]
+
+            for selector in newsletter_selectors:
+                try:
+                    if selector.startswith('//'):
+                        element = WebDriverWait(self.driver, 2).until(
+                            EC.element_to_be_clickable((By.XPATH, selector))
+                        )
+                    else:
+                        element = WebDriverWait(self.driver, 2).until(
+                            EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
+                        )
+                    element.click()
+                    logger.info(f"✅ 뉴스레터 팝업 닫기 완료 (selector: {selector})")
+                    time.sleep(1)
+                    return
+                except:
+                    continue
+        except Exception as e:
+            pass  # 팝업이 없으면 무시
+
     def is_error_page(self):
-        """에러 페이지 여부 확인 (Amazon 리테일러 전용) - 국가별 키워드 적용"""
+        """에러 페이지 여부 확인 (Amazon 리테일러 전용) - 페이지 타이틀 + 본문 키워드"""
         try:
             # Amazon 리테일러가 아니면 항상 False
             if not self.is_amazon_retailer():
                 return False
 
             driver_type = self.settings.get('driver_type', 'selenium')
+
+            # 1. 페이지 타이틀로 에러 감지 (오탐 없음)
+            if driver_type == 'selenium':
+                page_title = self.driver.title.lower()
+            elif driver_type == 'drission':
+                page_title = self.driver.title.lower()
+            elif driver_type == 'playwright':
+                page_title = self.driver.title().lower()
+            else:
+                return False
+
+            # 숫자 상태 코드는 단어 경계로 매칭 (제품 모델명 오탐 방지: T500, 404K 등)
+            import re
+            status_code_keywords = ['503', '502', '500', '404']
+            for code in status_code_keywords:
+                if re.search(r'\b' + code + r'\b', page_title):
+                    logger.warning(f"⚠️ 에러 페이지 타이틀 감지: '{page_title}' (keyword: {code})")
+                    return True
+
+            # 텍스트 키워드는 부분 문자열 매칭
+            text_error_keywords = [
+                'error', 'fout', 'erreur', 'fehler', 'errore', 'エラー',
+                'sorry', 'service unavailable',
+            ]
+
+            for keyword in text_error_keywords:
+                if keyword in page_title:
+                    logger.warning(f"⚠️ 에러 페이지 타이틀 감지: '{page_title}' (keyword: {keyword})")
+                    return True
+
+            # 2. 본문 키워드 검사 (봇 체크 전용)
             if driver_type == 'selenium':
                 page_source = self.driver.page_source
             elif driver_type == 'drission':
@@ -441,85 +539,15 @@ class ScreenshotMonitor:
 
             page_source_lower = page_source.lower()
 
-            # 리테일러별 에러 페이지 키워드
-            retailer_error_keywords = {
-                'amazon_usa': [
-                    'sorry', 'robot check', '503 service unavailable',
-                    'something went wrong', 'access denied',
-                ],
-                'amazon_gb': [
-                    'sorry', 'robot check', '503 service unavailable',
-                    'something went wrong', 'access denied',
-                ],
-                'amazon_jp': [
-                    'sorry', 'robot check', '503 service unavailable',
-                    'something went wrong', 'access denied',
-                    'エラーが発生しました',  # 에러가 발생했습니다
-                ],
-                'amazon_in': [
-                    'sorry', 'robot check', '503 service unavailable',
-                    'something went wrong', 'access denied',
-                ],
-                'amazon_it': [
-                    'sorry', 'robot check', '503 service unavailable',
-                    'something went wrong', 'access denied',
-                    'si è verificato un errore',  # 에러가 발생했습니다
-                ],
-                'amazon_es': [
-                    'sorry', 'robot check', '503 service unavailable',
-                    'something went wrong', 'access denied',
-                    'se ha producido un error',  # 에러가 발생했습니다
-                ],
-                'amazon_fr': [
-                    'sorry', 'robot check', '503 service unavailable',
-                    'something went wrong', 'access denied',
-                    'une erreur s\'est produite',  # 에러가 발생했습니다
-                ],
-                'amazon_de': [
-                    'sorry', 'robot check', '503 service unavailable',
-                    'something went wrong', 'access denied',
-                    'ein fehler ist aufgetreten',  # 에러가 발생했습니다
-                ],
-                'amazon_nl': [
-                    'sorry', 'robot check', '503 service unavailable',
-                    'something went wrong', 'access denied',
-                    'er is een fout opgetreden',  # 에러가 발생했습니다
-                ],
-            }
-
-            # 리테일러별 키워드 가져오기
-            error_keywords = retailer_error_keywords.get(self.retailer, [])
-
-            # 공통 키워드 추가
-            common_keywords = [
-                'sorry', 'robot check', '503 service', '502 bad gateway',
-                'access denied', 'service unavailable',
+            body_keywords = [
+                'sorry, we just need to make sure you\'re not a robot',
+                'robot check',
                 'enter the characters you see below',
             ]
-            error_keywords.extend(common_keywords)
 
-            # 키워드 검사
-            for keyword in error_keywords:
-                if keyword.lower() in page_source_lower:
+            for keyword in body_keywords:
+                if keyword in page_source_lower:
                     logger.warning(f"⚠️ 에러 페이지 키워드 감지: {keyword}")
-                    return True
-
-            # Continue shopping 페이지도 에러 페이지로 간주 (재시도 필요)
-            continue_keywords = {
-                'amazon_usa': ['continue shopping'],
-                'amazon_gb': ['continue shopping'],
-                'amazon_jp': ['ショッピングを続ける', 'continue shopping'],
-                'amazon_in': ['continue shopping'],
-                'amazon_it': ['continua lo shopping', 'continue shopping'],
-                'amazon_es': ['seguir comprando', 'continue shopping'],
-                'amazon_fr': ['continuer vos achats', 'continue shopping'],
-                'amazon_de': ['weiter einkaufen', 'continue shopping'],
-                'amazon_nl': ['doorgaan met winkelen', 'continue shopping'],
-            }
-
-            for keyword in continue_keywords.get(self.retailer, ['continue shopping']):
-                if keyword.lower() in page_source_lower:
-                    logger.warning(f"⚠️ Continue shopping 페이지 감지: {keyword}")
                     return True
 
             return False
@@ -564,6 +592,9 @@ class ScreenshotMonitor:
 
                 # 3. 쿠키 팝업 처리
                 self.handle_cookie_popup()
+
+                # 4. 뉴스레터 팝업 처리 (centrecom)
+                self.handle_newsletter_popup()
                 break
 
             # 스크린샷 캡쳐
@@ -693,15 +724,40 @@ class ScreenshotMonitor:
         if self.driver:
             try:
                 if driver_type == 'selenium':
-                    # undetected-chromedriver Windows 오류 방지
+                    # Chrome PID 저장 (프로세스 강제 종료용)
+                    chrome_pid = None
                     try:
-                        self.driver.service.process.kill()
+                        chrome_pid = self.driver.service.process.pid
                     except:
                         pass
+
+                    # 1. 브라우저 창 닫기
+                    try:
+                        self.driver.close()
+                    except:
+                        pass
+
+                    # 2. 드라이버 종료
                     try:
                         self.driver.quit()
                     except:
                         pass
+
+                    # 3. 서비스 프로세스 강제 종료
+                    try:
+                        self.driver.service.process.kill()
+                    except:
+                        pass
+
+                    # 4. Chrome 프로세스 강제 종료 (PID 기반)
+                    if chrome_pid:
+                        try:
+                            import os
+                            import signal
+                            os.kill(chrome_pid, signal.SIGTERM)
+                        except:
+                            pass
+
                     # __del__ 중복 호출 방지
                     self.driver.service = None
                 elif driver_type == 'drission':
@@ -821,7 +877,6 @@ def main():
             input("\n종료하려면 Enter를 누르세요...")
         return
 
-    # DB에서 URL 조회
     logger.info(f"🔍 {args.retailer} / {args.crawl_date} 이상 감지 URL 조회 중...")
     urls_data = get_anomaly_urls(args.retailer, args.crawl_date)
 
