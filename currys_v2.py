@@ -811,6 +811,15 @@ def main():
                             logger.info(f"💾 재시도 성공 데이터 DB 저장: {len(retry_success_data)}개")
                         except Exception as e:
                             logger.error(f"재시도 성공 데이터 DB 저장 실패: {e}")
+
+                    # 재시도 후에도 title NULL인 데이터 DB 저장
+                    retry_still_null = retry_results_df[retry_results_df['title'].isna()]
+                    if len(retry_still_null) > 0 and scraper.db_engine:
+                        try:
+                            retry_still_null.to_sql('currys_price_crawl_tbl_gb_v2', scraper.db_engine, if_exists='append', index=False)
+                            logger.info(f"💾 재시도 후에도 title null 데이터 DB 저장: {len(retry_still_null)}개")
+                        except Exception as e:
+                            logger.error(f"재시도 후 title null 데이터 DB 저장 실패: {e}")
         elif title_null_count > 0:
             # 3개 이하: 재시도 없이 title null인 것도 DB에 저장
             logger.info(f"\n📊 title null {title_null_count}개 (3개 이하) - 재시도 없이 저장")
