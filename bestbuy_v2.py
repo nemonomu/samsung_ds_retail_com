@@ -460,23 +460,29 @@ class BestBuyScraper:
                         is_no_longer_available = True
 
                         # 해당 상태용 title 추출
+                        logger.info(f"🔍 no_longer_available title xpath 목록: {self.XPATHS.get('no_longer_available_title', [])}")
                         for title_xpath in self.XPATHS.get('no_longer_available_title', []):
                             try:
+                                logger.info(f"  시도 중: {title_xpath}")
                                 title_element = self.driver.find_element(By.XPATH, title_xpath)
                                 result['title'] = title_element.text.strip()
                                 logger.info(f"제목 (no longer available): {result['title'][:50]}...")
                                 break
-                            except:
+                            except Exception as e:
+                                logger.warning(f"  실패: {e}")
                                 continue
 
                         # 해당 상태용 imageurl 추출
+                        logger.info(f"🔍 no_longer_available imageurl xpath 목록: {self.XPATHS.get('no_longer_available_imageurl', [])}")
                         for img_xpath in self.XPATHS.get('no_longer_available_imageurl', []):
                             try:
+                                logger.info(f"  시도 중: {img_xpath}")
                                 image_element = self.driver.find_element(By.XPATH, img_xpath)
                                 result['imageurl'] = image_element.get_attribute('src')
                                 logger.info(f"이미지 URL (no longer available): {result['imageurl'][:50]}...")
                                 break
-                            except:
+                            except Exception as e:
+                                logger.warning(f"  실패: {e}")
                                 continue
 
                         # retailprice는 None으로 유지, no_longer_available 표시 후 반환
