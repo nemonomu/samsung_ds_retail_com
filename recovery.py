@@ -535,6 +535,38 @@ class RecoveryManager:
 
         return success_count > 0 or fail_count == 0
 
+    def upload_only(self, target, session_start):
+        """파일서버 업로드만 실행 (복구 없이)"""
+        config = TARGET_CONFIG[target]
+        logger.info(f"\n{'='*60}")
+        logger.info(f"파일 업로드: {config['name']}")
+        logger.info(f"세션: {session_start}")
+        logger.info(f"{'='*60}")
+
+        # 전체 레코드 조회 (중복 제거)
+        all_records = self.get_session_all_records(target, session_start)
+        if all_records is None or all_records.empty:
+            logger.error("레코드 조회 실패")
+            return False
+
+        logger.info(f"파일 생성 대상: {len(all_records)}개 레코드")
+
+        # 파일명 일시 입력 받기
+        print(f"\n파일명 일시를 입력하세요 (예: 20260206_120000)")
+        print("Enter를 누르면 현재 시간으로 자동 생성됩니다.")
+        datetime_input = input("일시: ").strip()
+        if datetime_input:
+            custom_filename = f"{datetime_input}_{config['file_prefix']}"
+        else:
+            custom_filename = None
+
+        if self.generate_and_upload_file(target, all_records, session_start, custom_filename):
+            logger.info("파일서버 업로드 완료")
+            return True
+        else:
+            logger.error("파일서버 업로드 실패")
+            return False
+
 
 def select_target():
     """대상 선택"""
@@ -642,21 +674,28 @@ def main():
         if session_start is None:
             continue
 
-        # 3. 확인
+        # 3. 작업 선택
         print(f"\n선택한 세션: {session_start}")
-        confirm = input("복구를 진행하시겠습니까? (y/n): ").strip().lower()
+        print("1. 복구 실행 (NULL 재크롤링 + 파일 업로드)")
+        print("2. 파일 업로드만 (복구 없이)")
+        print("0. 취소")
+        action = input("선택: ").strip()
 
-        if confirm == 'y':
-            # 4. 복구 실행
+        if action == '1':
+            # 복구 실행
             manager.run_recovery(target, session_start)
-
-            # 계속할지 확인
-            cont = input("\n다른 세션을 복구하시겠습니까? (y/n): ").strip().lower()
-            if cont != 'y':
-                print("\n프로그램을 종료합니다.")
-                break
+        elif action == '2':
+            # 파일 업로드만
+            manager.upload_only(target, session_start)
         else:
-            print("복구가 취소되었습니다.")
+            print("취소되었습니다.")
+            continue
+
+        # 계속할지 확인
+        cont = input("\n다른 세션을 처리하시겠습니까? (y/n): ").strip().lower()
+        if cont != 'y':
+            print("\n프로그램을 종료합니다.")
+            break
 
 
 if __name__ == "__main__":
