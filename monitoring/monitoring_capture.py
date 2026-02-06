@@ -10,7 +10,7 @@ import json
 import time
 import logging
 import argparse
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 # 상위 디렉토리 config 참조
@@ -76,9 +76,13 @@ class ScreenshotMonitor:
             logger.error(f"❌ DB 연결 실패: {e}")
             raise
 
-    def insert_file_record(self, file_name, file_path, file_size):
+    def insert_file_record(self, file_name, file_path, file_size, created_id=None):
         """파일 정보를 DB에 저장하고 file_id 반환"""
         try:
+            # 한국 시간대 (UTC+9)
+            kst = timezone(timedelta(hours=9))
+            created_at = datetime.now(kst)
+
             with self.db_conn.cursor() as cursor:
                 query = """
                     INSERT INTO ssd_crawl_db.ds_monitoring_file
@@ -91,8 +95,8 @@ class ScreenshotMonitor:
                     file_size,
                     'image/png',
                     0,
-                    datetime.now(),
-                    'crawl'
+                    created_at,
+                    created_id or 'crawl'
                 ))
                 file_id = cursor.lastrowid
                 logger.info(f"✅ 파일 레코드 저장 완료: file_id={file_id}")
