@@ -1,6 +1,6 @@
 """
-Title/ImageURL NULL 복구 스크립트
-- fr_v2, uk_v2, currys_v2, it_v2, de_v2 크롤링 결과 중 title 또는 imageurl이 NULL인 레코드 복구
+Title/ImageURL/Price NULL 복구 스크립트
+- fr_v2, uk_v2, currys_v2, it_v2, de_v2, bestbuy_v2 크롤링 결과 중 title, imageurl, retailprice가 NULL인 레코드 복구
 - DB UPDATE + 파일서버 재업로드
 
 사용법:
@@ -78,6 +78,15 @@ TARGET_CONFIG = {
         'local_tz': 'Europe/Berlin',
         'scraper_module': 'de_v2',
         'scraper_class': 'AmazonDEScraper'
+    },
+    'bestbuy': {
+        'name': '미국 BestBuy',
+        'table': 'bestbuy_price_crawl_tbl_usa_v2',
+        'country_code': 'usa',
+        'file_prefix': 'usa_bestbuy',
+        'local_tz': 'America/New_York',
+        'scraper_module': 'bestbuy_v2',
+        'scraper_class': 'BestBuyScraper'
     }
 }
 
@@ -114,7 +123,8 @@ class RecoveryManager:
             DATE_FORMAT(MIN(kr_crawl_datetime), '%%Y-%%m-%%d %%H:%%i:%%s') as session_start,
             COUNT(*) as total_count,
             SUM(CASE WHEN title IS NULL THEN 1 ELSE 0 END) as title_null_count,
-            SUM(CASE WHEN imageurl IS NULL OR imageurl = '' THEN 1 ELSE 0 END) as imageurl_null_count
+            SUM(CASE WHEN imageurl IS NULL OR imageurl = '' THEN 1 ELSE 0 END) as imageurl_null_count,
+            SUM(CASE WHEN retailprice IS NULL THEN 1 ELSE 0 END) as price_null_count
         FROM {table}
         GROUP BY DATE(kr_crawl_datetime), HOUR(kr_crawl_datetime)
         ORDER BY crawl_date DESC, session_start DESC
@@ -139,7 +149,7 @@ class RecoveryManager:
         FROM {table}
         WHERE DATE(kr_crawl_datetime) = DATE(:session_start)
           AND HOUR(kr_crawl_datetime) = HOUR(:session_start)
-          AND (title IS NULL OR imageurl IS NULL OR imageurl = '')
+          AND (title IS NULL OR imageurl IS NULL OR imageurl = '' OR retailprice IS NULL)
         """
 
         try:
@@ -518,6 +528,7 @@ def select_target():
     print("3. currys (영국 Currys)")
     print("4. it (이탈리아 Amazon)")
     print("5. de (독일 Amazon)")
+    print("6. bestbuy (미국 BestBuy)")
     print("0. 종료")
 
     while True:
@@ -535,6 +546,8 @@ def select_target():
                 return 'it'
             elif choice == '5':
                 return 'de'
+            elif choice == '6':
+                return 'bestbuy'
             else:
                 print("올바른 번호를 입력하세요.")
         except KeyboardInterrupt:
@@ -551,21 +564,22 @@ def select_session(manager, target):
         return None
 
     print(f"\n===== {config['name']} 세션 목록 =====")
-    print(f"{'번호':^4} | {'시작시간 (KST)':<20} | {'총개수':>6} | {'title NULL':>10} | {'imageurl NULL':>13}")
-    print("-" * 70)
+    print(f"{'번호':^4} | {'시작시간 (KST)':<20} | {'총개수':>6} | {'title NULL':>10} | {'imageurl NULL':>13} | {'price NULL':>10}")
+    print("-" * 85)
 
     for idx, row in sessions.iterrows():
         session_start = row['session_start']
         total = row['total_count']
         title_null = row['title_null_count']
         img_null = row['imageurl_null_count']
+        price_null = row['price_null_count']
 
         # currys: title null <= 3 표시
         note = ""
         if target == 'currys' and title_null <= 3:
             note = " (복구불필요)"
 
-        print(f"{idx+1:^4} | {str(session_start):<20} | {total:>6} | {title_null:>10} | {img_null:>13}{note}")
+        print(f"{idx+1:^4} | {str(session_start):<20} | {total:>6} | {title_null:>10} | {img_null:>13} | {price_null:>10}{note}")
 
     if target == 'currys':
         print("\n* currys: title NULL <= 3개 세션은 복구 대상 아님")
