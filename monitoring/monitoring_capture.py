@@ -79,9 +79,9 @@ class ScreenshotMonitor:
     def insert_file_record(self, file_name, file_path, file_size, created_id=None):
         """파일 정보를 DB에 저장하고 file_id 반환"""
         try:
-            # 한국 시간대 (UTC+9)
+            # 한국 시간대 (UTC+9) - UTC 기준으로 변환
             kst = timezone(timedelta(hours=9))
-            created_at = datetime.now(kst)
+            created_at = datetime.now(timezone.utc).astimezone(kst)
 
             with self.db_conn.cursor() as cursor:
                 query = """
@@ -648,7 +648,8 @@ class ScreenshotMonitor:
             year = crawl_dt.strftime('%Y')
             year_month = crawl_dt.strftime('%Y%m')
             year_month_day = crawl_dt.strftime('%Y%m%d')
-            creation_timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+            kst = timezone(timedelta(hours=9))
+            creation_timestamp = datetime.now(timezone.utc).astimezone(kst).strftime('%Y%m%d%H%M%S')
 
             # 폴더 경로 (file_path)
             file_path = f"{year}/{year_month}/{year_month_day}/{self.retailer}/"
@@ -814,7 +815,7 @@ def get_anomaly_urls(retailer, crawl_date):
                 FROM ssd_crawl_db.ds_monitoring_report_anomaly a
                 JOIN ssd_crawl_db.ds_monitoring_targets t ON a.retailer_id = t.retailer_id
                 WHERE LOWER(t.retailer) = LOWER(%s) AND a.crawl_date = %s
-                  AND a.screenshot_id IS NULL
+                  AND a.screenshot_id IS NULL AND a.is_del = 0
             """
             cursor.execute(query, (retailer, crawl_date))
             results = cursor.fetchall()
