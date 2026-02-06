@@ -335,15 +335,11 @@ class RecoveryManager:
             logger.error(f"파일서버 업로드 실패: {e}")
             return False
 
-    def generate_and_upload_file(self, target, df, session_start):
+    def generate_and_upload_file(self, target, df, session_start, custom_filename=None):
         """CSV/ZIP/MD5 생성 및 파일서버 업로드"""
         config = TARGET_CONFIG[target]
 
-        # 복구 시점 시간 (파일명용)
-        now = datetime.now(self.korea_tz)
-        time_str = now.strftime('%H%M%S')
-
-        # 원본 세션 날짜 (폴더 및 파일명용) - session_start에서 추출
+        # 원본 세션 날짜 (폴더용) - session_start에서 추출
         if isinstance(session_start, str):
             session_date = datetime.strptime(session_start[:10], '%Y-%m-%d')
         elif isinstance(session_start, pd.Timestamp):
@@ -352,7 +348,13 @@ class RecoveryManager:
             session_date = session_start
         date_str = session_date.strftime('%Y%m%d')
 
-        base_filename = f"{date_str}_{time_str}_{config['file_prefix']}"
+        # 파일명 설정
+        if custom_filename:
+            base_filename = custom_filename
+        else:
+            now = datetime.now(self.korea_tz)
+            time_str = now.strftime('%H%M%S')
+            base_filename = f"{date_str}_{time_str}_{config['file_prefix']}"
 
         try:
             # 1. CSV 파일 생성 (원본 스크래퍼와 동일한 컬럼 순서 유지)
@@ -512,7 +514,17 @@ class RecoveryManager:
                     logger.info(f"  merge 완료: {url[:60]}")
 
             logger.info(f"파일 생성 대상: {len(all_records)}개 레코드")
-            if self.generate_and_upload_file(target, all_records, session_start):
+
+            # 파일명 일시 입력 받기
+            print(f"\n파일명 일시를 입력하세요 (예: 20260206_120000)")
+            print("Enter를 누르면 현재 시간으로 자동 생성됩니다.")
+            datetime_input = input("일시: ").strip()
+            if datetime_input:
+                custom_filename = f"{datetime_input}_{config['file_prefix']}"
+            else:
+                custom_filename = None
+
+            if self.generate_and_upload_file(target, all_records, session_start, custom_filename):
                 logger.info("파일서버 업로드 완료")
             else:
                 logger.error("파일서버 업로드 실패")
