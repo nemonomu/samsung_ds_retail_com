@@ -115,8 +115,7 @@ class RecoveryManager:
         config = TARGET_CONFIG[target]
         table = config['table']
 
-        # 세션 구분: 같은 날짜 내에서 30분 이상 간격이 있으면 다른 세션으로 간주
-        # 먼저 각 날짜의 최소 시간(세션 시작)을 기준으로 그룹핑
+        # 세션 구분: 날짜 + 시간대별로 그룹화
         query = f"""
         SELECT
             DATE(kr_crawl_datetime) as crawl_date,
@@ -143,7 +142,7 @@ class RecoveryManager:
         config = TARGET_CONFIG[target]
         table = config['table']
 
-        # 세션 시작 시간 기준으로 같은 세션의 레코드 조회 (같은 날짜 + 같은 시간대)
+        # 세션(날짜+시간대) 기준으로 NULL 레코드 조회
         query = f"""
         SELECT *
         FROM {table}
@@ -160,15 +159,20 @@ class RecoveryManager:
             return None
 
     def get_session_all_records(self, target, session_start):
-        """해당 세션의 전체 레코드 조회 (파일 생성용)"""
+        """해당 날짜의 전체 레코드 조회 (파일 생성용, producturl 중복 제거 - 최신 것만)"""
         config = TARGET_CONFIG[target]
         table = config['table']
 
         query = f"""
-        SELECT *
-        FROM {table}
-        WHERE DATE(kr_crawl_datetime) = DATE(:session_start)
-          AND HOUR(kr_crawl_datetime) = HOUR(:session_start)
+        SELECT t1.*
+        FROM {table} t1
+        INNER JOIN (
+            SELECT producturl, MAX(kr_crawl_datetime) as max_dt
+            FROM {table}
+            WHERE DATE(kr_crawl_datetime) = DATE(:session_start)
+            GROUP BY producturl
+        ) t2 ON t1.producturl = t2.producturl AND t1.kr_crawl_datetime = t2.max_dt
+        WHERE DATE(t1.kr_crawl_datetime) = DATE(:session_start)
         """
 
         try:
