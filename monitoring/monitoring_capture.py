@@ -35,9 +35,10 @@ logger = logging.getLogger(__name__)
 class ScreenshotMonitor:
     """스크린샷 캡쳐 및 S3 업로드"""
 
-    def __init__(self, retailer, crawl_date):
+    def __init__(self, retailer, crawl_date, created_id=None):
         self.retailer = retailer
         self.crawl_date = crawl_date  # 크롤링 날짜 (폴더 경로용)
+        self.created_id = created_id  # 생성자 ID (DB 저장용)
         self.driver = None
         self.settings = None
         self.s3_client = None
@@ -667,7 +668,7 @@ class ScreenshotMonitor:
             if upload_success and anomaly_id:
                 # 파일 레코드 저장
                 file_size = len(screenshot_bytes)
-                file_id = self.insert_file_record(file_name, file_path, file_size)
+                file_id = self.insert_file_record(file_name, file_path, file_size, self.created_id)
 
                 if file_id:
                     # anomaly 레코드 업데이트
@@ -834,11 +835,13 @@ def main():
     parser = argparse.ArgumentParser(description='모니터링 스크린샷 캡쳐')
     parser.add_argument('--retailer', '-r', help='리테일러 이름 (예: danawa)')
     parser.add_argument('--crawl_date', '-d', help='크롤링 날짜 (예: 2026-01-31)')
+    parser.add_argument('--created_id', '-c', help='생성자 ID')
 
     args = parser.parse_args()
 
     # 자동 실행 모드 플래그 (SSM 원격 실행 시 True)
     is_auto_mode = False
+    created_id = args.created_id  # CLI 인수에서 먼저 가져옴
 
     # CLI 인수가 없으면 파라미터 파일에서 읽기 (SSM 원격 실행용)
     param_file = os.path.join(os.path.dirname(__file__), 'capture_params.json')
@@ -848,7 +851,8 @@ def main():
                 params = json.load(f)
                 args.retailer = params.get('retailer')
                 args.crawl_date = params.get('crawl_date')
-                logger.info(f"📁 파라미터 파일에서 로드: retailer={args.retailer}, crawl_date={args.crawl_date}")
+                created_id = params.get('created_id') or created_id
+                logger.info(f"📁 파라미터 파일에서 로드: retailer={args.retailer}, crawl_date={args.crawl_date}, created_id={created_id}")
             # 사용 후 파일 삭제 (다음 실행 시 수동 입력 모드로 동작)
             os.remove(param_file)
             is_auto_mode = True  # 파라미터 파일에서 로드 = 자동 실행 모드
@@ -900,7 +904,7 @@ def main():
 
     logger.info(f"📸 캡쳐 대상: {len(urls_to_capture)}개")
 
-    monitor = ScreenshotMonitor(args.retailer, args.crawl_date)
+    monitor = ScreenshotMonitor(args.retailer, args.crawl_date, created_id)
     try:
         results = monitor.process_urls(urls_to_capture)
 
