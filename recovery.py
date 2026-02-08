@@ -87,6 +87,16 @@ TARGET_CONFIG = {
         'local_tz': 'America/New_York',
         'scraper_module': 'bestbuy_v2',
         'scraper_class': 'BestBuyScraper'
+    },
+    'es': {
+        'name': '스페인 Amazon',
+        'table': 'amazon_price_crawl_tbl_es_v2',
+        'country_code': 'es',
+        'file_prefix': 'es_amazon',
+        'local_tz': 'Europe/Madrid',
+        'scraper_module': 'es_v2',
+        'scraper_class': 'AmazonScraper',
+        'scraper_kwargs': {'country_code': 'es'}
     }
 }
 
@@ -191,7 +201,8 @@ class RecoveryManager:
         try:
             module = __import__(module_name)
             scraper_class = getattr(module, class_name)
-            scraper = scraper_class()
+            scraper_kwargs = config.get('scraper_kwargs', {})
+            scraper = scraper_class(**scraper_kwargs)
             logger.info(f"{class_name} 로드 완료")
 
             # 브라우저 초기화
@@ -577,6 +588,7 @@ def select_target():
     print("4. it (이탈리아 Amazon)")
     print("5. de (독일 Amazon)")
     print("6. bestbuy (미국 BestBuy)")
+    print("7. es (스페인 Amazon)")
     print("0. 종료")
 
     while True:
@@ -596,6 +608,8 @@ def select_target():
                 return 'de'
             elif choice == '6':
                 return 'bestbuy'
+            elif choice == '7':
+                return 'es'
             else:
                 print("올바른 번호를 입력하세요.")
         except KeyboardInterrupt:
