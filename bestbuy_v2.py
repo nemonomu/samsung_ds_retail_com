@@ -212,6 +212,7 @@ class BestBuyScraper:
             options.add_argument('--disable-infobars')
             options.add_argument('--disable-renderer-backgrounding')
             options.add_argument('--js-flags=--max-old-space-size=512')
+            options.add_argument('--blink-settings=imagesEnabled=false')
 
             self.driver = uc.Chrome(options=options, version_main=144)
             self.driver.maximize_window()
@@ -440,7 +441,6 @@ class BestBuyScraper:
             }
             
             # 에러 페이지 감지 (retry 하지 않고 다음 제품으로)
-            page_source = self.driver.page_source
             try:
                 error_element = self.driver.find_element(By.XPATH, "//h1[contains(@class, 'VPT-title')]")
                 if error_element and "something went wrong" in error_element.text.lower():
