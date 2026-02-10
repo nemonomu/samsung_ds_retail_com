@@ -158,7 +158,7 @@ class RecoveryManager:
         FROM {table}
         WHERE DATE(kr_crawl_datetime) = DATE(:session_start)
           AND HOUR(kr_crawl_datetime) = HOUR(:session_start)
-          AND title IS NULL
+          AND (title IS NULL OR retailprice IS NULL)
         """
 
         try:
@@ -482,11 +482,11 @@ class RecoveryManager:
 
                 result = self.recrawl_url(scraper, url, row)
 
-                if result and result.get('title') is not None:
+                if result and (result.get('title') is not None or result.get('retailprice') is not None):
                     # DB UPDATE (원본 kr_crawl_datetime으로 정확히 매칭)
                     result['producturl'] = url
                     if self.update_db_record(target, original_kr_crawl_datetime, result):
-                        logger.info(f"  -> 성공: title={result.get('title', '')[:30]}")
+                        logger.info(f"  -> 성공: title={str(result.get('title', ''))[:30]}, price={result.get('retailprice')}")
                         success_count += 1
                         recovered_results[url] = result
                     else:
