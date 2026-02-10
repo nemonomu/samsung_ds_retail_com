@@ -686,7 +686,7 @@ class AmazonScraper:
                     # 최소 가격 검증 (10유로 이상, 10000유로 미만)
                     try:
                         price_value = float(cleaned)
-                        if 10 <= price_value <= 10000:  
+                        if 10 <= price_value <= 100000:
                             return cleaned
                         else:
                             logger.debug(f"가격 범위 벗어남: {price_value}")
