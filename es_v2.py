@@ -840,7 +840,17 @@ class AmazonScraper:
                     if whole_text and fraction_text:
                         fraction_clean = re.sub(r'[^\d]', '', fraction_text)
                         if fraction_clean:
-                            combined_price = f"{whole_text}.{fraction_clean}"
+                            # 천단위 구분자 제거 (ES: 점, DE/FR/IT: 점)
+                            whole_clean = whole_text.strip().rstrip(',').rstrip('.')
+                            if country_code in ('es', 'de', 'fr', 'it'):
+                                whole_clean = whole_clean.replace('.', '')
+                            else:
+                                whole_clean = whole_clean.replace(',', '')
+                            # 유럽 국가는 소수점에 쉼표 사용 (parse_price_by_country 호환)
+                            if country_code in ('es', 'de', 'fr', 'it'):
+                                combined_price = f"{whole_clean},{fraction_clean}"
+                            else:
+                                combined_price = f"{whole_clean}.{fraction_clean}"
                             logger.info(f"조합된 가격: {combined_price}")
                             
                             price = self.parse_price_by_country(combined_price, country_code)
@@ -1101,9 +1111,9 @@ class AmazonScraper:
                         price_clean = re.sub(r'[^\d.]', '', str(result['retailprice']))
                         price_value = float(price_clean)
 
-                        # 스페인의 경우 최소 10유로, 최대 10000유로
+                        # 스페인의 경우 최소 10유로, 최대 100000유로
                         if self.country_code == 'es':
-                            if price_value < 10 or price_value > 10000:
+                            if price_value < 10 or price_value > 100000:
                                 logger.warning(f"비정상적인 가격 감지: {result['retailprice']} -> None으로 변경")
                                 result['retailprice'] = None
                         # 다른 국가도 비슷한 범위 적용
