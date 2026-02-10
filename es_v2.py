@@ -672,8 +672,15 @@ class AmazonScraper:
                         if len(parts) == 2 and len(parts[1]) <= 2:
                             integer_part = parts[0].replace('.', '')
                             decimal_part = parts[1]
-                            cleaned = f"{integer_part}.{decimal_part}"
+                            if decimal_part:
+                                cleaned = f"{integer_part}.{decimal_part}"
+                            else:
+                                cleaned = integer_part
                             logger.debug(f"스페인 복합형식 변환: '{cleaned}'")
+                    elif '.' in cleaned and ',' not in cleaned:
+                        # 점만 있는 경우: 스페인은 소수점에 쉼표를 사용하므로 점은 천단위 구분자
+                        cleaned = cleaned.replace('.', '')
+                        logger.debug(f"스페인 천단위 점 제거: '{cleaned}'")
                 else:
                     if ',' in cleaned:
                         parts = cleaned.split(',')
@@ -726,9 +733,14 @@ class AmazonScraper:
             "//*[@id='centerCol']//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-offscreen']",
             "//*[@id='apex_desktop']//span[@class='a-price']//span[@class='a-offscreen']",
             "//*[@id='corePrice_feature_div']//span[@class='a-offscreen']",
-            "//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-offscreen']", 
+            "//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-offscreen']",
             "(//span[@class='a-price']//span[@class='a-offscreen'])[1]"
         ]
+        # DB에서 로드한 price_offscreen 셀렉터 추가
+        db_offscreen = self.selectors.get(country_code, {}).get('price_offscreen', [])
+        if db_offscreen:
+            main_offscreen_selectors.extend(db_offscreen)
+            logger.info(f"DB price_offscreen 셀렉터 {len(db_offscreen)}개 추가")
         
         for selector in main_offscreen_selectors:
             try:
