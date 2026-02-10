@@ -158,7 +158,7 @@ class RecoveryManager:
         FROM {table}
         WHERE DATE(kr_crawl_datetime) = DATE(:session_start)
           AND HOUR(kr_crawl_datetime) = HOUR(:session_start)
-          AND (title IS NULL OR imageurl IS NULL OR imageurl = '' OR retailprice IS NULL)
+          AND title IS NULL
         """
 
         try:
