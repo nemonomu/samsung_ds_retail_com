@@ -839,6 +839,47 @@ def get_anomaly_urls(retailer, crawl_date):
         return []
 
 
+def update_capture_log(retailer, crawl_date, status):
+    """캡쳐 완료/실패 시 capture_log 업데이트"""
+    try:
+        conn = pymysql.connect(
+            host=DB_CONFIG['host'],
+            port=DB_CONFIG['port'],
+            user=DB_CONFIG['user'],
+            password=DB_CONFIG['password'],
+            database='ssd_crawl_db',
+            charset='utf8mb4',
+            autocommit=True
+        )
+        kst = timezone(timedelta(hours=9))
+        now_kst = datetime.now(timezone.utc).astimezone(kst)
+
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                SELECT retailer_id FROM ds_monitoring_targets
+                WHERE LOWER(retailer) = LOWER(%s)
+            """, (retailer,))
+            row = cursor.fetchone()
+            if not row:
+                logger.warning(f"⚠️ capture_log 업데이트 실패: retailer '{retailer}' 미존재")
+                conn.close()
+                return
+
+            retailer_id = row[0]
+
+            cursor.execute("""
+                UPDATE ds_monitoring_capture_log
+                SET status = %s, completed_at = %s
+                WHERE retailer_id = %s AND crawl_date = %s AND status = 'running'
+                ORDER BY triggered_at DESC LIMIT 1
+            """, (status, now_kst, retailer_id, crawl_date))
+
+        conn.close()
+        logger.info(f"✅ capture_log 업데이트: {retailer} → {status}")
+    except Exception as e:
+        logger.error(f"❌ capture_log 업데이트 실패: {e}")
+
+
 def main():
     parser = argparse.ArgumentParser(description='모니터링 스크린샷 캡쳐')
     parser.add_argument('--retailer', '-r', help='리테일러 이름 (예: danawa)')
@@ -922,6 +963,8 @@ def main():
 
         if not urls_data:
             logger.warning("⚠️ 조회된 URL이 없습니다.")
+            if is_auto_mode:
+                update_capture_log(args.retailer, args.crawl_date, 'completed')
             if not is_auto_mode:
                 input("\n종료하려면 Enter를 누르세요...")
             return
@@ -934,16 +977,21 @@ def main():
     logger.info(f"📸 캡쳐 대상: {len(urls_to_capture)}개")
 
     monitor = ScreenshotMonitor(args.retailer, args.crawl_date, created_id, test_mode)
+    capture_status = None
     try:
         results = monitor.process_urls(urls_to_capture)
 
         success_count = sum(1 for r in results if r['success'])
         logger.info(f"\n📊 === 처리 결과 ===")
         logger.info(f"성공: {success_count}/{len(results)}")
+        capture_status = 'completed'
 
     except Exception as e:
         logger.error(f"❌ 실행 오류: {e}")
+        capture_status = 'failed'
     finally:
+        if is_auto_mode and not test_mode:
+            update_capture_log(args.retailer, args.crawl_date, capture_status)
         monitor.cleanup()
 
     if not is_auto_mode:
