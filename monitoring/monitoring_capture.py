@@ -35,16 +35,18 @@ logger = logging.getLogger(__name__)
 class ScreenshotMonitor:
     """스크린샷 캡쳐 및 S3 업로드"""
 
-    def __init__(self, retailer, crawl_date, created_id=None):
+    def __init__(self, retailer, crawl_date, created_id=None, test_mode=False):
         self.retailer = retailer
         self.crawl_date = crawl_date  # 크롤링 날짜 (폴더 경로용)
         self.created_id = created_id  # 생성자 ID (DB 저장용)
+        self.test_mode = test_mode  # 테스트 모드 (S3/DB 저장 없이 로컬 저장)
         self.driver = None
         self.settings = None
         self.s3_client = None
         self.db_conn = None
-        self.setup_s3_client()
-        self.setup_db_connection()
+        if not test_mode:
+            self.setup_s3_client()
+            self.setup_db_connection()
 
     def setup_s3_client(self):
         """S3 클라이언트 설정"""
@@ -596,7 +598,8 @@ class ScreenshotMonitor:
                 if self.handle_continue_popup():
                     time.sleep(wait_time)  # 페이지 로드 대기
 
-                # 3. 쿠키 팝업 처리
+                # 3. 쿠키 팝업 처리 (비동기 로드 대기)
+                time.sleep(2)
                 self.handle_cookie_popup()
 
                 # 4. 뉴스레터 팝업 처리 (centrecom)
@@ -643,35 +646,40 @@ class ScreenshotMonitor:
             if screenshot_bytes is None:
                 return False
 
-            # S3 키 생성: 년도/년월/년월일/리테일러명/리테일러명_retailersku_생성타임스탬프.png
-            # 폴더: 크롤링 날짜 기준, 파일명 타임스탬프: 생성 시점
-            crawl_dt = datetime.strptime(self.crawl_date, '%Y-%m-%d')
-            year = crawl_dt.strftime('%Y')
-            year_month = crawl_dt.strftime('%Y%m')
-            year_month_day = crawl_dt.strftime('%Y%m%d')
             kst = timezone(timedelta(hours=9))
             creation_timestamp = datetime.now(timezone.utc).astimezone(kst).strftime('%Y%m%d%H%M%S')
-
-            # 폴더 경로 (file_path)
-            file_path = f"{year}/{year_month}/{year_month_day}/{self.retailer}/"
 
             if identifier:
                 file_name = f"{self.retailer}_{identifier}_{creation_timestamp}.png"
             else:
                 file_name = f"{self.retailer}_{creation_timestamp}.png"
 
+            # 테스트 모드: 로컬 저장만
+            if self.test_mode:
+                test_dir = os.path.join(os.path.dirname(__file__), 'test_capture')
+                os.makedirs(test_dir, exist_ok=True)
+                save_path = os.path.join(test_dir, file_name)
+                with open(save_path, 'wb') as f:
+                    f.write(screenshot_bytes)
+                logger.info(f"✅ 테스트 캡쳐 저장: {save_path}")
+                return True
+
+            # 운영 모드: S3 업로드 + DB 저장
+            crawl_dt = datetime.strptime(self.crawl_date, '%Y-%m-%d')
+            year = crawl_dt.strftime('%Y')
+            year_month = crawl_dt.strftime('%Y%m')
+            year_month_day = crawl_dt.strftime('%Y%m%d')
+
+            file_path = f"{year}/{year_month}/{year_month_day}/{self.retailer}/"
             s3_key = f"{file_path}{file_name}"
 
-            # S3 업로드
             upload_success = self.upload_to_s3(screenshot_bytes, s3_key)
 
             if upload_success and anomaly_id:
-                # 파일 레코드 저장
                 file_size = len(screenshot_bytes)
                 file_id = self.insert_file_record(file_name, file_path, file_size, self.created_id)
 
                 if file_id:
-                    # anomaly 레코드 업데이트
                     self.update_anomaly_screenshot(anomaly_id, file_id)
 
             return upload_success
@@ -860,7 +868,18 @@ def main():
             logger.error(f"❌ 파라미터 파일 읽기 실패: {e}")
 
     # 인수 없으면 직접 입력 받기
+    test_mode = False
     if not args.retailer:
+        # 모드 선택
+        print("\n📋 실행 모드 선택:")
+        print("  1. 운영 (S3 업로드 + DB 저장)")
+        print("  2. 테스트 (로컬 저장만)")
+        mode_choice = input("모드 번호 선택: ").strip()
+        if mode_choice == '2':
+            test_mode = True
+            logger.info("🧪 테스트 모드로 실행합니다.")
+
+        # 리테일러 선택
         retailer_list = list(RETAILERS.keys())
         print("\n📋 지원 리테일러:")
         for idx, name in enumerate(retailer_list, 1):
@@ -878,6 +897,7 @@ def main():
             logger.error("❌ 숫자를 입력해주세요.")
             input("\n종료하려면 Enter를 누르세요...")
             return
+
     if not args.crawl_date:
         args.crawl_date = input("크롤링 날짜 입력 (예: 2026-01-31): ").strip()
 
@@ -887,28 +907,36 @@ def main():
             input("\n종료하려면 Enter를 누르세요...")
         return
 
-    logger.info(f"🔍 {args.retailer} / {args.crawl_date} 이상 감지 URL 조회 중...")
-    urls_data = get_anomaly_urls(args.retailer, args.crawl_date)
-
-    if not urls_data:
-        logger.warning("⚠️ 조회된 URL이 없습니다.")
-        if not is_auto_mode:
+    # 테스트 모드: URL 직접 입력
+    if test_mode:
+        test_url = input("캡쳐할 URL 입력: ").strip()
+        if not test_url:
+            logger.error("❌ URL을 입력해주세요.")
             input("\n종료하려면 Enter를 누르세요...")
-        return
+            return
+        urls_to_capture = [{'url': test_url, 'identifier': 'test'}]
+    else:
+        # 운영 모드: DB 조회
+        logger.info(f"🔍 {args.retailer} / {args.crawl_date} 이상 감지 URL 조회 중...")
+        urls_data = get_anomaly_urls(args.retailer, args.crawl_date)
 
-    # URL 데이터 변환
-    urls_to_capture = [
-        {'id': row['id'], 'url': row['producturl'], 'identifier': row.get('retailersku')}
-        for row in urls_data
-    ]
+        if not urls_data:
+            logger.warning("⚠️ 조회된 URL이 없습니다.")
+            if not is_auto_mode:
+                input("\n종료하려면 Enter를 누르세요...")
+            return
+
+        urls_to_capture = [
+            {'id': row['id'], 'url': row['producturl'], 'identifier': row.get('retailersku')}
+            for row in urls_data
+        ]
 
     logger.info(f"📸 캡쳐 대상: {len(urls_to_capture)}개")
 
-    monitor = ScreenshotMonitor(args.retailer, args.crawl_date, created_id)
+    monitor = ScreenshotMonitor(args.retailer, args.crawl_date, created_id, test_mode)
     try:
         results = monitor.process_urls(urls_to_capture)
 
-        # 결과 출력
         success_count = sum(1 for r in results if r['success'])
         logger.info(f"\n📊 === 처리 결과 ===")
         logger.info(f"성공: {success_count}/{len(results)}")
