@@ -428,7 +428,7 @@ class MediaMarktInfiniteScraper:
             logger.error(f"Keep-alive 오류: {e}")
             # 에러가 나도 즉시 세션을 종료하지 않음
     
-    def extract_product_info(self, url, row_data):
+    def extract_product_info(self, url, row_data, **kwargs):
         """제품 정보 추출"""
         try:
             logger.info(f"🔍 페이지 접속: {url}")

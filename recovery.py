@@ -1,6 +1,6 @@
 """
 Title/ImageURL/Price NULL 복구 스크립트
-- fr_v2, uk_v2, currys_v2, it_v2, de_v2, bestbuy_v2 크롤링 결과 중 title, imageurl, retailprice가 NULL인 레코드 복구
+- fr_v2, uk_v2, currys_v2, it_v2, de_v2, bestbuy_v2, mediamarkt_v2 크롤링 결과 중 title, imageurl, retailprice가 NULL인 레코드 복구
 - DB UPDATE + 파일서버 재업로드
 
 사용법:
@@ -97,6 +97,15 @@ TARGET_CONFIG = {
         'scraper_module': 'es_v2',
         'scraper_class': 'AmazonScraper',
         'scraper_kwargs': {'country_code': 'es'}
+    },
+    'mediamarkt': {
+        'name': '독일 MediaMarkt',
+        'table': 'mediamarkt_price_crawl_tbl_de_v2',
+        'country_code': 'de',
+        'file_prefix': 'de_mediamarkt',
+        'local_tz': 'Europe/Berlin',
+        'scraper_module': 'mediamarkt_v2',
+        'scraper_class': 'MediaMarktInfiniteScraper'
     }
 }
 
@@ -589,6 +598,7 @@ def select_target():
     print("5. de (독일 Amazon)")
     print("6. bestbuy (미국 BestBuy)")
     print("7. es (스페인 Amazon)")
+    print("8. mediamarkt (독일 MediaMarkt)")
     print("0. 종료")
 
     while True:
@@ -610,6 +620,8 @@ def select_target():
                 return 'bestbuy'
             elif choice == '7':
                 return 'es'
+            elif choice == '8':
+                return 'mediamarkt'
             else:
                 print("올바른 번호를 입력하세요.")
         except KeyboardInterrupt:
