@@ -1,6 +1,6 @@
 """
 Title/ImageURL/Price NULL 복구 스크립트
-- fr_v2, uk_v2, currys_v2, it_v2, de_v2, bestbuy_v2, mediamarkt_v2 크롤링 결과 중 title, imageurl, retailprice가 NULL인 레코드 복구
+- fr_v2, uk_v2, currys_v2, it_v2, de_v2, bestbuy_v2, mediamarkt_v2, xkom_v2 크롤링 결과 중 title, imageurl, retailprice가 NULL인 레코드 복구
 - DB UPDATE + 파일서버 재업로드
 
 사용법:
@@ -106,6 +106,16 @@ TARGET_CONFIG = {
         'local_tz': 'Europe/Berlin',
         'scraper_module': 'mediamarkt_v2',
         'scraper_class': 'MediaMarktInfiniteScraper'
+    },
+    'xkom': {
+        'name': '폴란드 X-Kom',
+        'table': 'xkom_price_crawl_tbl_pl_v2',
+        'country_code': 'pl',
+        'file_prefix': 'pl_xkom',
+        'local_tz': 'Europe/Warsaw',
+        'scraper_module': 'xkom_v2',
+        'scraper_class': 'XKomScraper',
+        'needs_manual_check': True
     }
 }
 
@@ -226,7 +236,7 @@ class RecoveryManager:
             traceback.print_exc()
             return None
 
-    def recrawl_url(self, scraper, url, row_data):
+    def recrawl_url(self, scraper, url, row_data, target=None):
         """단일 URL 재크롤링"""
         try:
             # row_data를 dict로 변환 (Series인 경우)
@@ -238,7 +248,11 @@ class RecoveryManager:
             # URL 키 이름 맞추기
             row_dict['url'] = url
 
-            result = scraper.extract_product_info(url, row_dict, retry_count=0, max_retries=1)
+            config = TARGET_CONFIG.get(target, {})
+            if config.get('needs_manual_check'):
+                result = scraper.extract_product_info(url, row_dict)
+            else:
+                result = scraper.extract_product_info(url, row_dict, retry_count=0, max_retries=1)
             return result
         except Exception as e:
             logger.error(f"재크롤링 실패 ({url}): {e}")
@@ -478,6 +492,19 @@ class RecoveryManager:
             logger.error("스크래퍼 로드 실패")
             return False
 
+        # 3-1. 봇감지 수동 체크 (xkom 등)
+        if config.get('needs_manual_check'):
+            first_url = null_records.iloc[0]['producturl']
+            logger.info(f"봇감지 수동 체크를 위해 첫 번째 URL 접속: {first_url}")
+            scraper.driver.get(first_url)
+            print(f"\n{'='*60}")
+            print(f"  봇감지(Cloudflare) 수동 체크가 필요합니다.")
+            print(f"  브라우저에서 봇감지를 통과한 후 Enter를 눌러주세요.")
+            print(f"{'='*60}")
+            input("\n  준비 완료 후 Enter를 누르세요... ")
+            scraper.is_logged_in = True
+            logger.info("봇감지 수동 체크 완료, 복구 시작")
+
         # 4. 각 URL 재크롤링 및 DB UPDATE
         success_count = 0
         fail_count = 0
@@ -489,7 +516,7 @@ class RecoveryManager:
                 original_kr_crawl_datetime = row['kr_crawl_datetime']  # 원본 시간 저장
                 logger.info(f"\n[{i+1}/{len(null_records)}] 재크롤링: {url[:60]}...")
 
-                result = self.recrawl_url(scraper, url, row)
+                result = self.recrawl_url(scraper, url, row, target)
 
                 if result and (result.get('title') is not None or result.get('retailprice') is not None):
                     # DB UPDATE (원본 kr_crawl_datetime으로 정확히 매칭)
@@ -599,6 +626,7 @@ def select_target():
     print("6. bestbuy (미국 BestBuy)")
     print("7. es (스페인 Amazon)")
     print("8. mediamarkt (독일 MediaMarkt)")
+    print("9. xkom (폴란드 X-Kom)")
     print("0. 종료")
 
     while True:
@@ -622,6 +650,8 @@ def select_target():
                 return 'es'
             elif choice == '8':
                 return 'mediamarkt'
+            elif choice == '9':
+                return 'xkom'
             else:
                 print("올바른 번호를 입력하세요.")
         except KeyboardInterrupt:
