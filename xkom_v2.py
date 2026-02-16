@@ -707,7 +707,7 @@ Python 버전: {os.sys.version.split()[0]}
         except Exception as e:
             logger.error(f"❌ 파일서버 업로드 실패: {e}")
             return False
-    def save_results(self, df):
+    def save_results(self, df, save_db=True):
         """결과를 DB와 파일서버에 저장"""
         now = datetime.now()
         date_str = now.strftime("%Y%m%d")
@@ -717,7 +717,8 @@ Python 버전: {os.sys.version.split()[0]}
         results = {'db_saved': False, 'server_uploaded': False}
 
         # DB 저장
-        results['db_saved'] = self.save_to_db(df)
+        if save_db:
+            results['db_saved'] = self.save_to_db(df)
 
         # 파일서버 업로드
         try:
@@ -838,17 +839,28 @@ Python 버전: {os.sys.version.split()[0]}
                     logger.info("☕ 25개 처리 완료, 30초 휴식...")
                     time.sleep(30)
         
-        # 결과 저장
+        # 마지막 남은 데이터 DB 저장 (5개 단위 중간 저장에 포함되지 않은 나머지)
+        remainder = len(results) % 5
+        if remainder > 0 and self.db_engine:
+            try:
+                remainder_df = pd.DataFrame(results[-remainder:])
+                remainder_df.to_sql('xkom_price_crawl_tbl_pl_v2', self.db_engine,
+                                    if_exists='append', index=False)
+                logger.info(f"💾 마지막 저장: {remainder}개 레코드")
+            except Exception as e:
+                logger.error(f"마지막 배치 저장 실패: {e}")
+
+        # 결과 저장 (중간저장+마지막저장으로 DB 완료, 파일서버 업로드만 수행)
         if results:
             df = pd.DataFrame(results)
-            save_results = self.save_results(df)
+            save_results = self.save_results(df, save_db=False)
 
             # 통계
             logger.info(f"\n📊 === 크롤링 라운드 {self.crawl_count + 1} 완료 ===")
             logger.info(f"전체 제품: {len(results)}개")
             logger.info(f"가격 추출 성공: {success_count}개")
             logger.info(f"성공률: {success_count/len(results)*100:.1f}%")
-            logger.info(f"DB 저장: {'✅' if save_results['db_saved'] else '❌'}")
+            logger.info(f"DB 저장: ✅ (중간저장 완료)")
             logger.info(f"파일서버 업로드: {'✅' if save_results['server_uploaded'] else '❌'}")
 
             # 알림 발송
