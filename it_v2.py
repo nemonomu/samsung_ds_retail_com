@@ -1429,7 +1429,7 @@ class AmazonITScraper:
                 except Exception as e:
                     logger.error(f"이탈리아 마지막 저장 실패: {e}")
 
-            # 차단 페이지로 인한 실패 목록 재시도 (10회씩)
+            # 차단 페이지로 인한 실패 목록 재시도 (1회)
             if blocked_page_failures:
                 logger.info("=" * 60)
                 logger.info(f"차단 페이지 실패 {len(blocked_page_failures)}개 재시도 시작")
@@ -1442,33 +1442,22 @@ class AmazonITScraper:
                     row_data = fail_item['row_data']
                     logger.info(f"재시도 진행: {fail_idx + 1}/{len(blocked_page_failures)} - {fail_item['item']}")
 
-                    # 10회 재시도
-                    retry_success = False
-                    for retry in range(10):
-                        logger.info(f"차단 페이지 재시도 {retry + 1}/10: {url}")
-                        result = self.extract_product_info(url, row_data, retry_count=0, max_retries=1)
+                    # 1회 재시도
+                    logger.info(f"차단 페이지 재시도: {url}")
+                    result = self.extract_product_info(url, row_data, retry_count=0, max_retries=1)
 
-                        # 성공 여부 확인 (title이나 price가 있으면 성공)
-                        if result['title'] is not None or result['retailprice'] is not None:
-                            logger.info(f"재시도 성공! title={result['title']}, price={result['retailprice']}")
-                            # 기존 결과에서 해당 URL 결과를 업데이트
-                            for i, r in enumerate(results):
-                                if r['producturl'] == url:
-                                    results[i] = result
-                                    break
-                            retry_success = True
-                            break
-                        else:
-                            logger.warning(f"재시도 {retry + 1}/10 실패")
-                            if retry < 9:  # 마지막 시도가 아니면 10초 대기
-                                time.sleep(10)
-
-                    if not retry_success:
-                        logger.error(f"최종 실패 (10회 재시도 후에도 실패): {url}")
+                    if result['title'] is not None or result['retailprice'] is not None:
+                        logger.info(f"재시도 성공! title={result['title']}, price={result['retailprice']}")
+                        for i, r in enumerate(results):
+                            if r['producturl'] == url:
+                                results[i] = result
+                                break
+                    else:
+                        logger.error(f"최종 실패 (재시도 후에도 실패): {url}")
                         final_blocked_failures.append({
                             'url': url,
                             'item': fail_item['item'],
-                            'reason': '차단 페이지로 인한 최종 실패 (10회 재시도 후)'
+                            'reason': '차단 페이지로 인한 최종 실패'
                         })
 
                 if final_blocked_failures:
