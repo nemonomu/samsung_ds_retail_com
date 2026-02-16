@@ -182,6 +182,7 @@ class RecoveryManager:
 
         try:
             df = pd.read_sql(text(query), self.db_engine, params={'session_start': session_start})
+            df = df.drop_duplicates(subset=['producturl'], keep='last')
             return df
         except Exception as e:
             logger.error(f"NULL 레코드 조회 실패: {e}")
@@ -206,6 +207,7 @@ class RecoveryManager:
 
         try:
             df = pd.read_sql(text(query), self.db_engine, params={'session_start': session_start})
+            df = df.drop_duplicates(subset=['producturl'], keep='last')
             return df
         except Exception as e:
             logger.error(f"세션 레코드 조회 실패: {e}")
