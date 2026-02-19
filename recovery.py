@@ -1,6 +1,6 @@
 """
 Title/ImageURL/Price NULL 복구 스크립트
-- fr_v2, uk_v2, currys_v2, it_v2, de_v2, bestbuy_v2, mediamarkt_v2, xkom_v2 크롤링 결과 중 title, imageurl, retailprice가 NULL인 레코드 복구
+- fr_v2, uk_v2, currys_v2, it_v2, de_v2, bestbuy_v2, mediamarkt_v2, xkom_v2, usa_v2 크롤링 결과 중 title, imageurl, retailprice가 NULL인 레코드 복구
 - DB UPDATE + 파일서버 재업로드
 
 사용법:
@@ -116,6 +116,16 @@ TARGET_CONFIG = {
         'scraper_module': 'xkom_v2',
         'scraper_class': 'XKomScraper',
         'needs_manual_check': True
+    },
+    'usa': {
+        'name': '미국 Amazon',
+        'table': 'amazon_price_crawl_tbl_usa_v2',
+        'country_code': 'usa',
+        'file_prefix': 'usa_amazon',
+        'local_tz': 'America/New_York',
+        'scraper_module': 'usa_v2',
+        'scraper_class': 'AmazonScraper',
+        'scraper_kwargs': {'country_code': 'usa'}
     }
 }
 
@@ -629,6 +639,7 @@ def select_target():
     print("7. es (스페인 Amazon)")
     print("8. mediamarkt (독일 MediaMarkt)")
     print("9. xkom (폴란드 X-Kom)")
+    print("10. usa (미국 Amazon)")
     print("0. 종료")
 
     while True:
@@ -654,6 +665,8 @@ def select_target():
                 return 'mediamarkt'
             elif choice == '9':
                 return 'xkom'
+            elif choice == '10':
+                return 'usa'
             else:
                 print("올바른 번호를 입력하세요.")
         except KeyboardInterrupt:
