@@ -29,6 +29,8 @@ def setup_danawa():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
+    options.add_argument('--headless=new')
+    options.add_argument('--window-size=1920,1080')
     options.add_argument('--accept-lang=ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7')
     options.add_argument('--disable-gpu')
     options.add_argument('--disable-extensions')
@@ -37,7 +39,7 @@ def setup_danawa():
     options.add_argument('--js-flags=--max-old-space-size=512')
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
-    driver.maximize_window()
+    driver.set_window_size(1920, 1080)
 
     settings = {
         'wait_time': 3,
@@ -53,6 +55,8 @@ def setup_amazon_usa():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
+    options.add_argument('--headless=new')
+    options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--no-sandbox')
@@ -65,7 +69,7 @@ def setup_amazon_usa():
     options.add_experimental_option('prefs', {'intl.accept_languages': 'en-US,en'})
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
-    driver.maximize_window()
+    driver.set_window_size(1920, 1080)
 
     settings = {
         'wait_time': 3,
@@ -81,6 +85,8 @@ def setup_bestbuy():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
+    options.add_argument('--headless=new')
+    options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-gpu')
     options.add_argument('--disable-extensions')
@@ -89,7 +95,7 @@ def setup_bestbuy():
     options.add_argument('--js-flags=--max-old-space-size=512')
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
-    driver.maximize_window()
+    driver.set_window_size(1920, 1080)
 
     # 스텔스 설정
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
@@ -109,6 +115,8 @@ def setup_amazon_gb():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
+    options.add_argument('--headless=new')
+    options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--no-sandbox')
@@ -121,7 +129,7 @@ def setup_amazon_gb():
     options.add_experimental_option('prefs', {'intl.accept_languages': 'en-GB,en'})
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
-    driver.maximize_window()
+    driver.set_window_size(1920, 1080)
 
     settings = {
         'wait_time': 3,
@@ -137,6 +145,8 @@ def setup_amazon_jp():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
+    options.add_argument('--headless=new')
+    options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--no-sandbox')
@@ -149,7 +159,7 @@ def setup_amazon_jp():
     options.add_experimental_option('prefs', {'intl.accept_languages': 'ja-JP,ja'})
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
-    driver.maximize_window()
+    driver.set_window_size(1920, 1080)
 
     settings = {
         'wait_time': 3,
@@ -165,6 +175,8 @@ def setup_amazon_in():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
+    options.add_argument('--headless=new')
+    options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--no-sandbox')
@@ -179,7 +191,7 @@ def setup_amazon_in():
     options.add_experimental_option('prefs', {'intl.accept_languages': 'en-IN,en'})
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
-    driver.maximize_window()
+    driver.set_window_size(1920, 1080)
 
     settings = {
         'wait_time': 3,
@@ -195,6 +207,8 @@ def setup_currys():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
+    options.add_argument('--headless=new')
+    options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-gpu')
     options.add_argument('--disable-extensions')
@@ -203,7 +217,7 @@ def setup_currys():
     options.add_argument('--js-flags=--max-old-space-size=512')
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
-    driver.maximize_window()
+    driver.set_window_size(1920, 1080)
 
     settings = {
         'wait_time': 3,
@@ -219,6 +233,8 @@ def setup_amazon_it():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
+    options.add_argument('--headless=new')
+    options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--no-sandbox')
@@ -231,7 +247,7 @@ def setup_amazon_it():
     options.add_experimental_option('prefs', {'intl.accept_languages': 'it-IT,it'})
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
-    driver.maximize_window()
+    driver.set_window_size(1920, 1080)
 
     settings = {
         'wait_time': 3,
@@ -247,6 +263,8 @@ def setup_amazon_es():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
+    options.add_argument('--headless=new')
+    options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--no-sandbox')
@@ -259,7 +277,7 @@ def setup_amazon_es():
     options.add_experimental_option('prefs', {'intl.accept_languages': 'es-ES,es'})
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
-    driver.maximize_window()
+    driver.set_window_size(1920, 1080)
 
     settings = {
         'wait_time': 3,
@@ -275,6 +293,8 @@ def setup_amazon_fr():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
+    options.add_argument('--headless=new')
+    options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--no-sandbox')
@@ -287,7 +307,7 @@ def setup_amazon_fr():
     options.add_experimental_option('prefs', {'intl.accept_languages': 'fr-FR,fr'})
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
-    driver.maximize_window()
+    driver.set_window_size(1920, 1080)
 
     settings = {
         'wait_time': 3,
@@ -303,6 +323,8 @@ def setup_centrecom():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
+    options.add_argument('--headless=new')
+    options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--no-sandbox')
@@ -315,7 +337,7 @@ def setup_centrecom():
     options.add_experimental_option('prefs', {'intl.accept_languages': 'en-AU,en'})
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
-    driver.maximize_window()
+    driver.set_window_size(1920, 1080)
 
     settings = {
         'wait_time': 3,
@@ -331,6 +353,8 @@ def setup_amazon_de():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
+    options.add_argument('--headless=new')
+    options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--no-sandbox')
@@ -343,7 +367,7 @@ def setup_amazon_de():
     options.add_experimental_option('prefs', {'intl.accept_languages': 'de-DE,de'})
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
-    driver.maximize_window()
+    driver.set_window_size(1920, 1080)
 
     settings = {
         'wait_time': 3,
@@ -359,6 +383,8 @@ def setup_fnac():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
+    options.add_argument('--headless=new')
+    options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--no-sandbox')
@@ -371,7 +397,7 @@ def setup_fnac():
     options.add_experimental_option('prefs', {'intl.accept_languages': 'fr-FR,fr'})
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
-    driver.maximize_window()
+    driver.set_window_size(1920, 1080)
 
     settings = {
         'wait_time': 3,
@@ -387,6 +413,8 @@ def setup_amazon_nl():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
+    options.add_argument('--headless=new')
+    options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--no-sandbox')
@@ -399,7 +427,7 @@ def setup_amazon_nl():
     options.add_experimental_option('prefs', {'intl.accept_languages': 'nl-NL,nl'})
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
-    driver.maximize_window()
+    driver.set_window_size(1920, 1080)
 
     settings = {
         'wait_time': 3,
@@ -415,6 +443,8 @@ def setup_coolblue():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
+    options.add_argument('--headless=new')
+    options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--no-sandbox')
@@ -427,7 +457,7 @@ def setup_coolblue():
     options.add_experimental_option('prefs', {'intl.accept_languages': 'nl-NL,nl'})
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
-    driver.maximize_window()
+    driver.set_window_size(1920, 1080)
 
     settings = {
         'wait_time': 3,
@@ -443,6 +473,8 @@ def setup_mediamarkt():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
+    options.add_argument('--headless=new')
+    options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--no-sandbox')
@@ -455,7 +487,7 @@ def setup_mediamarkt():
     options.add_experimental_option('prefs', {'intl.accept_languages': 'de-DE,de'})
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
-    driver.maximize_window()
+    driver.set_window_size(1920, 1080)
 
     settings = {
         'wait_time': 3,
@@ -471,6 +503,8 @@ def setup_x_kom():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
+    options.add_argument('--headless=new')
+    options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--no-sandbox')
@@ -483,7 +517,7 @@ def setup_x_kom():
     options.add_experimental_option('prefs', {'intl.accept_languages': 'pl-PL,pl'})
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
-    driver.maximize_window()
+    driver.set_window_size(1920, 1080)
 
     settings = {
         'wait_time': 3,

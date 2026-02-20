@@ -149,13 +149,13 @@ class ScreenshotMonitor:
             draw = ImageDraw.Draw(image)
 
             try:
-                font = ImageFont.truetype("arial.ttf", 28)
+                font = ImageFont.truetype("arial.ttf", 20)
             except:
                 font = ImageFont.load_default()
 
-            padding = 5
+            padding = 4
 
-            # 상단: URL
+            # 좌측 상단: URL
             url_bbox = draw.textbbox((0, 0), url, font=font)
             url_width = url_bbox[2] - url_bbox[0]
             url_height = url_bbox[3] - url_bbox[1]
