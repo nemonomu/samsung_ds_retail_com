@@ -200,6 +200,7 @@ class BestBuyScraper:
 
         try:
             co = ChromiumOptions()
+            co.auto_port()  # 매번 새 포트로 독립 브라우저 실행 (기존 Chrome 세션에 연결 방지)
             co.no_imgs(True)
             self.page = ChromiumPage(co)
 
@@ -210,7 +211,7 @@ class BestBuyScraper:
             return False
 
     def close_driver(self):
-        """브라우저 안전 종료 + 잔여 프로세스 정리"""
+        """브라우저 안전 종료"""
         try:
             if self.page:
                 self.page.quit()
@@ -220,13 +221,6 @@ class BestBuyScraper:
             logger.warning(f"브라우저 종료 오류: {e}")
             self.page = None
         self.session_initialized = False
-        # 잔여 chrome 프로세스 강제 종료
-        try:
-            import subprocess
-            subprocess.run(['taskkill', '/f', '/im', 'chrome.exe'],
-                         capture_output=True, timeout=10)
-        except Exception:
-            pass
 
     def restart_driver(self):
         """브라우저 종료 후 재시작 + 세션 초기화"""
