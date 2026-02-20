@@ -214,7 +214,7 @@ class BestBuyScraper:
             options.add_argument('--js-flags=--max-old-space-size=512')
             options.add_argument('--blink-settings=imagesEnabled=false')
 
-            self.driver = uc.Chrome(options=options, version_main=144)
+            self.driver = uc.Chrome(options=options, version_main=145)
             self.driver.maximize_window()
 
             # 추가 스텔스 설정
@@ -226,7 +226,35 @@ class BestBuyScraper:
         except Exception as e:
             logger.error(f"❌ 드라이버 설정 실패: {e}")
             return False
-    
+
+    def close_driver(self):
+        """드라이버 안전 종료 + 잔여 프로세스 정리"""
+        try:
+            if self.driver:
+                self.driver.quit()
+                self.driver = None
+                logger.info("드라이버 종료 완료")
+        except Exception as e:
+            logger.warning(f"드라이버 종료 오류: {e}")
+            self.driver = None
+        self.session_initialized = False
+        # 잔여 chrome 프로세스 강제 종료
+        try:
+            import subprocess
+            subprocess.run(['taskkill', '/f', '/im', 'chrome.exe'],
+                         capture_output=True, timeout=10)
+        except Exception:
+            pass
+
+    def restart_driver(self):
+        """드라이버 종료 후 재시작 + 세션 초기화"""
+        logger.info("🔧 드라이버 재시작 중...")
+        self.close_driver()
+        time.sleep(3)
+        if not self.setup_driver():
+            return False
+        return self.initialize_session()
+
     def initialize_session(self):
         """BestBuy 세션 초기화 (국가 선택 포함)"""
         if self.session_initialized:
@@ -367,23 +395,33 @@ class BestBuyScraper:
                 self.initialize_session()
             
             self.driver.get(url)
-            
+
+            # ERR_HTTP2_PROTOCOL_ERROR 감지
+            try:
+                page_source = self.driver.page_source[:2000] if self.driver.page_source else ''
+                page_title = self.driver.title or ''
+                if 'ERR_HTTP2_PROTOCOL_ERROR' in page_source or "This site can't be reached" in page_source or 'ERR_HTTP2_PROTOCOL_ERROR' in page_title:
+                    logger.warning(f"🚫 ERR_HTTP2_PROTOCOL_ERROR 감지 - Best Buy 차단")
+                    return {'_blocked': True}
+            except Exception:
+                pass
+
             # 스마트 대기 전략 적용
             logger.info("⏳ 페이지 로딩 대기 중...")
-            
+
             # 1. 네트워크 완료 대기
             self.wait_for_network_idle()
-            
+
             # 2. 가격 요소들 로딩 대기
             if not self.wait_for_price_elements():
                 logger.warning("가격 요소 로딩 실패, 그래도 추출 시도")
-            
+
             # 3. 추가 안정화 시간
             time.sleep(random.uniform(1, 2))
-            
+
             # 페이지 로드 대기
             wait = WebDriverWait(self.driver, 20)
-            
+
             # 차단 감지
             title = self.driver.title
             blocked_patterns = ["Access Denied", "Blocked", "Robot", "Captcha", "Sorry", "Error"]
@@ -931,16 +969,50 @@ class BestBuyScraper:
         results = []
         failed_urls = []
 
-        for idx, row in enumerate(urls_data):
+        # 자동 재시도 설정
+        MAX_RETRIES = 5          # 최대 재시도 횟수
+        INITIAL_WAIT = 600       # 초기 대기 시간 (10분)
+        retry_count = 0          # 현재 재시도 횟수
+        unsaved_results = []     # 중간 저장 안 된 결과
+
+        i = 0
+        while i < len(urls_data):
+            row = urls_data[i]
             try:
                 logger.info(f"\n{'='*50}")
-                logger.info(f"진행률: {idx + 1}/{len(urls_data)} ({(idx + 1)/len(urls_data)*100:.1f}%)")
+                logger.info(f"진행률: {i + 1}/{len(urls_data)} ({(i + 1)/len(urls_data)*100:.1f}%)")
 
                 # URL 추출
                 url = row.get('url')
 
                 # 제품 정보 추출 (재시도 로직 적용)
                 result = self.extract_with_retry(url, row)
+
+                # ERR_HTTP2_PROTOCOL_ERROR 차단 감지
+                if isinstance(result, dict) and result.get('_blocked'):
+                    retry_count += 1
+                    if retry_count > MAX_RETRIES:
+                        logger.error(f"🛑 최대 재시도 횟수({MAX_RETRIES}) 초과. 중단합니다.")
+                        logger.info(f"📌 {i + 1}번째 항목부터 미처리")
+                        break
+
+                    wait_time = INITIAL_WAIT * retry_count  # 10분, 20분, 30분...
+                    logger.info(f"\n{'='*50}")
+                    logger.info(f"🔄 [RETRY {retry_count}/{MAX_RETRIES}] Best Buy 차단 감지. {wait_time // 60}분 대기...")
+                    logger.info(f"{'='*50}")
+
+                    self.close_driver()
+                    time.sleep(wait_time)
+
+                    if not self.restart_driver():
+                        logger.error("❌ 드라이버 재시작 실패. 중단합니다.")
+                        break
+
+                    # 같은 URL 다시 시도 (i 증가 안 함)
+                    continue
+
+                # 성공 또는 일반 실패
+                retry_count = 0  # 성공하면 재시도 카운터 리셋
 
                 # 실패 여부 확인
                 if result['retailprice'] is None:
@@ -951,10 +1023,11 @@ class BestBuyScraper:
                     })
 
                 results.append(result)
+                unsaved_results.append(result)
 
                 # 10개마다 DB에 중간 저장 (save_interim=True일 때만)
-                if save_interim and (idx + 1) % 10 == 0:
-                    interim_df = pd.DataFrame(results[-10:])
+                if save_interim and len(unsaved_results) >= 10:
+                    interim_df = pd.DataFrame(unsaved_results[:10])
                     # no_longer_available 컬럼 제거 (DB 테이블에 없음)
                     if 'no_longer_available' in interim_df.columns:
                         interim_df = interim_df.drop(columns=['no_longer_available'])
@@ -965,27 +1038,25 @@ class BestBuyScraper:
                             logger.info(f"💾 중간 저장: 10개 레코드 DB 저장")
                         except Exception as e:
                             logger.error(f"중간 저장 실패: {e}")
+                    unsaved_results = unsaved_results[10:]
 
                 # 다음 요청 전 대기
-                if idx < len(urls_data) - 1:
-                    wait_time = random.uniform(2, 5)  # BestBuy는 조금 더 빠르게
-                    logger.info(f"⏳ {wait_time:.1f}초 대기 중...")
-                    time.sleep(wait_time)
+                if i < len(urls_data) - 1:
+                    delay = random.uniform(5, 10)
+                    logger.info(f"⏳ {delay:.1f}초 대기 중...")
+                    time.sleep(delay)
 
-                    # 10개마다 짧은 휴식
-                    if (idx + 1) % 10 == 0:
-                        logger.info("☕ 10개 처리 완료, 1초 휴식...")
-                        time.sleep(1)
+                i += 1
 
             except Exception as e:
                 logger.error(f"❌ 스크래핑 중 오류 (URL: {row.get('url', 'unknown')}): {e}")
                 self.error_logs.append(f"[스크래핑 오류] URL: {row.get('url', 'unknown')} | 오류: {str(e)}")
+                i += 1
                 continue
 
-        # 남은 항목 저장 (10개 단위로 나누어 떨어지지 않는 경우)
-        if save_interim and len(results) % 10 != 0:
-            remaining_count = len(results) % 10
-            remaining_df = pd.DataFrame(results[-remaining_count:])
+        # 남은 항목 저장
+        if save_interim and unsaved_results:
+            remaining_df = pd.DataFrame(unsaved_results)
             # no_longer_available 컬럼 제거 (DB 테이블에 없음)
             if 'no_longer_available' in remaining_df.columns:
                 remaining_df = remaining_df.drop(columns=['no_longer_available'])
@@ -993,7 +1064,7 @@ class BestBuyScraper:
                 try:
                     remaining_df.to_sql('bestbuy_price_crawl_tbl_usa_v2', self.db_engine,
                                        if_exists='append', index=False)
-                    logger.info(f"💾 남은 {remaining_count}개 레코드 DB 저장")
+                    logger.info(f"💾 남은 {len(unsaved_results)}개 레코드 DB 저장")
                 except Exception as e:
                     logger.error(f"남은 항목 저장 실패: {e}")
 
