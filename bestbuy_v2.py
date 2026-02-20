@@ -891,16 +891,8 @@ class BestBuyScraper:
             if not self.initialize_session():
                 return False
 
-            # 3단계: 워밍업 대기 (봇 감지 우회)
-            warmup_minutes = 10
-            logger.info(f"3단계: BestBuy 홈페이지에서 {warmup_minutes}분 워밍업 대기...")
-            for remaining in range(warmup_minutes, 0, -1):
-                logger.info(f"  ⏳ {remaining}분 남음...")
-                time.sleep(60)
-            logger.info("✅ 워밍업 완료")
-
-            # 4단계: 테스트 상품 페이지 접속
-            logger.info("4단계: 테스트 상품 페이지 접속...")
+            # 3단계: 테스트 상품 페이지 접속
+            logger.info("3단계: 테스트 상품 페이지 접속...")
             test_url = "https://www.bestbuy.com/site/samsung-9100-pro-1tb-internal-ssd-pcie-gen-5x4-nvme-speeds-up-to-14700-mb-s/6618929.p?skuId=6618929"
             
             test_row = {
@@ -921,8 +913,8 @@ class BestBuyScraper:
                 logger.info(f"  - 가격: {test_result['retailprice']}")
                 logger.info(f"  - 이미지: {'추출됨' if test_result['imageurl'] else '없음'}")
 
-            # 5단계: 파일서버 연결 테스트
-            logger.info("5단계: 파일서버 연결 테스트...")
+            # 4단계: 파일서버 연결 테스트
+            logger.info("4단계: 파일서버 연결 테스트...")
             try:
                 transport = paramiko.Transport((FILE_SERVER_CONFIG['host'], FILE_SERVER_CONFIG['port']))
                 transport.connect(
