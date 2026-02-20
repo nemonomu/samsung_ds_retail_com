@@ -940,12 +940,16 @@ class BestBuyScraper:
             }
             
             test_result = self.extract_product_info(test_url, test_row)
-            
-            logger.info("추출된 정보:")
-            logger.info(f"  - 상품명: {test_result['title'][:50] if test_result['title'] else 'None'}...")
-            logger.info(f"  - 가격: {test_result['retailprice']}")
-            logger.info(f"  - 이미지: {'추출됨' if test_result['imageurl'] else '없음'}")
-            
+
+            # 차단된 경우 테스트 건너뛰고 진행 (scrape_urls에서 auto-retry 처리)
+            if isinstance(test_result, dict) and test_result.get('_blocked'):
+                logger.warning("⚠️ 테스트 페이지 차단됨 - 테스트 건너뛰고 크롤링 진행 (auto-retry 적용)")
+            else:
+                logger.info("추출된 정보:")
+                logger.info(f"  - 상품명: {test_result['title'][:50] if test_result['title'] else 'None'}...")
+                logger.info(f"  - 가격: {test_result['retailprice']}")
+                logger.info(f"  - 이미지: {'추출됨' if test_result['imageurl'] else '없음'}")
+
             # 4단계: 파일서버 연결 테스트
             logger.info("4단계: 파일서버 연결 테스트...")
             try:
@@ -958,13 +962,8 @@ class BestBuyScraper:
                 logger.info("✅ 파일서버 연결 성공")
             except Exception as e:
                 logger.warning(f"⚠️ 파일서버 연결 실패: {e}")
-            
-            if test_result['retailprice'] is not None or test_result['title']:
-                logger.info("✅ 테스트 성공 - 크롤링 준비 완료!")
-                return True
-            else:
-                logger.warning("⚠️ 테스트 부분 실패 - 그래도 계속 진행")
-                return True
+
+            return True  # 테스트 차단 여부와 관계없이 진행 (auto-retry가 처리)
                 
         except Exception as e:
             logger.error(f"❌ 테스트 실패: {e}")
