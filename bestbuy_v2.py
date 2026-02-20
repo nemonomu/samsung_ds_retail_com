@@ -253,8 +253,9 @@ class BestBuyScraper:
 
         # 3단계: 실제 가격 값이 들어올 때까지 대기
         start_time = time.time()
+        price_xpaths = sorted(self.XPATHS.get('price', []), key=lambda x: 0 if x.startswith('//') else 1)
         while time.time() - start_time < max_wait:
-            for xpath in self.XPATHS.get('price', []):
+            for xpath in price_xpaths:
                 try:
                     element = self.page.ele(f'xpath:{xpath}', timeout=2)
                     text = element.text.strip()
@@ -443,9 +444,12 @@ class BestBuyScraper:
             # 가격 추출
             price_found = False
             
-            # 1단계: 기존 선택자로 시도
+            # 1단계: 기존 선택자로 시도 (절대경로는 우선순위 낮게)
             logger.info("💰 기존 가격 선택자로 시도 중...")
-            for xpath in self.XPATHS.get('price', []):
+            price_xpaths = self.XPATHS.get('price', [])
+            # 절대경로(/html/body/...)는 뒤로, 상대경로(//...)는 앞으로
+            price_xpaths = sorted(price_xpaths, key=lambda x: 0 if x.startswith('//') else 1)
+            for xpath in price_xpaths:
                 try:
                     price_element = self.page.ele(f'xpath:{xpath}', timeout=2)
                     price_text = price_element.text.strip()
