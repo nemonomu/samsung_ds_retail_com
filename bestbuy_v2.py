@@ -201,6 +201,7 @@ class BestBuyScraper:
         try:
             co = ChromiumOptions()
             co.auto_port()  # 매번 새 포트로 독립 브라우저 실행 (기존 Chrome 세션에 연결 방지)
+            co.set_user_data_path(os.path.join(os.environ.get('TEMP', '/tmp'), 'drission_bestbuy'))
             co.no_imgs(True)
             self.page = ChromiumPage(co)
 
