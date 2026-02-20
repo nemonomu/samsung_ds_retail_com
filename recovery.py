@@ -135,6 +135,15 @@ TARGET_CONFIG = {
         'local_tz': 'Europe/Amsterdam',
         'scraper_module': 'nl_amazon',
         'scraper_class': 'AmazonNLScraper'
+    },
+    'danawa': {
+        'name': '한국 다나와',
+        'table': 'danawa_price_crawl_tbl_kr_v2',
+        'country_code': 'kr',
+        'file_prefix': 'kr_danawa',
+        'local_tz': 'Asia/Seoul',
+        'scraper_module': 'danawa_v2',
+        'scraper_class': 'DanawaScraper'
     }
 }
 
@@ -163,6 +172,9 @@ class RecoveryManager:
         config = TARGET_CONFIG[target]
         table = config['table']
 
+        # danawa: retailprice = 0도 복구 대상
+        price_null_condition = "retailprice IS NULL OR retailprice = 0" if target == 'danawa' else "retailprice IS NULL"
+
         # 세션 구분: 날짜 + 시간대별로 그룹화
         query = f"""
         SELECT
@@ -171,7 +183,7 @@ class RecoveryManager:
             COUNT(*) as total_count,
             SUM(CASE WHEN title IS NULL THEN 1 ELSE 0 END) as title_null_count,
             SUM(CASE WHEN imageurl IS NULL OR imageurl = '' THEN 1 ELSE 0 END) as imageurl_null_count,
-            SUM(CASE WHEN retailprice IS NULL THEN 1 ELSE 0 END) as price_null_count
+            SUM(CASE WHEN {price_null_condition} THEN 1 ELSE 0 END) as price_null_count
         FROM {table}
         GROUP BY DATE(kr_crawl_datetime), HOUR(kr_crawl_datetime)
         ORDER BY crawl_date DESC, session_start DESC
@@ -190,13 +202,19 @@ class RecoveryManager:
         config = TARGET_CONFIG[target]
         table = config['table']
 
+        # danawa: retailprice = 0도 복구 대상
+        if target == 'danawa':
+            null_condition = "(title IS NULL OR retailprice IS NULL OR retailprice = 0)"
+        else:
+            null_condition = "(title IS NULL OR retailprice IS NULL)"
+
         # 세션(날짜+시간대) 기준으로 NULL 레코드 조회
         query = f"""
         SELECT *
         FROM {table}
         WHERE DATE(kr_crawl_datetime) = DATE(:session_start)
           AND HOUR(kr_crawl_datetime) = HOUR(:session_start)
-          AND (title IS NULL OR retailprice IS NULL)
+          AND {null_condition}
         """
 
         try:
@@ -650,6 +668,7 @@ def select_target():
     print("9. xkom (폴란드 X-Kom)")
     print("10. usa (미국 Amazon)")
     print("11. nl (네덜란드 Amazon)")
+    print("12. danawa (한국 다나와)")
     print("0. 종료")
 
     while True:
@@ -679,6 +698,8 @@ def select_target():
                 return 'usa'
             elif choice == '11':
                 return 'nl'
+            elif choice == '12':
+                return 'danawa'
             else:
                 print("올바른 번호를 입력하세요.")
         except KeyboardInterrupt:
