@@ -1080,7 +1080,7 @@ def main():
 
     # IP 워밍업: 일반 Chrome으로 BestBuy 접속 후 10분 대기
     import subprocess
-    WARMUP_MINUTES = 10
+    WARMUP_MINUTES = 20
     logger.info(f"🔥 IP 워밍업: 일반 Chrome으로 BestBuy 접속 ({WARMUP_MINUTES}분 대기)...")
     chrome_paths = [
         r'C:\Program Files\Google\Chrome\Application\chrome.exe',
