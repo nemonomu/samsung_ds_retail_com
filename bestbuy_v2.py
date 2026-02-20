@@ -396,15 +396,32 @@ class BestBuyScraper:
             
             self.driver.get(url)
 
-            # ERR_HTTP2_PROTOCOL_ERROR 감지
+            # ERR_HTTP2_PROTOCOL_ERROR 감지 (Selenium은 chrome error 페이지를 다르게 반환)
             try:
-                page_source = self.driver.page_source[:2000] if self.driver.page_source else ''
+                page_source = self.driver.page_source or ''
                 page_title = self.driver.title or ''
-                if 'ERR_HTTP2_PROTOCOL_ERROR' in page_source or "This site can't be reached" in page_source or 'ERR_HTTP2_PROTOCOL_ERROR' in page_title:
-                    logger.warning(f"🚫 ERR_HTTP2_PROTOCOL_ERROR 감지 - Best Buy 차단")
+                current_url = self.driver.current_url or ''
+
+                # 1. 직접 텍스트 감지
+                blocked_texts = ['ERR_HTTP2_PROTOCOL_ERROR', "This site can't be reached",
+                                 'ERR_CONNECTION_RESET', 'ERR_CONNECTION_REFUSED',
+                                 'ERR_NAME_NOT_RESOLVED', 'chrome-error://']
+                for blocked_text in blocked_texts:
+                    if blocked_text in page_source or blocked_text in page_title or blocked_text in current_url:
+                        logger.warning(f"🚫 차단 감지 ({blocked_text}) - Best Buy 차단")
+                        return {'_blocked': True}
+
+                # 2. 페이지 소스가 비정상적으로 짧으면 에러 페이지로 판단
+                if len(page_source) < 500 and 'bestbuy' not in page_source.lower():
+                    logger.warning(f"🚫 비정상 페이지 감지 (page_source 길이: {len(page_source)}) - Best Buy 차단 의심")
                     return {'_blocked': True}
-            except Exception:
-                pass
+
+                # 3. chrome-error 페이지 감지
+                if 'chrome-error' in current_url:
+                    logger.warning(f"🚫 Chrome 에러 페이지 감지 - Best Buy 차단")
+                    return {'_blocked': True}
+            except Exception as e:
+                logger.warning(f"차단 감지 중 오류: {e}")
 
             # 스마트 대기 전략 적용
             logger.info("⏳ 페이지 로딩 대기 중...")
