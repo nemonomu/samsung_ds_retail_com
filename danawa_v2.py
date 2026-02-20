@@ -352,38 +352,35 @@ class DanawaScraper:
                 'vat': 'o'  # 한국은 VAT 포함
             }
             
-            # 재고 상태 확인
-            stock_available = self.check_stock_status()
-            
-            if stock_available:
-                # 가격 추출
-                try:
-                    price_found = False
-                    for xpath in self.XPATHS.get('price', []):
-                        try:
-                            price_element = self.driver.find_element(By.XPATH, xpath)
-                            price_text = price_element.text.strip()
-                            
-                            if price_text:
-                                parsed_price = self.parse_price_by_country(price_text, 'kr')
-                                if parsed_price > 0:
-                                    result['retailprice'] = parsed_price
-                                    logger.info(f"✅ 가격 추출 성공: {result['retailprice']}")
-                                    price_found = True
-                                    break
-                        except Exception as e:
-                            logger.debug(f"가격 추출 실패 (XPath: {xpath}): {e}")
-                            continue
-                    
-                    if not price_found:
+            # 가격 추출 (먼저 시도)
+            try:
+                price_found = False
+                for xpath in self.XPATHS.get('price', []):
+                    try:
+                        price_element = self.driver.find_element(By.XPATH, xpath)
+                        price_text = price_element.text.strip()
+
+                        if price_text:
+                            parsed_price = self.parse_price_by_country(price_text, 'kr')
+                            if parsed_price > 0:
+                                result['retailprice'] = parsed_price
+                                logger.info(f"✅ 가격 추출 성공: {result['retailprice']}")
+                                price_found = True
+                                break
+                    except Exception as e:
+                        logger.debug(f"가격 추출 실패 (XPath: {xpath}): {e}")
+                        continue
+
+                if not price_found:
+                    # 가격을 못 찾았을 때만 재고 상태 확인
+                    if not self.check_stock_status():
+                        result['retailprice'] = 0
+                        logger.info("재고 없음으로 가격 0 설정")
+                    else:
                         logger.warning("모든 가격 XPath에서 추출 실패")
-                        
-                except Exception as e:
-                    logger.warning(f"가격 추출 실패: {e}")
-            else:
-                # 재고 없음
-                result['retailprice'] = 0
-                logger.info("재고 없음으로 가격 0 설정")
+
+            except Exception as e:
+                logger.warning(f"가격 추출 실패: {e}")
             
             # 제목 추출
             try:
