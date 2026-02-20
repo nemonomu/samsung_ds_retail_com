@@ -557,7 +557,13 @@ class RecoveryManager:
 
                 result = self.recrawl_url(scraper, url, row, target)
 
-                if result and (result.get('title') is not None or result.get('retailprice') is not None):
+                # danawa: price=0 복구 대상이므로 price > 0이어야 성공
+                if target == 'danawa':
+                    is_recovered = result and result.get('retailprice') is not None and result.get('retailprice') > 0
+                else:
+                    is_recovered = result and (result.get('title') is not None or result.get('retailprice') is not None)
+
+                if is_recovered:
                     # DB UPDATE (원본 kr_crawl_datetime으로 정확히 매칭)
                     result['producturl'] = url
                     if self.update_db_record(target, original_kr_crawl_datetime, result):
@@ -568,7 +574,7 @@ class RecoveryManager:
                         logger.warning(f"  -> DB UPDATE 실패")
                         fail_count += 1
                 else:
-                    logger.warning(f"  -> 재크롤링 실패 (여전히 NULL)")
+                    logger.warning(f"  -> 재크롤링 실패 (여전히 NULL 또는 price=0)")
                     fail_count += 1
 
         except Exception as e:
