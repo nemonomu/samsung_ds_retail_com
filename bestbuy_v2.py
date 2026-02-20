@@ -32,7 +32,6 @@ class BestBuyScraper:
         self.page = None
         self.db_engine = None
         self.sftp_client = None
-        self.session_initialized = False
         self.country_code = 'usa'
         # V2: 타임존 분리 (현지시간 + 한국시간)
         self.korea_tz = pytz.timezone('Asia/Seoul')
@@ -220,80 +219,14 @@ class BestBuyScraper:
         except Exception as e:
             logger.warning(f"브라우저 종료 오류: {e}")
             self.page = None
-        self.session_initialized = False
 
     def restart_driver(self):
-        """브라우저 종료 후 재시작 + 세션 초기화"""
+        """브라우저 종료 후 재시작"""
         logger.info("🔧 브라우저 재시작 중...")
         self.close_driver()
         time.sleep(3)
-        if not self.setup_driver():
-            return False
-        return self.initialize_session()
+        return self.setup_driver()
 
-    def initialize_session(self):
-        """BestBuy 세션 초기화 (국가 선택 포함)"""
-        if self.session_initialized:
-            return True
-            
-        try:
-            logger.info("🌐 BestBuy 세션 초기화 중...")
-            
-            # BestBuy 메인 페이지 접속
-            self.page.get("https://www.bestbuy.com")
-            time.sleep(4)
-            
-            # 국가 선택 팝업 처리
-            self.handle_country_popup()
-            
-            # 세션 확인
-            title = self.page.title or ''
-            if "Best Buy" in title:
-                logger.info("✅ BestBuy 세션 초기화 완료")
-                self.session_initialized = True
-                return True
-            else:
-                logger.warning("⚠️ 세션 초기화 부분 성공")
-                self.session_initialized = True
-                return True
-                
-        except Exception as e:
-            logger.error(f"❌ 세션 초기화 실패: {e}")
-            return False
-    
-    def handle_country_popup(self):
-        """국가 선택 팝업 처리 (세션당 1회)"""
-        try:
-            logger.info("🌍 국가 선택 확인 중...")
-            time.sleep(3)
-            
-            # DB에서 가져온 국가 선택 셀렉터
-            country_selectors = self.XPATHS.get('country_select', [])
-            
-            # 기본 셀렉터 추가
-            all_selectors = country_selectors + [
-                "//a[contains(@class, 'us-link')]",
-                "//button[contains(text(), 'United States')]"
-            ]
-            
-            for selector in all_selectors:
-                try:
-                    element = self.page.ele(f'xpath:{selector}', timeout=3)
-                    if element:
-                        element.click()
-                        logger.info("🇺🇸 미국 사이트 선택 완료")
-                        time.sleep(3)
-                        return True
-                except:
-                    continue
-            
-            logger.info("국가 선택 팝업 없음 (이미 설정됨)")
-            return True
-            
-        except Exception as e:
-            logger.warning(f"국가 팝업 처리 중 오류 (무시): {e}")
-            return True
-    
     def wait_for_price_elements(self, max_wait=10):
         """가격 요소들이 실제로 로드될 때까지 스마트 대기"""
 
@@ -357,10 +290,6 @@ class BestBuyScraper:
         """제품 정보 추출 (재시도 로직 포함)"""
         try:
             logger.info(f"🔍 페이지 접속: {url} (시도: {retry_count + 1}/{max_retries + 1})")
-            
-            # 세션 초기화 확인
-            if not self.session_initialized:
-                self.initialize_session()
             
             self.page.get(url)
 
@@ -639,8 +568,6 @@ class BestBuyScraper:
                     except:
                         pass
                     self.setup_driver()
-                    self.session_initialized = False
-                    self.initialize_session()
 
                 return self.extract_product_info(url, row_data, retry_count + 1, max_retries)
 
@@ -671,8 +598,6 @@ class BestBuyScraper:
                     except:
                         pass
                     self.setup_driver()
-                    self.session_initialized = False
-                    self.initialize_session()
 
                 # 재귀 호출로 재시도
                 return self.extract_product_info(url, row_data, retry_count + 1, max_retries)
@@ -886,12 +811,7 @@ class BestBuyScraper:
             else:
                 logger.warning("⚠️ Google 접속 이상")
             
-            # 2단계: BestBuy 세션 초기화
-            logger.info("2단계: BestBuy 세션 초기화...")
-            if not self.initialize_session():
-                return False
-
-            # 3단계: 테스트 상품 페이지 접속
+            # 2단계: 테스트 상품 페이지 접속
             logger.info("3단계: 테스트 상품 페이지 접속...")
             test_url = "https://www.bestbuy.com/site/samsung-9100-pro-1tb-internal-ssd-pcie-gen-5x4-nvme-speeds-up-to-14700-mb-s/6618929.p?skuId=6618929"
             
@@ -1185,15 +1105,16 @@ def main():
             logger.info(f"  ⏳ {remaining}분 남음...")
             time.sleep(60)
         logger.info("✅ IP 워밍업 완료")
+        # 워밍업용 Chrome 종료
+        try:
+            warmup_process.terminate()
+            logger.info("🔧 워밍업용 Chrome 종료")
+        except Exception as e:
+            logger.warning(f"워밍업 Chrome 종료 실패 (무시): {e}")
 
-    # 브라우저 설정 및 세션 초기화
+    # 브라우저 설정
     if not scraper.setup_driver():
         logger.error("브라우저 설정 실패로 종료합니다.")
-        return
-    if not scraper.initialize_session():
-        logger.error("세션 초기화 실패로 종료합니다.")
-        if scraper.page:
-            scraper.page.quit()
         return
     
     # 변수 초기화 (except 블록에서 사용하기 위해)
@@ -1268,15 +1189,13 @@ def main():
                     except:
                         pass
                     scraper.page = None
-                scraper.session_initialized = False
 
                 # 새 브라우저 세팅 후 재시도
+                retry_results_df = None
                 if not scraper.setup_driver():
                     logger.error("❌ 재시도용 브라우저 설정 실패")
                 else:
-                    scraper.initialize_session()
-
-                retry_results_df = scraper.scrape_urls(failed_urls_data, save_interim=False)
+                    retry_results_df = scraper.scrape_urls(failed_urls_data, save_interim=False)
 
                 if retry_results_df is not None and not retry_results_df.empty:
                     # 재시도 결과 분석
