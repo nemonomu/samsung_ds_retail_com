@@ -1028,11 +1028,33 @@ class BestBuyScraper:
                     # 같은 URL 다시 시도 (i 증가 안 함)
                     continue
 
-                # 성공 또는 일반 실패
-                retry_count = 0  # 성공하면 재시도 카운터 리셋
+                # 실패 여부 확인 - 가격+제목 모두 없으면 차단 의심
+                if result.get('retailprice') is None and result.get('title') is None:
+                    retry_count += 1
+                    if retry_count > MAX_RETRIES:
+                        logger.error(f"🛑 최대 재시도 횟수({MAX_RETRIES}) 초과. 중단합니다.")
+                        logger.info(f"📌 {i + 1}번째 항목부터 미처리")
+                        break
 
-                # 실패 여부 확인
-                if result['retailprice'] is None:
+                    wait_time = INITIAL_WAIT * retry_count
+                    logger.info(f"\n{'='*50}")
+                    logger.info(f"🔄 [RETRY {retry_count}/{MAX_RETRIES}] 가격+제목 추출 실패. 차단 의심. {wait_time // 60}분 대기...")
+                    logger.info(f"{'='*50}")
+
+                    self.close_driver()
+                    time.sleep(wait_time)
+
+                    if not self.restart_driver():
+                        logger.error("❌ 드라이버 재시작 실패. 중단합니다.")
+                        break
+
+                    # 같은 URL 다시 시도
+                    continue
+
+                # 성공 (가격 또는 제목 있음)
+                retry_count = 0
+
+                if result.get('retailprice') is None:
                     failed_urls.append({
                         'url': url,
                         'item': row.get('item', ''),
