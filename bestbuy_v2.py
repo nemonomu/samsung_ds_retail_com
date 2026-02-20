@@ -1157,7 +1157,35 @@ def main():
 
     # 최근 크롤링 기록 확인
     get_db_history(scraper.db_engine, 7)
-    
+
+    # IP 워밍업: 일반 Chrome으로 BestBuy 접속 후 10분 대기
+    import subprocess
+    WARMUP_MINUTES = 10
+    logger.info(f"🔥 IP 워밍업: 일반 Chrome으로 BestBuy 접속 ({WARMUP_MINUTES}분 대기)...")
+    chrome_paths = [
+        r'C:\Program Files\Google\Chrome\Application\chrome.exe',
+        r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe',
+    ]
+    warmup_process = None
+    for chrome_path in chrome_paths:
+        if os.path.exists(chrome_path):
+            warmup_process = subprocess.Popen([chrome_path, 'https://www.bestbuy.com'])
+            logger.info(f"✅ 일반 Chrome 실행 완료: {chrome_path}")
+            break
+    if warmup_process is None:
+        # 기본 명령으로 시도
+        try:
+            warmup_process = subprocess.Popen('start chrome https://www.bestbuy.com', shell=True)
+            logger.info("✅ 일반 Chrome 실행 완료 (start 명령)")
+        except Exception as e:
+            logger.warning(f"⚠️ 일반 Chrome 실행 실패: {e} - 워밍업 없이 진행")
+
+    if warmup_process:
+        for remaining in range(WARMUP_MINUTES, 0, -1):
+            logger.info(f"  ⏳ {remaining}분 남음...")
+            time.sleep(60)
+        logger.info("✅ IP 워밍업 완료")
+
     # 연결 테스트 및 세션 초기화
     if not scraper.test_connection():
         logger.error("연결 테스트 실패로 종료합니다.")
