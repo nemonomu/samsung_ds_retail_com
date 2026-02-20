@@ -1186,9 +1186,12 @@ def main():
             time.sleep(60)
         logger.info("✅ IP 워밍업 완료")
 
-    # 연결 테스트 및 세션 초기화
-    if not scraper.test_connection():
-        logger.error("연결 테스트 실패로 종료합니다.")
+    # 브라우저 설정 및 세션 초기화
+    if not scraper.setup_driver():
+        logger.error("브라우저 설정 실패로 종료합니다.")
+        return
+    if not scraper.initialize_session():
+        logger.error("세션 초기화 실패로 종료합니다.")
         if scraper.page:
             scraper.page.quit()
         return
