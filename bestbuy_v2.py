@@ -1105,12 +1105,6 @@ def main():
             logger.info(f"  ⏳ {remaining}분 남음...")
             time.sleep(60)
         logger.info("✅ IP 워밍업 완료")
-        # 워밍업용 Chrome 종료
-        try:
-            warmup_process.terminate()
-            logger.info("🔧 워밍업용 Chrome 종료")
-        except Exception as e:
-            logger.warning(f"워밍업 Chrome 종료 실패 (무시): {e}")
 
     # 브라우저 설정
     if not scraper.setup_driver():
