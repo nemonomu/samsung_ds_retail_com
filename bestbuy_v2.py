@@ -3,10 +3,7 @@ BestBuy 가격 추출 시스템 - DB 기반 버전
 DB에서 URL 읽어와서 크롤링 후 결과 저장
 파일명 형식: {수집일자}{수집시간}_{국가코드}_{쇼핑몰}.csv
 """
-import undetected_chromedriver as uc
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+from DrissionPage import ChromiumPage, ChromiumOptions
 import pandas as pd
 import pymysql
 from sqlalchemy import create_engine
@@ -18,7 +15,6 @@ from datetime import datetime
 import pytz
 import logging
 import os
-from io import StringIO
 import zipfile
 import hashlib
 
@@ -33,7 +29,7 @@ from alert_monitor import monitor_and_alert
 
 class BestBuyScraper:
     def __init__(self):
-        self.driver = None
+        self.page = None
         self.db_engine = None
         self.sftp_client = None
         self.session_initialized = False
@@ -199,44 +195,30 @@ class BestBuyScraper:
             return []
     
     def setup_driver(self):
-        """Chrome 드라이버 설정"""
-        logger.info("🔧 Chrome 드라이버 설정 중...")
-        
+        """DrissionPage 브라우저 설정"""
+        logger.info("🔧 DrissionPage 브라우저 설정 중...")
+
         try:
-            options = uc.ChromeOptions()
-            # 스텔스 모드 설정
-            options.add_argument('--disable-blink-features=AutomationControlled')
-            # 메모리 최적화 옵션
-            options.add_argument('--disable-gpu')
-            options.add_argument('--disable-extensions')
-            options.add_argument('--disable-infobars')
-            options.add_argument('--disable-renderer-backgrounding')
-            options.add_argument('--js-flags=--max-old-space-size=512')
-            options.add_argument('--blink-settings=imagesEnabled=false')
+            co = ChromiumOptions()
+            co.no_imgs(True)
+            self.page = ChromiumPage(co)
 
-            self.driver = uc.Chrome(options=options, version_main=145)
-            self.driver.maximize_window()
-
-            # 추가 스텔스 설정
-            self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-            self.driver.execute_script("Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3]})")
-            
-            logger.info("✅ 드라이버 설정 완료")
+            logger.info("✅ 브라우저 설정 완료")
             return True
         except Exception as e:
-            logger.error(f"❌ 드라이버 설정 실패: {e}")
+            logger.error(f"❌ 브라우저 설정 실패: {e}")
             return False
 
     def close_driver(self):
-        """드라이버 안전 종료 + 잔여 프로세스 정리"""
+        """브라우저 안전 종료 + 잔여 프로세스 정리"""
         try:
-            if self.driver:
-                self.driver.quit()
-                self.driver = None
-                logger.info("드라이버 종료 완료")
+            if self.page:
+                self.page.quit()
+                self.page = None
+                logger.info("브라우저 종료 완료")
         except Exception as e:
-            logger.warning(f"드라이버 종료 오류: {e}")
-            self.driver = None
+            logger.warning(f"브라우저 종료 오류: {e}")
+            self.page = None
         self.session_initialized = False
         # 잔여 chrome 프로세스 강제 종료
         try:
@@ -247,8 +229,8 @@ class BestBuyScraper:
             pass
 
     def restart_driver(self):
-        """드라이버 종료 후 재시작 + 세션 초기화"""
-        logger.info("🔧 드라이버 재시작 중...")
+        """브라우저 종료 후 재시작 + 세션 초기화"""
+        logger.info("🔧 브라우저 재시작 중...")
         self.close_driver()
         time.sleep(3)
         if not self.setup_driver():
@@ -264,14 +246,14 @@ class BestBuyScraper:
             logger.info("🌐 BestBuy 세션 초기화 중...")
             
             # BestBuy 메인 페이지 접속
-            self.driver.get("https://www.bestbuy.com")
+            self.page.get("https://www.bestbuy.com")
             time.sleep(4)
             
             # 국가 선택 팝업 처리
             self.handle_country_popup()
             
             # 세션 확인
-            title = self.driver.title
+            title = self.page.title or ''
             if "Best Buy" in title:
                 logger.info("✅ BestBuy 세션 초기화 완료")
                 self.session_initialized = True
@@ -302,12 +284,8 @@ class BestBuyScraper:
             
             for selector in all_selectors:
                 try:
-                    if selector.startswith('//'):
-                        element = self.driver.find_element(By.XPATH, selector)
-                    else:
-                        element = self.driver.find_element(By.CSS_SELECTOR, selector)
-                    
-                    if element.is_displayed():
+                    element = self.page.ele(f'xpath:{selector}', timeout=3)
+                    if element:
                         element.click()
                         logger.info("🇺🇸 미국 사이트 선택 완료")
                         time.sleep(3)
@@ -324,38 +302,34 @@ class BestBuyScraper:
     
     def wait_for_price_elements(self, max_wait=10):
         """가격 요소들이 실제로 로드될 때까지 스마트 대기"""
-        
+
         # 1단계: 기본 페이지 구조 대기
         try:
-            WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.TAG_NAME, "body"))
-            )
+            self.page.ele('tag:body', timeout=10)
         except:
             pass
-        
+
         # 2단계: 가격 관련 컨테이너들 대기 (여러 후보 중 하나라도 나타나면 OK)
         price_containers = [
             "//div[contains(@class, 'pricing')]",
-            "//div[contains(@class, 'price')]", 
+            "//div[contains(@class, 'price')]",
             "//span[contains(@class, 'current-price')]",
             "//div[contains(@data-testid, 'pricing')]"
         ]
-        
+
         for container in price_containers:
             try:
-                WebDriverWait(self.driver, 5).until(
-                    EC.presence_of_element_located((By.XPATH, container))
-                )
+                self.page.ele(f'xpath:{container}', timeout=5)
                 break
             except:
                 continue
-        
+
         # 3단계: 실제 가격 값이 들어올 때까지 대기
         start_time = time.time()
         while time.time() - start_time < max_wait:
             for xpath in self.XPATHS.get('price', []):
                 try:
-                    element = self.driver.find_element(By.XPATH, xpath)
+                    element = self.page.ele(f'xpath:{xpath}', timeout=2)
                     text = element.text.strip()
                     if text and ('$' in text or text.replace(',', '').replace('.', '').isdigit()):
                         logger.info(f"✅ 가격 요소 로딩 완료: {text}")
@@ -363,7 +337,7 @@ class BestBuyScraper:
                 except:
                     continue
             time.sleep(1)  # 1초마다 재확인
-        
+
         logger.warning("⚠️ 가격 요소 로딩 시간 초과")
         return False
 
@@ -377,7 +351,7 @@ class BestBuyScraper:
             
             start_time = time.time()
             while time.time() - start_time < 10:  # 최대 10초
-                if self.driver.execute_script(script):
+                if self.page.run_js(script):
                     time.sleep(idle_time)  # 추가 안정화 시간
                     return True
                 time.sleep(0.5)
@@ -394,13 +368,13 @@ class BestBuyScraper:
             if not self.session_initialized:
                 self.initialize_session()
             
-            self.driver.get(url)
+            self.page.get(url)
 
-            # ERR_HTTP2_PROTOCOL_ERROR 감지 (Selenium은 chrome error 페이지를 다르게 반환)
+            # ERR_HTTP2_PROTOCOL_ERROR 감지
             try:
-                page_source = self.driver.page_source or ''
-                page_title = self.driver.title or ''
-                current_url = self.driver.current_url or ''
+                page_source = self.page.html or ''
+                page_title = self.page.title or ''
+                current_url = self.page.url or ''
 
                 # 1. 직접 텍스트 감지
                 blocked_texts = ['ERR_HTTP2_PROTOCOL_ERROR', "This site can't be reached",
@@ -436,11 +410,8 @@ class BestBuyScraper:
             # 3. 추가 안정화 시간
             time.sleep(random.uniform(1, 2))
 
-            # 페이지 로드 대기
-            wait = WebDriverWait(self.driver, 20)
-
             # 차단 감지
-            title = self.driver.title
+            title = self.page.title or ''
             blocked_patterns = ["Access Denied", "Blocked", "Robot", "Captcha", "Sorry", "Error"]
             for pattern in blocked_patterns:
                 if pattern.lower() in title.lower():
@@ -497,7 +468,7 @@ class BestBuyScraper:
             
             # 에러 페이지 감지 (retry 하지 않고 다음 제품으로)
             try:
-                error_element = self.driver.find_element(By.XPATH, "//h1[contains(@class, 'VPT-title')]")
+                error_element = self.page.ele("xpath://h1[contains(@class, 'VPT-title')]", timeout=2)
                 if error_element and "something went wrong" in error_element.text.lower():
                     logger.warning(f"⚠️ 에러 페이지 감지: '{error_element.text}' - retry 없이 다음 제품으로")
                     self.error_logs.append(f"[에러 페이지] URL: {url} | 메시지: {error_element.text}")
@@ -509,7 +480,7 @@ class BestBuyScraper:
             is_no_longer_available = False
             for flag_xpath in self.XPATHS.get('no_longer_available_flag', []):
                 try:
-                    no_longer_element = self.driver.find_element(By.XPATH, flag_xpath)
+                    no_longer_element = self.page.ele(f'xpath:{flag_xpath}', timeout=2)
                     if no_longer_element:
                         logger.info("ℹ️ 'No longer available in new condition' 상태 감지")
                         is_no_longer_available = True
@@ -519,7 +490,7 @@ class BestBuyScraper:
                         for title_xpath in self.XPATHS.get('no_longer_available_title', []):
                             try:
                                 logger.info(f"  시도 중: {title_xpath}")
-                                title_element = self.driver.find_element(By.XPATH, title_xpath)
+                                title_element = self.page.ele(f'xpath:{title_xpath}', timeout=2)
                                 result['title'] = title_element.text.strip()
                                 logger.info(f"제목 (no longer available): {result['title'][:50]}...")
                                 break
@@ -532,8 +503,8 @@ class BestBuyScraper:
                         for img_xpath in self.XPATHS.get('no_longer_available_imageurl', []):
                             try:
                                 logger.info(f"  시도 중: {img_xpath}")
-                                image_element = self.driver.find_element(By.XPATH, img_xpath)
-                                result['imageurl'] = image_element.get_attribute('src')
+                                image_element = self.page.ele(f'xpath:{img_xpath}', timeout=2)
+                                result['imageurl'] = image_element.attr('src')
                                 logger.info(f"이미지 URL (no longer available): {result['imageurl'][:50]}...")
                                 break
                             except Exception as e:
@@ -553,9 +524,9 @@ class BestBuyScraper:
             logger.info("💰 기존 가격 선택자로 시도 중...")
             for xpath in self.XPATHS.get('price', []):
                 try:
-                    price_element = self.driver.find_element(By.XPATH, xpath)
+                    price_element = self.page.ele(f'xpath:{xpath}', timeout=2)
                     price_text = price_element.text.strip()
-                    
+
                     logger.info(f"🔍 선택자: {xpath}")
                     logger.info(f"📝 추출된 텍스트: '{price_text}'")
                     
@@ -581,7 +552,7 @@ class BestBuyScraper:
                 logger.info("💰 CSS 선택자로 재시도 중...")
                 try:
                     css_xpath = "//span[@class='sr-only' and contains(text(), 'current price')]"
-                    price_element = self.driver.find_element(By.XPATH, css_xpath)
+                    price_element = self.page.ele(f'xpath:{css_xpath}', timeout=2)
                     price_text = price_element.text
                     if '$' in price_text:
                         price_match = re.search(r'\$([\d,]+\.?\d*)', price_text)
@@ -603,9 +574,7 @@ class BestBuyScraper:
                 title_loaded = False
                 for xpath in self.XPATHS.get('title', []):
                     try:
-                        WebDriverWait(self.driver, 10).until(
-                            EC.presence_of_element_located((By.XPATH, xpath))
-                        )
+                        self.page.ele(f'xpath:{xpath}', timeout=10)
                         title_loaded = True
                         logger.info(f"✅ title 요소 로딩 완료: {xpath}")
                         break
@@ -617,7 +586,7 @@ class BestBuyScraper:
 
                 for xpath in self.XPATHS.get('title', []):
                     try:
-                        title_element = self.driver.find_element(By.XPATH, xpath)
+                        title_element = self.page.ele(f'xpath:{xpath}', timeout=2)
                         result['title'] = title_element.text.strip()
                         if result['title']:  # 빈 문자열이 아닌 경우만 성공
                             logger.info(f"제목: {result['title'][:50]}...")
@@ -628,7 +597,7 @@ class BestBuyScraper:
                 # 제목 추출 실패 시 품절 상품용 fallback 시도
                 if not result['title']:
                     try:
-                        title_element = self.driver.find_element(By.XPATH, '/html/body/div[5]/div[3]/div[1]/div/div[2]/h1')
+                        title_element = self.page.ele('xpath:/html/body/div[5]/div[3]/div[1]/div/div[2]/h1', timeout=2)
                         result['title'] = title_element.text.strip()
                         logger.info(f"제목 (품절 fallback): {result['title'][:50]}...")
                         is_soldout_fallback = True  # 품절 fallback으로 제목 추출됨
@@ -641,8 +610,8 @@ class BestBuyScraper:
             try:
                 for xpath in self.XPATHS.get('imageurl', []):
                     try:
-                        image_element = self.driver.find_element(By.XPATH, xpath)
-                        result['imageurl'] = image_element.get_attribute('src')
+                        image_element = self.page.ele(f'xpath:{xpath}', timeout=2)
+                        result['imageurl'] = image_element.attr('src')
                         logger.info(f"이미지 URL: {result['imageurl'][:50]}...")
                         break
                     except:
@@ -651,8 +620,8 @@ class BestBuyScraper:
                 # 이미지 추출 실패 시 품절 상품용 fallback 시도
                 if not result['imageurl']:
                     try:
-                        image_element = self.driver.find_element(By.XPATH, '/html/body/div[5]/div[3]/div[1]/div/div[1]/img')
-                        result['imageurl'] = image_element.get_attribute('src')
+                        image_element = self.page.ele('xpath:/html/body/div[5]/div[3]/div[1]/div/div[1]/img', timeout=2)
+                        result['imageurl'] = image_element.attr('src')
                         logger.info(f"이미지 URL (품절 fallback): {result['imageurl'][:50]}...")
                     except:
                         pass
@@ -668,11 +637,11 @@ class BestBuyScraper:
 
                 # 드라이버 새로고침
                 try:
-                    self.driver.refresh()
+                    self.page.refresh()
                 except:
                     logger.info("🔧 드라이버 재시작 중...")
                     try:
-                        self.driver.quit()
+                        self.page.quit()
                     except:
                         pass
                     self.setup_driver()
@@ -699,12 +668,12 @@ class BestBuyScraper:
 
                 # 드라이버 새로고침 또는 재시작
                 try:
-                    self.driver.refresh()
+                    self.page.refresh()
                 except:
                     # 드라이버가 죽었으면 재시작
                     logger.info("🔧 드라이버 재시작 중...")
                     try:
-                        self.driver.quit()
+                        self.page.quit()
                     except:
                         pass
                     self.setup_driver()
@@ -914,10 +883,10 @@ class BestBuyScraper:
         try:
             # 1단계: Google 연결 테스트
             logger.info("1단계: Google 연결 테스트...")
-            self.driver.get("https://www.google.com")
+            self.page.get("https://www.google.com")
             time.sleep(2)
-            google_title = self.driver.title
-            
+            google_title = self.page.title or ''
+
             if "Google" in google_title:
                 logger.info("✅ Google 접속 성공")
             else:
@@ -1198,8 +1167,8 @@ def main():
     # 연결 테스트 및 세션 초기화
     if not scraper.test_connection():
         logger.error("연결 테스트 실패로 종료합니다.")
-        if scraper.driver:
-            scraper.driver.quit()
+        if scraper.page:
+            scraper.page.quit()
         return
     
     # 변수 초기화 (except 블록에서 사용하기 위해)
@@ -1268,13 +1237,19 @@ def main():
                 logger.info(f"재시도 대상: {len(failed_urls_data)}개 (실패한 URL만)")
 
                 # 새 드라이버로 재시도
-                if scraper.driver:
+                if scraper.page:
                     try:
-                        scraper.driver.quit()
+                        scraper.page.quit()
                     except:
                         pass
-                scraper.driver = None
+                    scraper.page = None
                 scraper.session_initialized = False
+
+                # 새 브라우저 세팅 후 재시도
+                if not scraper.setup_driver():
+                    logger.error("❌ 재시도용 브라우저 설정 실패")
+                else:
+                    scraper.initialize_session()
 
                 retry_results_df = scraper.scrape_urls(failed_urls_data, save_interim=False)
 
@@ -1383,15 +1358,14 @@ def main():
 
     finally:
         # 드라이버 종료
-        if scraper.driver:
-            scraper.driver.quit()
+        if scraper.page:
+            scraper.page.quit()
             logger.info("🔧 드라이버 종료")
 
 if __name__ == "__main__":
     # 필요한 패키지 설치 확인
     required_packages = [
-        'undetected-chromedriver',
-        'selenium',
+        'DrissionPage',
         'pandas',
         'pymysql',
         'sqlalchemy',
