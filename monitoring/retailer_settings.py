@@ -340,11 +340,10 @@ def setup_amazon_fr():
 
 
 def setup_centrecom():
-    """Centre Com Australia - undetected-chromedriver"""
+    """Centre Com Australia - undetected-chromedriver (수동 실행, headless 미사용)"""
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
-    options.add_argument('--headless=new')
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-dev-shm-usage')
@@ -567,5 +566,5 @@ RETAILERS = {
     'amazon_de': setup_amazon_de,        # 14
     'mediamarkt': setup_mediamarkt,      # 15
     'x-kom': setup_x_kom,                 # 16
-    'centrecom': setup_centrecom,        # 17
+    'centrecom': setup_centrecom,        # 17 (수동 실행, headless 미사용)
 }

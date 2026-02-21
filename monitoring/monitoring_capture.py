@@ -193,6 +193,42 @@ class ScreenshotMonitor:
         """Amazon 리테일러 여부 확인"""
         return self.retailer.startswith('amazon_')
 
+    def _click_element(self, element, selector_desc=""):
+        """요소 클릭 시도 — 일반 click 실패 시 JS click fallback"""
+        try:
+            element.click()
+            return True
+        except Exception as e:
+            logger.debug(f"일반 클릭 실패 ({selector_desc}): {e}")
+        # JS click fallback (오버레이가 가리는 경우)
+        try:
+            self.driver.execute_script("arguments[0].click();", element)
+            return True
+        except Exception as e:
+            logger.debug(f"JS 클릭도 실패 ({selector_desc}): {e}")
+        return False
+
+    def _find_and_click(self, selectors, popup_name="팝업"):
+        """셀렉터 목록에서 요소를 찾아 클릭 — find_elements로 즉시 탐색, JS click fallback"""
+        from selenium.webdriver.common.by import By
+
+        for selector in selectors:
+            try:
+                if selector.startswith('//') or selector.startswith('/html'):
+                    elements = self.driver.find_elements(By.XPATH, selector)
+                else:
+                    elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+
+                for elem in elements:
+                    if elem.is_displayed():
+                        if self._click_element(elem, selector):
+                            logger.info(f"✅ {popup_name} 클릭 완료 (selector: {selector})")
+                            return True
+            except Exception as e:
+                logger.debug(f"{popup_name} 셀렉터 실패 ({selector}): {e}")
+                continue
+        return False
+
     def handle_continue_popup(self):
         """Continue shopping 팝업 처리 (Amazon 리테일러 전용) - 국가별 셀렉터 적용"""
         try:
@@ -203,10 +239,6 @@ class ScreenshotMonitor:
             driver_type = self.settings.get('driver_type', 'selenium')
             if driver_type != 'selenium':
                 return False
-
-            from selenium.webdriver.common.by import By
-            from selenium.webdriver.support.ui import WebDriverWait
-            from selenium.webdriver.support import expected_conditions as EC
 
             # 리테일러별 Continue shopping 셀렉터 (국가별 언어 지원)
             retailer_continue_selectors = {
@@ -224,8 +256,7 @@ class ScreenshotMonitor:
                     '//button[contains(text(), "Continue")]',
                 ],
                 'amazon_jp': [
-                    # 일본어: ショッピングを続ける
-                    '/html/body/center/center/p/table/tbody/tr/td/p[5]/a/img',  # 실제 일본 아마존 XPath
+                    '/html/body/center/center/p/table/tbody/tr/td/p[5]/a/img',
                     '//a[contains(text(), "ショッピングを続ける")]',
                     '//button[contains(text(), "ショッピングを続ける")]',
                     '//span[contains(text(), "ショッピングを続ける")]/ancestor::button',
@@ -239,28 +270,24 @@ class ScreenshotMonitor:
                     '//span[contains(text(), "Continue shopping")]/ancestor::button',
                 ],
                 'amazon_it': [
-                    # 이탈리아어: Continua lo shopping
                     '//button[contains(text(), "Continua lo shopping")]',
                     '//a[contains(text(), "Continua lo shopping")]',
                     '//span[contains(text(), "Continua lo shopping")]/ancestor::button',
                     '//button[contains(text(), "Continue shopping")]',
                 ],
                 'amazon_es': [
-                    # 스페인어: Seguir comprando
                     '//button[contains(text(), "Seguir comprando")]',
                     '//a[contains(text(), "Seguir comprando")]',
                     '//span[contains(text(), "Seguir comprando")]/ancestor::button',
                     '//button[contains(text(), "Continue shopping")]',
                 ],
                 'amazon_fr': [
-                    # 프랑스어: Continuer vos achats
                     '//button[contains(text(), "Continuer vos achats")]',
                     '//a[contains(text(), "Continuer vos achats")]',
                     '//span[contains(text(), "Continuer vos achats")]/ancestor::button',
                     '//button[contains(text(), "Continue shopping")]',
                 ],
                 'amazon_de': [
-                    # 독일어: Weiter shoppen
                     '//input[@data-nav-ref="dismissBtn"]',
                     '//button[contains(text(), "Weiter shoppen")]',
                     '//a[contains(text(), "Weiter shoppen")]',
@@ -268,7 +295,6 @@ class ScreenshotMonitor:
                     '//button[contains(text(), "Continue shopping")]',
                 ],
                 'amazon_nl': [
-                    # 네덜란드어: Doorgaan met winkelen
                     '//button[contains(text(), "Doorgaan met winkelen")]',
                     '//a[contains(text(), "Doorgaan met winkelen")]',
                     '//span[contains(text(), "Doorgaan met winkelen")]/ancestor::button',
@@ -276,7 +302,6 @@ class ScreenshotMonitor:
                 ],
             }
 
-            # 리테일러별 셀렉터 가져오기
             continue_selectors = retailer_continue_selectors.get(self.retailer, [])
 
             # 공통 셀렉터 추가 (fallback)
@@ -290,22 +315,9 @@ class ScreenshotMonitor:
             ]
             continue_selectors.extend(common_selectors)
 
-            for selector in continue_selectors:
-                try:
-                    if selector.startswith('//') or selector.startswith('/html'):
-                        element = WebDriverWait(self.driver, 2).until(
-                            EC.element_to_be_clickable((By.XPATH, selector))
-                        )
-                    else:
-                        element = WebDriverWait(self.driver, 2).until(
-                            EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
-                        )
-                    element.click()
-                    logger.info(f"✅ Continue shopping 클릭 완료 (selector: {selector})")
-                    time.sleep(2)
-                    return True
-                except:
-                    continue
+            if self._find_and_click(continue_selectors, "Continue shopping"):
+                time.sleep(2)
+                return True
             return False
         except:
             return False
@@ -316,10 +328,6 @@ class ScreenshotMonitor:
             driver_type = self.settings.get('driver_type', 'selenium')
             if driver_type != 'selenium':
                 return
-
-            from selenium.webdriver.common.by import By
-            from selenium.webdriver.support.ui import WebDriverWait
-            from selenium.webdriver.support import expected_conditions as EC
 
             # 리테일러별 쿠키 셀렉터
             retailer_cookie_selectors = {
@@ -399,7 +407,7 @@ class ScreenshotMonitor:
                     'button.accept-all',
                     '//button[contains(text(), "Accept")]',
                 ],
-                'danawa': [],  # 다나와는 쿠키 팝업 없음
+                'danawa': [],
                 'fnac': [
                     '#onetrust-accept-btn-handler',
                     '//button[contains(text(), "J\'accepte")]',
@@ -423,7 +431,6 @@ class ScreenshotMonitor:
                 ],
             }
 
-            # 리테일러별 셀렉터 가져오기
             cookie_selectors = retailer_cookie_selectors.get(self.retailer, [])
 
             # 공통 셀렉터 추가
@@ -437,24 +444,10 @@ class ScreenshotMonitor:
             ]
             cookie_selectors.extend(common_selectors)
 
-            for selector in cookie_selectors:
-                try:
-                    if selector.startswith('//'):
-                        element = WebDriverWait(self.driver, 2).until(
-                            EC.element_to_be_clickable((By.XPATH, selector))
-                        )
-                    else:
-                        element = WebDriverWait(self.driver, 2).until(
-                            EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
-                        )
-                    element.click()
-                    logger.info(f"✅ 쿠키 팝업 Accept 클릭 완료 (selector: {selector})")
-                    time.sleep(1)
-                    return
-                except:
-                    continue
+            if self._find_and_click(cookie_selectors, "쿠키 팝업"):
+                time.sleep(1)
         except Exception as e:
-            pass  # 팝업이 없으면 무시
+            pass
 
     def handle_newsletter_popup(self):
         """뉴스레터 구독 팝업 처리 (centrecom 전용)"""
@@ -462,10 +455,6 @@ class ScreenshotMonitor:
             return
 
         try:
-            from selenium.webdriver.common.by import By
-            from selenium.webdriver.support.ui import WebDriverWait
-            from selenium.webdriver.support import expected_conditions as EC
-
             newsletter_selectors = [
                 '//button[contains(text(), "Nope")]',
                 '//a[contains(text(), "Nope")]',
@@ -478,24 +467,10 @@ class ScreenshotMonitor:
                 '//button[@aria-label="Close"]',
             ]
 
-            for selector in newsletter_selectors:
-                try:
-                    if selector.startswith('//'):
-                        element = WebDriverWait(self.driver, 2).until(
-                            EC.element_to_be_clickable((By.XPATH, selector))
-                        )
-                    else:
-                        element = WebDriverWait(self.driver, 2).until(
-                            EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
-                        )
-                    element.click()
-                    logger.info(f"✅ 뉴스레터 팝업 닫기 완료 (selector: {selector})")
-                    time.sleep(1)
-                    return
-                except:
-                    continue
+            if self._find_and_click(newsletter_selectors, "뉴스레터 팝업"):
+                time.sleep(1)
         except Exception as e:
-            pass  # 팝업이 없으면 무시
+            pass
 
     def is_error_page(self):
         """에러 페이지 여부 확인 (Amazon 리테일러 전용) - 페이지 타이틀 + 본문 키워드"""
@@ -940,7 +915,11 @@ def main():
             return
 
     if not args.crawl_date:
-        args.crawl_date = input("크롤링 날짜 입력 (예: 2026-01-31): ").strip()
+        today_str = datetime.now().strftime('%Y-%m-%d')
+        args.crawl_date = input(f"날짜입력(예:2026-02-02 엔터 입력시 오늘 {today_str}): ").strip()
+        if not args.crawl_date:
+            args.crawl_date = today_str
+            logger.info(f"📅 오늘 날짜 자동 설정: {today_str}")
 
     if not args.retailer or not args.crawl_date:
         logger.error("❌ 리테일러와 크롤링 날짜를 입력해주세요.")
