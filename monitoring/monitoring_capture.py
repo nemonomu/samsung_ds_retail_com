@@ -455,16 +455,12 @@ class ScreenshotMonitor:
             return
 
         try:
+            time.sleep(3)  # 뉴스레터 팝업 비동기 로드 대기
             newsletter_selectors = [
-                '//button[contains(text(), "Nope")]',
-                '//a[contains(text(), "Nope")]',
-                '//button[contains(text(), "No thanks")]',
-                '//button[contains(text(), "No Thanks")]',
-                '//a[contains(text(), "No thanks")]',
-                '.modal .close',
-                '.popup .close',
-                'button.close[data-dismiss="modal"]',
-                '//button[@aria-label="Close"]',
+                'div.lightbox-nope',
+                '//div[contains(text(), "Nope")]',
+                'span.featherlight-close-icon',
+                'span.featherlight-close',
             ]
 
             if self._find_and_click(newsletter_selectors, "뉴스레터 팝업"):
