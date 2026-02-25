@@ -163,9 +163,9 @@ class FnacScraperV2:
         try:
             self.playwright = sync_playwright().start()
 
-            # Chromium 브라우저 시작 (headless=False로 더 자연스럽게)
+            # Chromium 브라우저 시작 (new headless: GUI 없이 실행 + 봇 탐지 우회)
             self.browser = self.playwright.chromium.launch(
-                headless=False,  # GUI 모드
+                headless=True,
                 args=[
                     '--disable-blink-features=AutomationControlled',
                     '--disable-dev-shm-usage',
