@@ -736,12 +736,11 @@ class BestBuyScraper:
         except Exception as e:
             logger.error(f"❌ 파일서버 업로드 실패: {e}")
             return False
-    def save_results(self, df, save_db=True, upload_server=True):
+    def save_results(self, df, save_db=True, upload_server=True, custom_filename=None, custom_date_folder=None):
         """결과 저장 (파일명은 미국 현지 시간 기준)"""
         local_time = datetime.now(self.local_tz)  # 미국 현지 시간 (crawl_datetime 기준)
-        date_str = local_time.strftime('%Y%m%d')
-        time_str = local_time.strftime('%H%M%S')
-        base_filename = f"{date_str}_{time_str}_usa_bestbuy"
+        date_str = custom_date_folder or local_time.strftime('%Y%m%d')
+        base_filename = custom_filename or f"{date_str}_{local_time.strftime('%H%M%S')}_usa_bestbuy"
 
         results = {'db_saved': False, 'server_uploaded': False}
 
@@ -1294,11 +1293,29 @@ def main():
         if 'no_longer_available' in upload_df.columns:
             upload_df = upload_df.drop(columns=['no_longer_available'])
 
+        # resume 시: 파일명/폴더 직접 입력
+        custom_filename = None
+        custom_date_folder = None
+        if start_from > 0:
+            print(f"\n업로드 폴더(날짜)를 입력하세요 (예: 20260227)")
+            print("Enter를 누르면 현재 시간으로 자동 생성됩니다.")
+            folder_input = input("폴더: ").strip()
+            if folder_input:
+                custom_date_folder = folder_input
+
+            print(f"\n파일명 일시를 입력하세요 (예: 20260227_120000)")
+            print("Enter를 누르면 현재 시간으로 자동 생성됩니다.")
+            datetime_input = input("일시: ").strip()
+            if datetime_input:
+                custom_filename = f"{datetime_input}_usa_bestbuy"
+
         # DB와 파일서버에 최종 결과 저장
         save_results = scraper.save_results(
             upload_df,
             save_db=False,  # 중간 저장으로 이미 DB에 저장됨
-            upload_server=True
+            upload_server=True,
+            custom_filename=custom_filename,
+            custom_date_folder=custom_date_folder
         )
 
         # 저장 결과 출력
