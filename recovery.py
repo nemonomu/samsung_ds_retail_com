@@ -204,9 +204,9 @@ class RecoveryManager:
 
         # danawa: retailprice = 0도 복구 대상
         if target == 'danawa':
-            null_condition = "(title IS NULL OR retailprice IS NULL OR retailprice = 0)"
+            null_condition = "(title IS NULL OR imageurl IS NULL OR imageurl = '' OR retailprice IS NULL OR retailprice = 0)"
         else:
-            null_condition = "(title IS NULL OR retailprice IS NULL)"
+            null_condition = "(title IS NULL OR imageurl IS NULL OR imageurl = '' OR retailprice IS NULL)"
 
         # 세션(날짜+시간대) 기준으로 NULL 레코드 조회
         query = f"""
