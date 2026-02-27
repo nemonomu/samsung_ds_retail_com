@@ -749,9 +749,20 @@ class BestBuyScraper:
 
         if upload_server:
             try:
-                # 1. CSV 파일 생성 (복사본 사용하여 원본 컬럼명 유지)
+                # 1. CSV 파일 생성 (컬럼 순서 고정)
                 csv_filename = f'{base_filename}.csv'
+                column_order = [
+                    'retailerid', 'country_code', 'ships_from', 'channel_name', 'channel',
+                    'retailersku', 'brand', 'brand_eng', 'form_factor',
+                    'segment_lv1', 'segment_lv2', 'segment_lv3', 'capacity', 'item',
+                    'retailprice', 'sold_by', 'imageurl', 'producturl',
+                    'crawl_datetime', 'crawl_strdatetime', 'kr_crawl_datetime', 'kr_crawl_strdatetime',
+                    'title', 'vat'
+                ]
                 df_csv = df.copy()
+                df_csv.columns = df_csv.columns.str.lower()
+                existing_cols = [c for c in column_order if c in df_csv.columns]
+                df_csv = df_csv[existing_cols]
                 df_csv.columns = df_csv.columns.str.upper()
                 df_csv.to_csv(csv_filename, index=False, encoding='utf-8', lineterminator='\r\n')
 
