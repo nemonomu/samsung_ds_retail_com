@@ -15,6 +15,7 @@ from datetime import datetime
 import pytz
 import logging
 import os
+import sys
 import zipfile
 import hashlib
 
@@ -852,18 +853,22 @@ class BestBuyScraper:
             logger.error(f"❌ 테스트 실패: {e}")
             return False
     
-    def scrape_urls(self, urls_data, max_items=None, save_interim=True):
+    def scrape_urls(self, urls_data, max_items=None, save_interim=True, start_from=0):
         """여러 URL 스크래핑
 
         Args:
             urls_data: 크롤링 대상 URL 목록
             max_items: 최대 처리 개수 (None이면 전체)
             save_interim: 중간 저장 여부 (재시도 시에는 False로 설정)
+            start_from: 시작 인덱스 (0부터 시작, resume용)
         """
         if max_items:
             urls_data = urls_data[:max_items]
 
-        logger.info(f"📊 총 {len(urls_data)}개 제품 처리 시작")
+        if start_from > 0:
+            logger.info(f"📊 총 {len(urls_data)}개 중 {start_from + 1}번째부터 재개")
+        else:
+            logger.info(f"📊 총 {len(urls_data)}개 제품 처리 시작")
 
         results = []
         failed_urls = []
@@ -874,7 +879,7 @@ class BestBuyScraper:
         retry_count = 0          # 현재 재시도 횟수
         unsaved_results = []     # 중간 저장 안 된 결과
 
-        i = 0
+        i = start_from
         while i < len(urls_data):
             row = urls_data[i]
             try:
@@ -1078,33 +1083,47 @@ def main():
     # 최근 크롤링 기록 확인
     get_db_history(scraper.db_engine, 7)
 
-    # IP 워밍업: 일반 Chrome으로 BestBuy 접속 후 10분 대기
+    # resume 지원: 커맨드라인 인자로 시작 번호 지정 (예: python bestbuy_v2.py 51)
+    start_from = 0
+    if len(sys.argv) > 1:
+        try:
+            start_from = int(sys.argv[1]) - 1  # 사용자 입력은 1부터, 내부 인덱스는 0부터
+            if start_from < 0:
+                start_from = 0
+            logger.info(f"⏭️ resume 모드: {start_from + 1}번째부터 시작")
+        except ValueError:
+            logger.warning(f"⚠️ 잘못된 시작 번호: {sys.argv[1]} - 처음부터 시작합니다")
+            start_from = 0
+
+    # IP 워밍업: resume 시 건너뜀
     import subprocess
     WARMUP_MINUTES = 20
-    logger.info(f"🔥 IP 워밍업: 일반 Chrome으로 BestBuy 접속 ({WARMUP_MINUTES}분 대기)...")
-    chrome_paths = [
-        r'C:\Program Files\Google\Chrome\Application\chrome.exe',
-        r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe',
-    ]
-    warmup_process = None
-    for chrome_path in chrome_paths:
-        if os.path.exists(chrome_path):
-            warmup_process = subprocess.Popen([chrome_path, 'https://www.bestbuy.com'])
-            logger.info(f"✅ 일반 Chrome 실행 완료: {chrome_path}")
-            break
-    if warmup_process is None:
-        # 기본 명령으로 시도
-        try:
-            warmup_process = subprocess.Popen('start chrome https://www.bestbuy.com', shell=True)
-            logger.info("✅ 일반 Chrome 실행 완료 (start 명령)")
-        except Exception as e:
-            logger.warning(f"⚠️ 일반 Chrome 실행 실패: {e} - 워밍업 없이 진행")
+    if start_from > 0:
+        logger.info("워밍업 건너뜀")
+    else:
+        logger.info(f"🔥 IP 워밍업: 일반 Chrome으로 BestBuy 접속 ({WARMUP_MINUTES}분 대기)...")
+        chrome_paths = [
+            r'C:\Program Files\Google\Chrome\Application\chrome.exe',
+            r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe',
+        ]
+        warmup_process = None
+        for chrome_path in chrome_paths:
+            if os.path.exists(chrome_path):
+                warmup_process = subprocess.Popen([chrome_path, 'https://www.bestbuy.com'])
+                logger.info(f"✅ 일반 Chrome 실행 완료: {chrome_path}")
+                break
+        if warmup_process is None:
+            try:
+                warmup_process = subprocess.Popen('start chrome https://www.bestbuy.com', shell=True)
+                logger.info("✅ 일반 Chrome 실행 완료 (start 명령)")
+            except Exception as e:
+                logger.warning(f"⚠️ 일반 Chrome 실행 실패: {e} - 워밍업 없이 진행")
 
-    if warmup_process:
-        for remaining in range(WARMUP_MINUTES, 0, -1):
-            logger.info(f"  ⏳ {remaining}분 남음...")
-            time.sleep(60)
-        logger.info("✅ IP 워밍업 완료")
+        if warmup_process:
+            for remaining in range(WARMUP_MINUTES, 0, -1):
+                logger.info(f"  ⏳ {remaining}분 남음...")
+                time.sleep(60)
+            logger.info("✅ IP 워밍업 완료")
 
     # 브라우저 설정
     if not scraper.setup_driver():
@@ -1128,7 +1147,7 @@ def main():
         logger.info(f"✅ 크롤링 대상: {len(urls_data)}개")
 
         # 크롤링 실행 (10개마다 DB 중간 저장)
-        first_results_df = scraper.scrape_urls(urls_data, save_interim=True)
+        first_results_df = scraper.scrape_urls(urls_data, save_interim=True, start_from=start_from)
 
         if first_results_df is None or first_results_df.empty:
             logger.error("크롤링 결과가 없습니다.")
@@ -1254,13 +1273,30 @@ def main():
         # 상세 분석 (save_results 전에 실행 - 컬럼명 대문자 변환 전)
         scraper.analyze_results(final_results_df)
 
+        # resume 시: DB에서 오늘 전체 레코드 조회하여 파일서버 업로드
+        if start_from > 0:
+            logger.info("resume 모드: DB에서 오늘 전체 레코드 조회하여 파일 생성")
+            today_query = """
+            SELECT * FROM bestbuy_price_crawl_tbl_usa_v2
+            WHERE DATE(kr_crawl_datetime) = CURDATE()
+            """
+            try:
+                upload_df = pd.read_sql(today_query, scraper.db_engine)
+                upload_df = upload_df.drop_duplicates(subset=['producturl'], keep='last')
+                logger.info(f"오늘 전체 레코드: {len(upload_df)}개")
+            except Exception as e:
+                logger.error(f"전체 레코드 조회 실패: {e}")
+                upload_df = final_results_df
+        else:
+            upload_df = final_results_df
+
         # no_longer_available 컬럼 제거 (DB 저장용)
-        if 'no_longer_available' in final_results_df.columns:
-            final_results_df = final_results_df.drop(columns=['no_longer_available'])
+        if 'no_longer_available' in upload_df.columns:
+            upload_df = upload_df.drop(columns=['no_longer_available'])
 
         # DB와 파일서버에 최종 결과 저장
         save_results = scraper.save_results(
-            final_results_df,
+            upload_df,
             save_db=False,  # 중간 저장으로 이미 DB에 저장됨
             upload_server=True
         )
@@ -1280,10 +1316,9 @@ def main():
 
         logger.info("\n✅ 크롤링 프로세스 완료!")
 
-        # 크롤링 완료 후 알림 (빈 값 50% 이상 시 경고, 에러 로그 포함)
-        # 최종 결과로 알림 발송
-        results_df = final_results_df
-        monitor_and_alert('usa_bestbuy', len(urls_data), final_results_df, error_logs=scraper.error_logs)
+        # 크롤링 완료 후 알림
+        results_df = upload_df
+        monitor_and_alert('usa_bestbuy', len(urls_data), upload_df, error_logs=scraper.error_logs)
 
     except Exception as e:
         # 예외 발생 시 알림
