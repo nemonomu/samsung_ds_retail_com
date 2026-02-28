@@ -911,7 +911,7 @@ class BestBuyScraper:
 
         # 자동 재시도 설정
         MAX_RETRIES = 5          # 최대 재시도 횟수
-        INITIAL_WAIT = 600       # 초기 대기 시간 (10분)
+        INITIAL_WAIT = 1200      # 대기 시간 (20분)
         retry_count = 0          # 현재 재시도 횟수
         unsaved_results = []     # 중간 저장 안 된 결과
 
@@ -936,12 +936,17 @@ class BestBuyScraper:
                         logger.info(f"📌 {i + 1}번째 항목부터 미처리")
                         break
 
-                    wait_time = INITIAL_WAIT * retry_count  # 10분, 20분, 30분...
-                    logger.info(f"\n{'='*50}")
-                    logger.info(f"🔄 [RETRY {retry_count}/{MAX_RETRIES}] Best Buy 차단 감지. {wait_time // 60}분 대기...")
-                    logger.info(f"{'='*50}")
+                    if retry_count == 1:
+                        logger.info(f"\n{'='*50}")
+                        logger.info(f"🔄 [RETRY {retry_count}/{MAX_RETRIES}] Best Buy 차단 감지. 워밍업 후 재시도...")
+                        logger.info(f"{'='*50}")
+                    else:
+                        wait_time = min(INITIAL_WAIT * (retry_count - 1), 1200)
+                        logger.info(f"\n{'='*50}")
+                        logger.info(f"🔄 [RETRY {retry_count}/{MAX_RETRIES}] Best Buy 차단 감지. {wait_time // 60}분 대기...")
+                        logger.info(f"{'='*50}")
+                        time.sleep(wait_time)
 
-                    time.sleep(wait_time)
                     self._warmup_with_different_page()
 
                     # 같은 URL 다시 시도 (i 증가 안 함)
@@ -955,12 +960,17 @@ class BestBuyScraper:
                         logger.info(f"📌 {i + 1}번째 항목부터 미처리")
                         break
 
-                    wait_time = INITIAL_WAIT * retry_count
-                    logger.info(f"\n{'='*50}")
-                    logger.info(f"🔄 [RETRY {retry_count}/{MAX_RETRIES}] 가격+제목 추출 실패. 차단 의심. {wait_time // 60}분 대기...")
-                    logger.info(f"{'='*50}")
+                    if retry_count == 1:
+                        logger.info(f"\n{'='*50}")
+                        logger.info(f"🔄 [RETRY {retry_count}/{MAX_RETRIES}] 가격+제목 추출 실패. 차단 의심. 워밍업 후 재시도...")
+                        logger.info(f"{'='*50}")
+                    else:
+                        wait_time = min(INITIAL_WAIT * (retry_count - 1), 1200)
+                        logger.info(f"\n{'='*50}")
+                        logger.info(f"🔄 [RETRY {retry_count}/{MAX_RETRIES}] 가격+제목 추출 실패. 차단 의심. {wait_time // 60}분 대기...")
+                        logger.info(f"{'='*50}")
+                        time.sleep(wait_time)
 
-                    time.sleep(wait_time)
                     self._warmup_with_different_page()
 
                     # 같은 URL 다시 시도
