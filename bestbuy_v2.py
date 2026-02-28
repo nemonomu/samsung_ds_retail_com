@@ -210,6 +210,32 @@ class BestBuyScraper:
             logger.error(f"❌ 브라우저 설정 실패: {e}")
             return False
 
+    def _warmup_with_different_page(self):
+        """차단 후 세션 워밍업 - SSD/메모리가 아닌 다른 카테고리 상품 페이지 접속"""
+        warmup_urls = [
+            'https://www.bestbuy.com/site/apple-macbook-air-13-inch-laptop-m4-chip-16gb-memory-256gb/6604203.p',
+            'https://www.bestbuy.com/site/sony-wh-1000xm5-wireless-noise-canceling-over-the-ear-headphones/6505727.p',
+            'https://www.bestbuy.com/site/dyson-v15-detect-extra-cordless-vacuum/6539767.p',
+            'https://www.bestbuy.com/site/nintendo-switch-oled-model-w-white-joy-con/6470923.p',
+            'https://www.bestbuy.com/site/apple-ipad-10th-generation-with-wi-fi-64gb/4901809.p',
+            'https://www.bestbuy.com/site/bose-quietcomfort-ultra-headphones/6554461.p',
+        ]
+        try:
+            url = random.choice(warmup_urls)
+            logger.info(f"세션 워밍업: {url[:60]}...")
+            self.page.get(url)
+            time.sleep(random.uniform(5, 10))
+            try:
+                self.page.scroll.down(300)
+                time.sleep(random.uniform(2, 4))
+                self.page.scroll.down(300)
+                time.sleep(random.uniform(2, 3))
+            except Exception:
+                pass
+            logger.info("세션 워밍업 완료")
+        except Exception as e:
+            logger.warning(f"세션 워밍업 실패: {e}")
+
     def close_driver(self):
         """브라우저 안전 종료"""
         try:
@@ -915,12 +941,8 @@ class BestBuyScraper:
                     logger.info(f"🔄 [RETRY {retry_count}/{MAX_RETRIES}] Best Buy 차단 감지. {wait_time // 60}분 대기...")
                     logger.info(f"{'='*50}")
 
-                    self.close_driver()
                     time.sleep(wait_time)
-
-                    if not self.restart_driver():
-                        logger.error("❌ 드라이버 재시작 실패. 중단합니다.")
-                        break
+                    self._warmup_with_different_page()
 
                     # 같은 URL 다시 시도 (i 증가 안 함)
                     continue
@@ -938,12 +960,8 @@ class BestBuyScraper:
                     logger.info(f"🔄 [RETRY {retry_count}/{MAX_RETRIES}] 가격+제목 추출 실패. 차단 의심. {wait_time // 60}분 대기...")
                     logger.info(f"{'='*50}")
 
-                    self.close_driver()
                     time.sleep(wait_time)
-
-                    if not self.restart_driver():
-                        logger.error("❌ 드라이버 재시작 실패. 중단합니다.")
-                        break
+                    self._warmup_with_different_page()
 
                     # 같은 URL 다시 시도
                     continue
