@@ -1133,36 +1133,6 @@ def main():
             logger.warning(f"⚠️ 잘못된 시작 번호: {sys.argv[1]} - 처음부터 시작합니다")
             start_from = 0
 
-    # IP 워밍업: resume 시 건너뜀
-    import subprocess
-    WARMUP_MINUTES = 20
-    if start_from > 0:
-        logger.info("워밍업 건너뜀")
-    else:
-        logger.info(f"🔥 IP 워밍업: 일반 Chrome으로 BestBuy 접속 ({WARMUP_MINUTES}분 대기)...")
-        chrome_paths = [
-            r'C:\Program Files\Google\Chrome\Application\chrome.exe',
-            r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe',
-        ]
-        warmup_process = None
-        for chrome_path in chrome_paths:
-            if os.path.exists(chrome_path):
-                warmup_process = subprocess.Popen([chrome_path, 'https://www.bestbuy.com'])
-                logger.info(f"✅ 일반 Chrome 실행 완료: {chrome_path}")
-                break
-        if warmup_process is None:
-            try:
-                warmup_process = subprocess.Popen('start chrome https://www.bestbuy.com', shell=True)
-                logger.info("✅ 일반 Chrome 실행 완료 (start 명령)")
-            except Exception as e:
-                logger.warning(f"⚠️ 일반 Chrome 실행 실패: {e} - 워밍업 없이 진행")
-
-        if warmup_process:
-            for remaining in range(WARMUP_MINUTES, 0, -1):
-                logger.info(f"  ⏳ {remaining}분 남음...")
-                time.sleep(60)
-            logger.info("✅ IP 워밍업 완료")
-
     # 브라우저 설정
     if not scraper.setup_driver():
         logger.error("브라우저 설정 실패로 종료합니다.")
