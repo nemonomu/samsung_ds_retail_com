@@ -22,8 +22,6 @@ import json
 from io import StringIO
 import zipfile
 import hashlib
-import ssl
-ssl._create_default_https_context = ssl._create_unverified_context
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -160,9 +158,6 @@ class CoolblueScraper:
             options.add_argument('--disable-infobars')
             options.add_argument('--disable-renderer-backgrounding')
             options.add_argument('--js-flags=--max-old-space-size=512')
-            options.add_argument('--ignore-certificate-errors')
-            options.add_argument('--ignore-ssl-errors')
-            options.add_argument('--allow-insecure-localhost')
 
             self.driver = uc.Chrome(options=options, version_main=144)
             self.driver.maximize_window()
