@@ -23,6 +23,8 @@ import os
 import traceback
 import zipfile
 import hashlib
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
 
 # Import configuration V2
 from config import DB_CONFIG_V2 as DB_CONFIG, FILE_SERVER_CONFIG
@@ -196,7 +198,7 @@ class MediaMarktInfiniteScraper:
                 "intl.accept_languages": "de-DE,de"
             })
             
-            self.driver = uc.Chrome(options=options, version_main=144)
+            self.driver = uc.Chrome(options=options)
             self.driver.maximize_window()
             self.driver.set_page_load_timeout(30)
 

@@ -24,6 +24,8 @@ import traceback
 import json
 import zipfile
 import hashlib
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
 
 # 로깅 설정
 logging.basicConfig(
@@ -182,7 +184,7 @@ class XKomScraper:
                 "intl.accept_languages": "pl-PL,pl"
             })
             
-            self.driver = uc.Chrome(options=options, version_main=144)
+            self.driver = uc.Chrome(options=options)
             self.driver.maximize_window()
             self.driver.set_page_load_timeout(30)
 

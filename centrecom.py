@@ -22,6 +22,8 @@ from io import StringIO
 import json
 import zipfile
 import hashlib
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -136,7 +138,7 @@ class CentrecomScraper:
             # 호주 영어 설정
             options.add_experimental_option('prefs', {'intl.accept_languages': 'en-AU,en'})
 
-            self.driver = uc.Chrome(options=options, version_main=144)
+            self.driver = uc.Chrome(options=options)
             self.driver.maximize_window()
 
             self.wait = WebDriverWait(self.driver, 20)

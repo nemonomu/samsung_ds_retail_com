@@ -21,6 +21,8 @@ import os
 from io import StringIO
 import zipfile
 import hashlib
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -157,7 +159,7 @@ class CurrysScraper:
             options.add_argument('--disable-renderer-backgrounding')
             options.add_argument('--js-flags=--max-old-space-size=512')
 
-            self.driver = uc.Chrome(options=options, version_main=144)
+            self.driver = uc.Chrome(options=options)
             self.driver.maximize_window()
             logger.info("✅ 드라이버 설정 완료")
             return True
