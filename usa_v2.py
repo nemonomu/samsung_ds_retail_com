@@ -23,6 +23,8 @@ from io import StringIO
 import json
 import zipfile
 import hashlib
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
