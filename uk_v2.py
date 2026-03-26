@@ -145,7 +145,25 @@ class AmazonUKScraper:
             options.add_argument(f'--user-agent={random.choice(user_agents)}')
             options.add_experimental_option('prefs', {'intl.accept_languages': 'en-GB,en,de-DE,de'})
             
-            self.driver = uc.Chrome(options=options)
+            # 설치된 Chrome 버전 감지하여 맞는 드라이버 사용
+            chrome_version = None
+            try:
+                import subprocess
+                result = subprocess.run(
+                    ['reg', 'query', 'HKEY_CURRENT_USER\\Software\\Google\\Chrome\\BLBeacon', '/v', 'version'],
+                    capture_output=True, text=True, timeout=5
+                )
+                if result.returncode == 0:
+                    for line in result.stdout.strip().split('\n'):
+                        if 'version' in line.lower():
+                            version_str = line.strip().split()[-1]
+                            chrome_version = int(version_str.split('.')[0])
+                            logger.info(f"감지된 Chrome 버전: {chrome_version}")
+                            break
+            except Exception as e:
+                logger.warning(f"Chrome 버전 감지 실패, 자동 매칭 시도: {e}")
+
+            self.driver = uc.Chrome(options=options, version_main=chrome_version)
             self.driver.maximize_window()
             self.wait = WebDriverWait(self.driver, 20)
 
