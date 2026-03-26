@@ -41,6 +41,7 @@ def setup_danawa():
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
+    driver.maximize_window()
 
     settings = {
         'wait_time': 3,
@@ -71,6 +72,7 @@ def setup_amazon_usa():
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
+    driver.maximize_window()
 
     settings = {
         'wait_time': 3,
@@ -97,6 +99,7 @@ def setup_bestbuy():
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
+    driver.maximize_window()
 
     settings = {
         'wait_time': 3,
@@ -127,6 +130,7 @@ def setup_amazon_gb():
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
+    driver.maximize_window()
 
     settings = {
         'wait_time': 3,
@@ -157,6 +161,7 @@ def setup_amazon_jp():
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
+    driver.maximize_window()
 
     settings = {
         'wait_time': 3,
@@ -189,6 +194,7 @@ def setup_amazon_in():
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
+    driver.maximize_window()
 
     settings = {
         'wait_time': 3,
@@ -215,6 +221,7 @@ def setup_currys():
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
+    driver.maximize_window()
 
     settings = {
         'wait_time': 3,
@@ -245,6 +252,7 @@ def setup_amazon_it():
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
+    driver.maximize_window()
 
     settings = {
         'wait_time': 3,
@@ -275,6 +283,7 @@ def setup_amazon_es():
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
+    driver.maximize_window()
 
     settings = {
         'wait_time': 3,
@@ -305,6 +314,7 @@ def setup_amazon_fr():
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
+    driver.maximize_window()
 
     settings = {
         'wait_time': 3,
@@ -334,6 +344,7 @@ def setup_centrecom():
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
+    driver.maximize_window()
 
     settings = {
         'wait_time': 3,
@@ -364,6 +375,7 @@ def setup_amazon_de():
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
+    driver.maximize_window()
 
     settings = {
         'wait_time': 3,
@@ -394,6 +406,7 @@ def setup_fnac():
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
+    driver.maximize_window()
 
     settings = {
         'wait_time': 3,
@@ -424,6 +437,7 @@ def setup_amazon_nl():
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
+    driver.maximize_window()
 
     settings = {
         'wait_time': 3,
@@ -454,6 +468,7 @@ def setup_coolblue():
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
+    driver.maximize_window()
 
     settings = {
         'wait_time': 3,
@@ -484,6 +499,7 @@ def setup_mediamarkt():
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
+    driver.maximize_window()
 
     settings = {
         'wait_time': 3,
@@ -514,6 +530,7 @@ def setup_x_kom():
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
+    driver.maximize_window()
 
     settings = {
         'wait_time': 3,
