@@ -42,6 +42,12 @@ def setup_danawa():
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
     driver.maximize_window()
+    driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {
+        'width': 1920,
+        'height': 1080,
+        'deviceScaleFactor': 1,
+        'mobile': False
+    })
 
     settings = {
         'wait_time': 3,
@@ -73,6 +79,12 @@ def setup_amazon_usa():
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
     driver.maximize_window()
+    driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {
+        'width': 1920,
+        'height': 1080,
+        'deviceScaleFactor': 1,
+        'mobile': False
+    })
 
     settings = {
         'wait_time': 3,
@@ -100,6 +112,12 @@ def setup_bestbuy():
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
     driver.maximize_window()
+    driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {
+        'width': 1920,
+        'height': 1080,
+        'deviceScaleFactor': 1,
+        'mobile': False
+    })
 
     settings = {
         'wait_time': 3,
@@ -131,6 +149,12 @@ def setup_amazon_gb():
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
     driver.maximize_window()
+    driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {
+        'width': 1920,
+        'height': 1080,
+        'deviceScaleFactor': 1,
+        'mobile': False
+    })
 
     settings = {
         'wait_time': 3,
@@ -162,6 +186,12 @@ def setup_amazon_jp():
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
     driver.maximize_window()
+    driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {
+        'width': 1920,
+        'height': 1080,
+        'deviceScaleFactor': 1,
+        'mobile': False
+    })
 
     settings = {
         'wait_time': 3,
@@ -195,6 +225,12 @@ def setup_amazon_in():
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
     driver.maximize_window()
+    driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {
+        'width': 1920,
+        'height': 1080,
+        'deviceScaleFactor': 1,
+        'mobile': False
+    })
 
     settings = {
         'wait_time': 3,
@@ -212,16 +248,24 @@ def setup_currys():
     options = uc.ChromeOptions()
 
     options.add_argument('--window-size=1920,1080')
+    options.add_argument('--force-device-scale-factor=1')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-gpu')
     options.add_argument('--disable-extensions')
     options.add_argument('--disable-infobars')
     options.add_argument('--disable-renderer-backgrounding')
+    options.add_argument('--disable-backgrounding-occluded-windows')
     options.add_argument('--js-flags=--max-old-space-size=512')
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
     driver.maximize_window()
+    driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {
+        'width': 1920,
+        'height': 1080,
+        'deviceScaleFactor': 1,
+        'mobile': False
+    })
 
     settings = {
         'wait_time': 3,
@@ -253,6 +297,12 @@ def setup_amazon_it():
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
     driver.maximize_window()
+    driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {
+        'width': 1920,
+        'height': 1080,
+        'deviceScaleFactor': 1,
+        'mobile': False
+    })
 
     settings = {
         'wait_time': 3,
@@ -284,6 +334,12 @@ def setup_amazon_es():
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
     driver.maximize_window()
+    driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {
+        'width': 1920,
+        'height': 1080,
+        'deviceScaleFactor': 1,
+        'mobile': False
+    })
 
     settings = {
         'wait_time': 3,
@@ -315,6 +371,12 @@ def setup_amazon_fr():
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
     driver.maximize_window()
+    driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {
+        'width': 1920,
+        'height': 1080,
+        'deviceScaleFactor': 1,
+        'mobile': False
+    })
 
     settings = {
         'wait_time': 3,
@@ -345,6 +407,12 @@ def setup_centrecom():
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
     driver.maximize_window()
+    driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {
+        'width': 1920,
+        'height': 1080,
+        'deviceScaleFactor': 1,
+        'mobile': False
+    })
 
     settings = {
         'wait_time': 3,
@@ -376,6 +444,12 @@ def setup_amazon_de():
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
     driver.maximize_window()
+    driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {
+        'width': 1920,
+        'height': 1080,
+        'deviceScaleFactor': 1,
+        'mobile': False
+    })
 
     settings = {
         'wait_time': 3,
@@ -407,6 +481,12 @@ def setup_fnac():
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
     driver.maximize_window()
+    driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {
+        'width': 1920,
+        'height': 1080,
+        'deviceScaleFactor': 1,
+        'mobile': False
+    })
 
     settings = {
         'wait_time': 3,
@@ -438,6 +518,12 @@ def setup_amazon_nl():
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
     driver.maximize_window()
+    driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {
+        'width': 1920,
+        'height': 1080,
+        'deviceScaleFactor': 1,
+        'mobile': False
+    })
 
     settings = {
         'wait_time': 3,
@@ -469,6 +555,12 @@ def setup_coolblue():
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
     driver.maximize_window()
+    driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {
+        'width': 1920,
+        'height': 1080,
+        'deviceScaleFactor': 1,
+        'mobile': False
+    })
 
     settings = {
         'wait_time': 3,
@@ -500,6 +592,12 @@ def setup_mediamarkt():
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
     driver.maximize_window()
+    driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {
+        'width': 1920,
+        'height': 1080,
+        'deviceScaleFactor': 1,
+        'mobile': False
+    })
 
     settings = {
         'wait_time': 3,
@@ -531,6 +629,12 @@ def setup_x_kom():
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
     driver.maximize_window()
+    driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {
+        'width': 1920,
+        'height': 1080,
+        'deviceScaleFactor': 1,
+        'mobile': False
+    })
 
     settings = {
         'wait_time': 3,
