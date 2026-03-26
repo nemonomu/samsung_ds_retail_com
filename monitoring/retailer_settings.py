@@ -24,28 +24,13 @@ def get_chrome_version():
     return None
 
 
-def get_chrome_full_version():
-    """설치된 Chrome 브라우저의 풀 버전 감지 (예: 133.0.6943.142)"""
-    try:
-        result = subprocess.run(
-            ['reg', 'query', 'HKEY_CURRENT_USER\\Software\\Google\\Chrome\\BLBeacon', '/v', 'version'],
-            capture_output=True, text=True
-        )
-        if result.returncode == 0:
-            match = re.search(r'(\d+\.\d+\.\d+\.\d+)', result.stdout)
-            if match:
-                return match.group(1)
-    except Exception:
-        pass
-    return '133.0.0.0'
-
 
 def setup_danawa():
     """다나와 - undetected-chromedriver"""
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
-    options.add_argument('--headless=new')
+
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--accept-lang=ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7')
     options.add_argument('--disable-gpu')
@@ -71,7 +56,7 @@ def setup_amazon_usa():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
-    options.add_argument('--headless=new')
+
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-dev-shm-usage')
@@ -101,26 +86,17 @@ def setup_bestbuy():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
-    options.add_argument('--headless=new')
+
     options.add_argument('--window-size=1920,1080')
-    options.add_argument('--window-position=-32000,-32000')
-    options.add_argument('--force-device-scale-factor=1')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-gpu')
     options.add_argument('--disable-extensions')
     options.add_argument('--disable-infobars')
     options.add_argument('--disable-renderer-backgrounding')
-    options.add_argument('--disable-backgrounding-occluded-windows')
-    full_ver = get_chrome_full_version()
-    options.add_argument(f'--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{full_ver} Safari/537.36')
     options.add_argument('--js-flags=--max-old-space-size=512')
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
     driver.set_window_size(1920, 1080)
-
-    # 스텔스 설정
-    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-    driver.execute_script("Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3]})")
 
     settings = {
         'wait_time': 3,
@@ -136,7 +112,7 @@ def setup_amazon_gb():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
-    options.add_argument('--headless=new')
+
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-dev-shm-usage')
@@ -166,7 +142,7 @@ def setup_amazon_jp():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
-    options.add_argument('--headless=new')
+
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-dev-shm-usage')
@@ -196,7 +172,7 @@ def setup_amazon_in():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
-    options.add_argument('--headless=new')
+
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-dev-shm-usage')
@@ -224,22 +200,17 @@ def setup_amazon_in():
 
 
 def setup_currys():
-    """Currys UK - undetected-chromedriver (headless + UA 오버라이드: Cloudflare 우회)"""
+    """Currys UK - undetected-chromedriver"""
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
-    options.add_argument('--headless=new')
+
     options.add_argument('--window-size=1920,1080')
-    options.add_argument('--window-position=-32000,-32000')
-    options.add_argument('--force-device-scale-factor=1')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-gpu')
     options.add_argument('--disable-extensions')
     options.add_argument('--disable-infobars')
     options.add_argument('--disable-renderer-backgrounding')
-    options.add_argument('--disable-backgrounding-occluded-windows')
-    full_ver = get_chrome_full_version()
-    options.add_argument(f'--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{full_ver} Safari/537.36')
     options.add_argument('--js-flags=--max-old-space-size=512')
 
     driver = uc.Chrome(options=options, use_subprocess=True, version_main=chrome_version)
@@ -259,7 +230,7 @@ def setup_amazon_it():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
-    options.add_argument('--headless=new')
+
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-dev-shm-usage')
@@ -289,7 +260,7 @@ def setup_amazon_es():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
-    options.add_argument('--headless=new')
+
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-dev-shm-usage')
@@ -319,7 +290,7 @@ def setup_amazon_fr():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
-    options.add_argument('--headless=new')
+
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-dev-shm-usage')
@@ -345,7 +316,7 @@ def setup_amazon_fr():
 
 
 def setup_centrecom():
-    """Centre Com Australia - undetected-chromedriver (수동 실행, headless 미사용)"""
+    """Centre Com Australia - undetected-chromedriver (수동 실행)"""
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
@@ -378,7 +349,7 @@ def setup_amazon_de():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
-    options.add_argument('--headless=new')
+
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-dev-shm-usage')
@@ -408,7 +379,7 @@ def setup_fnac():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
-    options.add_argument('--headless=new')
+
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-dev-shm-usage')
@@ -438,7 +409,7 @@ def setup_amazon_nl():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
-    options.add_argument('--headless=new')
+
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-dev-shm-usage')
@@ -468,7 +439,7 @@ def setup_coolblue():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
-    options.add_argument('--headless=new')
+
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-dev-shm-usage')
@@ -498,7 +469,7 @@ def setup_mediamarkt():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
-    options.add_argument('--headless=new')
+
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-dev-shm-usage')
@@ -528,7 +499,7 @@ def setup_x_kom():
     chrome_version = get_chrome_version()
 
     options = uc.ChromeOptions()
-    options.add_argument('--headless=new')
+
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--disable-dev-shm-usage')
@@ -571,5 +542,5 @@ RETAILERS = {
     'amazon_de': setup_amazon_de,        # 14
     'mediamarkt': setup_mediamarkt,      # 15
     'x-kom': setup_x_kom,                 # 16
-    'centrecom': setup_centrecom,        # 17 (수동 실행, headless 미사용)
+    'centrecom': setup_centrecom,        # 17 (수동 실행)
 }
