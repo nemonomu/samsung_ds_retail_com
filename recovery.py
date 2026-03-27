@@ -1,6 +1,6 @@
 """
 Title/ImageURL/Price NULL 복구 스크립트
-- fr_v2, uk_v2, currys_v2, it_v2, de_v2, bestbuy_v2, mediamarkt_v2, xkom_v2, usa_v2, nl_amazon 크롤링 결과 중 title, imageurl, retailprice가 NULL인 레코드 복구
+- fr_v2, uk_v2, currys_v2, it_v2, de_v2, bestbuy_v2, mediamarkt_v2, xkom_v2, usa_v2, nl_amazon, in_v2 크롤링 결과 중 title, imageurl, retailprice가 NULL인 레코드 복구
 - DB UPDATE + 파일서버 재업로드
 
 사용법:
@@ -144,6 +144,15 @@ TARGET_CONFIG = {
         'local_tz': 'Asia/Seoul',
         'scraper_module': 'danawa_v2',
         'scraper_class': 'DanawaScraper'
+    },
+    'in': {
+        'name': '인도 Amazon',
+        'table': 'amazon_price_crawl_tbl_ind_v2',
+        'country_code': 'in',
+        'file_prefix': 'in_amazon',
+        'local_tz': 'Asia/Kolkata',
+        'scraper_module': 'in_v2',
+        'scraper_class': 'AmazonIndiaScraper'
     }
 }
 
@@ -669,6 +678,7 @@ def select_target():
     print("10. usa (미국 Amazon)")
     print("11. nl (네덜란드 Amazon)")
     print("12. danawa (한국 다나와)")
+    print("13. in (인도 Amazon)")
     print("0. 종료")
 
     while True:
@@ -700,6 +710,8 @@ def select_target():
                 return 'nl'
             elif choice == '12':
                 return 'danawa'
+            elif choice == '13':
+                return 'in'
             else:
                 print("올바른 번호를 입력하세요.")
         except KeyboardInterrupt:
