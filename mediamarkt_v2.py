@@ -457,6 +457,15 @@ class MediaMarktInfiniteScraper:
             # 페이지 로드 대기
             time.sleep(random.uniform(3, 5))
 
+            # 주요 요소 렌더링 대기 (price 또는 title)
+            try:
+                WebDriverWait(self.driver, 10).until(
+                    lambda d: d.find_elements(By.XPATH, '//*[@id="mms-pdp-wrapper"]//h1') and
+                              d.find_elements(By.XPATH, '//*[@id="mms-pdp-wrapper"]//h1')[0].text.strip()
+                )
+            except Exception:
+                logger.debug("h1 대기 타임아웃, 계속 진행")
+
             # 쿠키 팝업 처리 (페이지 이동 후 다시 뜰 수 있음)
             self.accept_cookies()
 
@@ -594,9 +603,11 @@ class MediaMarktInfiniteScraper:
                         else:
                             title_element = self.driver.find_element(By.CSS_SELECTOR, selector)
                         
-                        result['title'] = title_element.text.strip()
-                        logger.info(f"제목: {result['title']}")
-                        break
+                        title_text = title_element.text.strip()
+                        if title_text:
+                            result['title'] = title_text
+                            logger.info(f"제목: {result['title']}")
+                            break
                     except:
                         continue
             except Exception as e:
