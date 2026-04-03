@@ -606,9 +606,12 @@ class RecoveryManager:
 
         finally:
             # 5. 브라우저 종료 (항상 실행)
-            if scraper and scraper.driver:
+            if scraper:
                 try:
-                    scraper.driver.quit()
+                    if hasattr(scraper, 'driver') and scraper.driver:
+                        scraper.driver.quit()
+                    elif hasattr(scraper, 'page') and scraper.page:
+                        scraper.page.quit()
                     logger.info("브라우저 종료")
                 except Exception:
                     pass
