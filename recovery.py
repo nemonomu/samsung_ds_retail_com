@@ -207,7 +207,7 @@ class RecoveryManager:
             return None
 
     def get_null_records(self, target, session_start):
-        """해당 세션의 NULL 레코드 조회"""
+        """해당 세션의 NULL 레코드 조회 (session_start가 리스트면 여러 세션 합침)"""
         config = TARGET_CONFIG[target]
         table = config['table']
 
@@ -217,44 +217,58 @@ class RecoveryManager:
         else:
             null_condition = "(title IS NULL OR imageurl IS NULL OR imageurl = '' OR retailprice IS NULL)"
 
-        # 세션(날짜+시간대) 기준으로 NULL 레코드 조회
-        query = f"""
-        SELECT *
-        FROM {table}
-        WHERE DATE(kr_crawl_datetime) = DATE(:session_start)
-          AND HOUR(kr_crawl_datetime) = HOUR(:session_start)
-          AND {null_condition}
-        """
+        # session_start가 리스트면 여러 세션 합쳐서 조회
+        session_list = session_start if isinstance(session_start, list) else [session_start]
 
         try:
-            df = pd.read_sql(text(query), self.db_engine, params={'session_start': session_start})
-            df = df.drop_duplicates(subset=['producturl'], keep='last')
-            return df
+            dfs = []
+            for ss in session_list:
+                query = f"""
+                SELECT *
+                FROM {table}
+                WHERE DATE(kr_crawl_datetime) = DATE(:session_start)
+                  AND HOUR(kr_crawl_datetime) = HOUR(:session_start)
+                  AND {null_condition}
+                """
+                df = pd.read_sql(text(query), self.db_engine, params={'session_start': ss})
+                dfs.append(df)
+            combined = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+            combined = combined.drop_duplicates(subset=['producturl'], keep='last')
+            return combined
         except Exception as e:
             logger.error(f"NULL 레코드 조회 실패: {e}")
             return None
 
     def get_session_all_records(self, target, session_start):
-        """해당 날짜의 전체 레코드 조회 (파일 생성용, producturl 중복 제거 - 최신 것만)"""
+        """해당 날짜의 전체 레코드 조회 (파일 생성용, producturl 중복 제거 - 최신 것만)
+        session_start가 리스트면 여러 세션의 날짜를 합쳐서 조회"""
         config = TARGET_CONFIG[target]
         table = config['table']
 
-        query = f"""
-        SELECT t1.*
-        FROM {table} t1
-        INNER JOIN (
-            SELECT producturl, MAX(kr_crawl_datetime) as max_dt
-            FROM {table}
-            WHERE DATE(kr_crawl_datetime) = DATE(:session_start)
-            GROUP BY producturl
-        ) t2 ON t1.producturl = t2.producturl AND t1.kr_crawl_datetime = t2.max_dt
-        WHERE DATE(t1.kr_crawl_datetime) = DATE(:session_start)
-        """
+        # session_start가 리스트면 여러 날짜 합쳐서 조회
+        session_list = session_start if isinstance(session_start, list) else [session_start]
+        # 날짜 중복 제거 (같은 날짜에 여러 세션이면 한 번만 조회)
+        unique_dates = list(set(str(ss)[:10] for ss in session_list))
 
         try:
-            df = pd.read_sql(text(query), self.db_engine, params={'session_start': session_start})
-            df = df.drop_duplicates(subset=['producturl'], keep='last')
-            return df
+            dfs = []
+            for date_str in unique_dates:
+                query = f"""
+                SELECT t1.*
+                FROM {table} t1
+                INNER JOIN (
+                    SELECT producturl, MAX(kr_crawl_datetime) as max_dt
+                    FROM {table}
+                    WHERE DATE(kr_crawl_datetime) = DATE(:session_start)
+                    GROUP BY producturl
+                ) t2 ON t1.producturl = t2.producturl AND t1.kr_crawl_datetime = t2.max_dt
+                WHERE DATE(t1.kr_crawl_datetime) = DATE(:session_start)
+                """
+                df = pd.read_sql(text(query), self.db_engine, params={'session_start': date_str})
+                dfs.append(df)
+            combined = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+            combined = combined.drop_duplicates(subset=['producturl'], keep='last')
+            return combined
         except Exception as e:
             logger.error(f"세션 레코드 조회 실패: {e}")
             return None
@@ -425,13 +439,17 @@ class RecoveryManager:
         """CSV/ZIP/MD5 생성 및 파일서버 업로드"""
         config = TARGET_CONFIG[target]
 
-        # 원본 세션 날짜 (폴더용) - session_start에서 추출
-        if isinstance(session_start, str):
-            session_date = datetime.strptime(session_start[:10], '%Y-%m-%d')
-        elif isinstance(session_start, pd.Timestamp):
-            session_date = session_start.to_pydatetime()
+        # 원본 세션 날짜 (폴더용) - session_start에서 추출 (리스트면 가장 이른 날짜 사용)
+        if isinstance(session_start, list):
+            first_ss = min(str(s) for s in session_start)
         else:
-            session_date = session_start
+            first_ss = session_start
+        if isinstance(first_ss, str):
+            session_date = datetime.strptime(first_ss[:10], '%Y-%m-%d')
+        elif isinstance(first_ss, pd.Timestamp):
+            session_date = first_ss.to_pydatetime()
+        else:
+            session_date = first_ss
         date_str = session_date.strftime('%Y%m%d')
 
         # 파일명 설정
@@ -505,11 +523,12 @@ class RecoveryManager:
             return False
 
     def run_recovery(self, target, session_start):
-        """복구 실행"""
+        """복구 실행 (session_start는 단일 값 또는 리스트)"""
         config = TARGET_CONFIG[target]
+        session_display = session_start if not isinstance(session_start, list) else ' + '.join(str(s) for s in session_start)
         logger.info(f"\n{'='*60}")
         logger.info(f"복구 시작: {config['name']}")
-        logger.info(f"세션: {session_start}")
+        logger.info(f"세션: {session_display}")
         logger.info(f"{'='*60}")
 
         # 1. NULL 레코드 조회
@@ -631,11 +650,12 @@ class RecoveryManager:
         return success_count > 0 or fail_count == 0
 
     def upload_only(self, target, session_start):
-        """파일서버 업로드만 실행 (복구 없이)"""
+        """파일서버 업로드만 실행 (복구 없이, session_start는 단일 값 또는 리스트)"""
         config = TARGET_CONFIG[target]
+        session_display = session_start if not isinstance(session_start, list) else ' + '.join(str(s) for s in session_start)
         logger.info(f"\n{'='*60}")
         logger.info(f"파일 업로드: {config['name']}")
-        logger.info(f"세션: {session_start}")
+        logger.info(f"세션: {session_display}")
         logger.info(f"{'='*60}")
 
         # 전체 레코드 조회 (중복 제거)
@@ -749,6 +769,7 @@ def select_session(manager, target):
         print("\n* currys: title NULL <= 3개 세션은 복구 대상 아님")
 
     print("\n0. 뒤로가기")
+    print("* 여러 세션을 합치려면 쉼표로 구분 (예: 1,2)")
 
     while True:
         try:
@@ -756,11 +777,22 @@ def select_session(manager, target):
             if choice == '0':
                 return None
 
-            idx = int(choice) - 1
-            if 0 <= idx < len(sessions):
-                return sessions.iloc[idx]['session_start']
+            # 쉼표로 복수 선택 지원
+            if ',' in choice:
+                indices = [int(c.strip()) - 1 for c in choice.split(',')]
+                if all(0 <= idx < len(sessions) for idx in indices):
+                    selected = [sessions.iloc[idx]['session_start'] for idx in indices]
+                    total = sum(sessions.iloc[idx]['total_count'] for idx in indices)
+                    print(f"  → {len(selected)}개 세션 합침 (총 {int(total)}개 레코드)")
+                    return selected
+                else:
+                    print("올바른 번호를 입력하세요.")
             else:
-                print("올바른 번호를 입력하세요.")
+                idx = int(choice) - 1
+                if 0 <= idx < len(sessions):
+                    return sessions.iloc[idx]['session_start']
+                else:
+                    print("올바른 번호를 입력하세요.")
         except ValueError:
             print("숫자를 입력하세요.")
         except KeyboardInterrupt:
@@ -791,7 +823,8 @@ def main():
             continue
 
         # 3. 작업 선택
-        print(f"\n선택한 세션: {session_start}")
+        session_display = session_start if not isinstance(session_start, list) else ' + '.join(str(s) for s in session_start)
+        print(f"\n선택한 세션: {session_display}")
         print("1. 복구 실행 (NULL 재크롤링 + 파일 업로드)")
         print("2. 파일 업로드만 (복구 없이)")
         print("0. 취소")
