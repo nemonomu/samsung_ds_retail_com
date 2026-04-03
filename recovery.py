@@ -41,7 +41,9 @@ TARGET_CONFIG = {
         'file_prefix': 'fr_amazon',
         'local_tz': 'Europe/Paris',
         'scraper_module': 'fr_v2',
-        'scraper_class': 'AmazonFRScraper'
+        'scraper_class': 'AmazonFRScraper',
+        'tracking_country': 'fr',
+        'tracking_mall_name': 'amazon'
     },
     'gb': {
         'name': '영국 Amazon',
@@ -50,7 +52,9 @@ TARGET_CONFIG = {
         'file_prefix': 'gb_amazon',
         'local_tz': 'Europe/London',
         'scraper_module': 'uk_v2',
-        'scraper_class': 'AmazonUKScraper'
+        'scraper_class': 'AmazonUKScraper',
+        'tracking_country': 'gb',
+        'tracking_mall_name': 'amazon'
     },
     'currys': {
         'name': '영국 Currys',
@@ -59,7 +63,9 @@ TARGET_CONFIG = {
         'file_prefix': 'gb_currys',
         'local_tz': 'Europe/London',
         'scraper_module': 'currys_v2',
-        'scraper_class': 'CurrysScraper'
+        'scraper_class': 'CurrysScraper',
+        'tracking_country': 'gb',
+        'tracking_mall_name': 'currys'
     },
     'it': {
         'name': '이탈리아 Amazon',
@@ -68,7 +74,9 @@ TARGET_CONFIG = {
         'file_prefix': 'it_amazon',
         'local_tz': 'Europe/Rome',
         'scraper_module': 'it_v2',
-        'scraper_class': 'AmazonITScraper'
+        'scraper_class': 'AmazonITScraper',
+        'tracking_country': 'it',
+        'tracking_mall_name': 'amazon'
     },
     'de': {
         'name': '독일 Amazon',
@@ -77,7 +85,9 @@ TARGET_CONFIG = {
         'file_prefix': 'de_amazon',
         'local_tz': 'Europe/Berlin',
         'scraper_module': 'de_v2',
-        'scraper_class': 'AmazonDEScraper'
+        'scraper_class': 'AmazonDEScraper',
+        'tracking_country': 'de',
+        'tracking_mall_name': 'amazon'
     },
     'bestbuy': {
         'name': '미국 BestBuy',
@@ -86,7 +96,9 @@ TARGET_CONFIG = {
         'file_prefix': 'usa_bestbuy',
         'local_tz': 'America/New_York',
         'scraper_module': 'bestbuy_v2',
-        'scraper_class': 'BestBuyScraper'
+        'scraper_class': 'BestBuyScraper',
+        'tracking_country': 'usa',
+        'tracking_mall_name': 'bestbuy'
     },
     'es': {
         'name': '스페인 Amazon',
@@ -96,7 +108,9 @@ TARGET_CONFIG = {
         'local_tz': 'Europe/Madrid',
         'scraper_module': 'es_v2',
         'scraper_class': 'AmazonScraper',
-        'scraper_kwargs': {'country_code': 'es'}
+        'scraper_kwargs': {'country_code': 'es'},
+        'tracking_country': 'es',
+        'tracking_mall_name': 'amazon'
     },
     'mediamarkt': {
         'name': '독일 MediaMarkt',
@@ -105,7 +119,9 @@ TARGET_CONFIG = {
         'file_prefix': 'de_mediamarkt',
         'local_tz': 'Europe/Berlin',
         'scraper_module': 'mediamarkt_v2',
-        'scraper_class': 'MediaMarktInfiniteScraper'
+        'scraper_class': 'MediaMarktInfiniteScraper',
+        'tracking_country': 'de',
+        'tracking_mall_name': 'mediamarkt'
     },
     'xkom': {
         'name': '폴란드 X-Kom',
@@ -115,7 +131,9 @@ TARGET_CONFIG = {
         'local_tz': 'Europe/Warsaw',
         'scraper_module': 'xkom_v2',
         'scraper_class': 'XKomScraper',
-        'needs_manual_check': True
+        'needs_manual_check': True,
+        'tracking_country': 'pl',
+        'tracking_mall_name': 'x-kom'
     },
     'usa': {
         'name': '미국 Amazon',
@@ -125,7 +143,9 @@ TARGET_CONFIG = {
         'local_tz': 'America/New_York',
         'scraper_module': 'usa_v2',
         'scraper_class': 'AmazonScraper',
-        'scraper_kwargs': {'country_code': 'usa'}
+        'scraper_kwargs': {'country_code': 'usa'},
+        'tracking_country': 'usa',
+        'tracking_mall_name': 'amazon'
     },
     'nl': {
         'name': '네덜란드 Amazon',
@@ -134,7 +154,9 @@ TARGET_CONFIG = {
         'file_prefix': 'nl_amazon',
         'local_tz': 'Europe/Amsterdam',
         'scraper_module': 'nl_amazon',
-        'scraper_class': 'AmazonNLScraper'
+        'scraper_class': 'AmazonNLScraper',
+        'tracking_country': 'nl',
+        'tracking_mall_name': 'amazon'
     },
     'danawa': {
         'name': '한국 다나와',
@@ -143,7 +165,9 @@ TARGET_CONFIG = {
         'file_prefix': 'kr_danawa',
         'local_tz': 'Asia/Seoul',
         'scraper_module': 'danawa_v2',
-        'scraper_class': 'DanawaScraper'
+        'scraper_class': 'DanawaScraper',
+        'tracking_country': 'kr',
+        'tracking_mall_name': 'danawa'
     },
     'in': {
         'name': '인도 Amazon',
@@ -152,7 +176,9 @@ TARGET_CONFIG = {
         'file_prefix': 'in_amazon',
         'local_tz': 'Asia/Kolkata',
         'scraper_module': 'in_v2',
-        'scraper_class': 'AmazonIndiaScraper'
+        'scraper_class': 'AmazonIndiaScraper',
+        'tracking_country': 'in',
+        'tracking_mall_name': 'amazon'
     }
 }
 
@@ -272,6 +298,50 @@ class RecoveryManager:
         except Exception as e:
             logger.error(f"세션 레코드 조회 실패: {e}")
             return None
+
+    def get_missing_urls(self, target, session_start):
+        """세션에서 누락된 URL 조회 (마스터 리스트 vs 크롤 결과 비교)"""
+        config = TARGET_CONFIG[target]
+        tracking_country = config.get('tracking_country')
+        tracking_mall_name = config.get('tracking_mall_name')
+
+        if not tracking_country or not tracking_mall_name:
+            logger.warning(f"{target}: tracking 설정 없음, 누락 URL 조회 건너뜀")
+            return pd.DataFrame()
+
+        try:
+            # 1. 마스터 리스트 (전체 URL)
+            master_query = """
+            SELECT *
+            FROM samsung_price_tracking_list
+            WHERE country = :country
+              AND mall_name = :mall_name
+              AND is_active = TRUE
+            """
+            master_df = pd.read_sql(text(master_query), self.db_engine,
+                                    params={'country': tracking_country, 'mall_name': tracking_mall_name})
+
+            if master_df.empty:
+                return pd.DataFrame()
+
+            # 2. 해당 세션에서 크롤링된 URL 목록
+            crawled = self.get_session_all_records(target, session_start)
+            if crawled is not None and not crawled.empty:
+                crawled_urls = set(crawled['producturl'].tolist())
+            else:
+                crawled_urls = set()
+
+            # 3. 비교: 마스터에는 있지만 크롤 결과에 없는 URL
+            missing = master_df[~master_df['url'].isin(crawled_urls)]
+
+            if not missing.empty:
+                logger.info(f"누락 URL 발견: {len(missing)}개 (마스터 {len(master_df)}개 - 크롤 {len(crawled_urls)}개)")
+
+            return missing
+
+        except Exception as e:
+            logger.error(f"누락 URL 조회 실패: {e}")
+            return pd.DataFrame()
 
     def load_scraper(self, target):
         """해당 대상의 스크래퍼 로드 및 브라우저 초기화"""
@@ -522,6 +592,30 @@ class RecoveryManager:
             logger.error(f"파일 생성/업로드 실패: {e}")
             return False
 
+    def insert_missing_record(self, target, result):
+        """누락 URL 크롤링 결과를 DB에 INSERT"""
+        config = TARGET_CONFIG[target]
+        table = config['table']
+
+        try:
+            df = pd.DataFrame([result])
+            # 컬럼 순서 맞추기
+            column_order = [
+                'retailerid', 'country_code', 'ships_from', 'channel_name', 'channel',
+                'retailersku', 'brand', 'brand_eng', 'form_factor',
+                'segment_lv1', 'segment_lv2', 'segment_lv3', 'capacity', 'item',
+                'retailprice', 'sold_by', 'imageurl', 'producturl',
+                'crawl_datetime', 'crawl_strdatetime', 'kr_crawl_datetime', 'kr_crawl_strdatetime',
+                'title', 'vat'
+            ]
+            existing_cols = [c for c in column_order if c in df.columns]
+            df = df[existing_cols]
+            df.to_sql(table, self.db_engine, if_exists='append', index=False)
+            return True
+        except Exception as e:
+            logger.error(f"DB INSERT 실패: {e}")
+            return False
+
     def run_recovery(self, target, session_start):
         """복구 실행 (session_start는 단일 값 또는 리스트)"""
         config = TARGET_CONFIG[target]
@@ -533,35 +627,47 @@ class RecoveryManager:
 
         # 1. NULL 레코드 조회
         null_records = self.get_null_records(target, session_start)
-        if null_records is None or null_records.empty:
-            logger.info("복구 대상 레코드가 없습니다.")
-            return True
+        has_null = null_records is not None and not null_records.empty
 
         # currys 예외: title null <= 3개면 복구 불필요
-        if target == 'currys':
+        if has_null and target == 'currys':
             title_null_count = null_records['title'].isna().sum()
             if title_null_count <= 3:
                 logger.info(f"currys: title null {title_null_count}개 (3개 이하) - 복구 불필요")
-                return True
+                has_null = False
 
-        logger.info(f"복구 대상: {len(null_records)}개")
+        # 2. 누락 URL 조회
+        missing_urls = self.get_missing_urls(target, session_start)
+        has_missing = not missing_urls.empty if missing_urls is not None else False
 
-        # 2. 복구 전 전체 세션 레코드 미리 조회 (파일 생성용)
+        if not has_null and not has_missing:
+            logger.info("복구 대상 레코드가 없습니다.")
+            return True
+
+        if has_null:
+            logger.info(f"NULL 복구 대상: {len(null_records)}개")
+        if has_missing:
+            logger.info(f"누락 URL 대상: {len(missing_urls)}개")
+
+        # 3. 복구 전 전체 세션 레코드 미리 조회 (파일 생성용)
         all_records = self.get_session_all_records(target, session_start)
         if all_records is None or all_records.empty:
             logger.error("전체 세션 레코드 조회 실패")
             return False
         logger.info(f"전체 세션 레코드: {len(all_records)}개 (미리 조회 완료)")
 
-        # 3. 스크래퍼 로드
+        # 4. 스크래퍼 로드
         scraper = self.load_scraper(target)
         if scraper is None:
             logger.error("스크래퍼 로드 실패")
             return False
 
-        # 3-1. 봇감지 수동 체크 (xkom 등)
+        # 4-1. 봇감지 수동 체크 (xkom 등)
         if config.get('needs_manual_check'):
-            first_url = null_records.iloc[0]['producturl']
+            if has_null:
+                first_url = null_records.iloc[0]['producturl']
+            else:
+                first_url = missing_urls.iloc[0]['url']
             logger.info(f"봇감지 수동 체크를 위해 첫 번째 URL 접속: {first_url}")
             scraper.driver.get(first_url)
             print(f"\n{'='*60}")
@@ -572,32 +678,64 @@ class RecoveryManager:
             scraper.is_logged_in = True
             logger.info("봇감지 수동 체크 완료, 복구 시작")
 
-        # 4. 각 URL 재크롤링 및 DB UPDATE
+        # 5. 각 URL 재크롤링 및 DB UPDATE
         success_count = 0
         fail_count = 0
         recovered_results = {}  # producturl -> 복구된 result
+        missing_results = []  # 누락 URL INSERT용
 
         try:
-            for i, (idx, row) in enumerate(null_records.iterrows()):
-                url = row['producturl']
-                original_kr_crawl_datetime = row['kr_crawl_datetime']  # 원본 시간 저장
-                logger.info(f"\n[{i+1}/{len(null_records)}] 재크롤링: {url[:60]}...")
+            # 5-1. NULL 복구
+            if has_null:
+                logger.info(f"\n--- NULL 복구 시작 ({len(null_records)}개) ---")
+                for i, (idx, row) in enumerate(null_records.iterrows()):
+                    url = row['producturl']
+                    original_kr_crawl_datetime = row['kr_crawl_datetime']  # 원본 시간 저장
+                    logger.info(f"\n[{i+1}/{len(null_records)}] 재크롤링: {url[:60]}...")
 
-                result = self.recrawl_url(scraper, url, row, target)
+                    result = self.recrawl_url(scraper, url, row, target)
 
-                if result and (result.get('title') is not None or result.get('retailprice') is not None):
-                    # DB UPDATE (원본 kr_crawl_datetime으로 정확히 매칭)
-                    result['producturl'] = url
-                    if self.update_db_record(target, original_kr_crawl_datetime, result):
-                        logger.info(f"  -> 성공: title={str(result.get('title', ''))[:30]}, price={result.get('retailprice')}")
-                        success_count += 1
-                        recovered_results[url] = result
+                    if result and (result.get('title') is not None or result.get('retailprice') is not None):
+                        # DB UPDATE (원본 kr_crawl_datetime으로 정확히 매칭)
+                        result['producturl'] = url
+                        if self.update_db_record(target, original_kr_crawl_datetime, result):
+                            logger.info(f"  -> 성공: title={str(result.get('title', ''))[:30]}, price={result.get('retailprice')}")
+                            success_count += 1
+                            recovered_results[url] = result
+                        else:
+                            logger.warning(f"  -> DB UPDATE 실패")
+                            fail_count += 1
                     else:
-                        logger.warning(f"  -> DB UPDATE 실패")
+                        logger.warning(f"  -> 재크롤링 실패 (여전히 NULL 또는 price=0)")
                         fail_count += 1
-                else:
-                    logger.warning(f"  -> 재크롤링 실패 (여전히 NULL 또는 price=0)")
-                    fail_count += 1
+
+            # 5-2. 누락 URL 크롤링
+            if has_missing:
+                missing_success = 0
+                missing_fail = 0
+                logger.info(f"\n--- 누락 URL 크롤링 시작 ({len(missing_urls)}개) ---")
+                for i, (idx, row) in enumerate(missing_urls.iterrows()):
+                    url = row['url']
+                    logger.info(f"\n[누락 {i+1}/{len(missing_urls)}] 크롤링: {url[:60]}...")
+
+                    result = self.recrawl_url(scraper, url, row, target)
+
+                    if result and (result.get('title') is not None or result.get('retailprice') is not None):
+                        result['producturl'] = url
+                        if self.insert_missing_record(target, result):
+                            logger.info(f"  -> INSERT 성공: title={str(result.get('title', ''))[:30]}, price={result.get('retailprice')}")
+                            missing_success += 1
+                            missing_results.append(result)
+                        else:
+                            logger.warning(f"  -> DB INSERT 실패")
+                            missing_fail += 1
+                    else:
+                        logger.warning(f"  -> 크롤링 실패")
+                        missing_fail += 1
+
+                logger.info(f"누락 URL 결과: 성공 {missing_success}개, 실패 {missing_fail}개")
+                success_count += missing_success
+                fail_count += missing_fail
 
         except Exception as e:
             logger.error(f"복구 중 오류 발생: {e}")
@@ -605,7 +743,7 @@ class RecoveryManager:
             traceback.print_exc()
 
         finally:
-            # 5. 브라우저 종료 (항상 실행)
+            # 6. 브라우저 종료 (항상 실행)
             if scraper:
                 try:
                     if hasattr(scraper, 'driver') and scraper.driver:
@@ -616,12 +754,12 @@ class RecoveryManager:
                 except Exception:
                     pass
 
-        # 6. 결과 요약
+        # 7. 결과 요약
         logger.info(f"\n{'='*60}")
         logger.info(f"복구 완료: 성공 {success_count}개, 실패 {fail_count}개")
         logger.info(f"{'='*60}")
 
-        # 7. 파일서버 업로드 (미리 조회한 전체 레코드 + 복구 결과 merge)
+        # 8. 파일서버 업로드 (미리 조회한 전체 레코드 + 복구 결과 merge + 누락 결과 추가)
         if success_count > 0:
             logger.info("\n파일서버 업로드 시작...")
             # 복구된 레코드를 미리 조회한 전체 레코드에 merge
@@ -633,6 +771,12 @@ class RecoveryManager:
                         if col in result:
                             all_records.loc[mask, col] = result.get(col)
                     logger.info(f"  merge 완료: {url[:60]}")
+
+            # 누락 URL 결과를 all_records에 추가
+            if missing_results:
+                missing_df = pd.DataFrame(missing_results)
+                all_records = pd.concat([all_records, missing_df], ignore_index=True)
+                logger.info(f"  누락 URL {len(missing_results)}개 추가")
 
             logger.info(f"파일 생성 대상: {len(all_records)}개 레코드")
 
