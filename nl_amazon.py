@@ -1573,7 +1573,8 @@ def main():
     logger.info("=" * 80)
 
     # 크롤링 완료 후 알림 (빈 값 50% 이상 시 경고)
-    monitor_and_alert('nl', len(urls_data), results_df)
+    monitor_and_alert('nl', len(urls_data), results_df,
+                     fs_country_code='nl', file_prefix='nl_amazon')
 
 if __name__ == "__main__":
     required_packages = [

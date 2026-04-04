@@ -860,7 +860,8 @@ def main():
         logger.info("=" * 80)
 
         # 알림 발송
-        monitor_and_alert('au_centrecom', len(urls_data), results_df)
+        monitor_and_alert('au_centrecom', len(urls_data), results_df,
+                         fs_country_code='au', file_prefix='au_centrecom')
 
     except Exception as e:
         # 예외 발생 시 알림

@@ -1171,7 +1171,8 @@ def main():
         logger.info(f"📍 업로드 위치: {FILE_SERVER_CONFIG['host']}:{FILE_SERVER_CONFIG['upload_path']}/")
 
         # 크롤링 완료 후 알림 (빈 값 50% 이상 시 경고)
-        monitor_and_alert('nl_coolblue', len(urls_data), results_df, all_null_failures=all_null_failures)
+        monitor_and_alert('nl_coolblue', len(urls_data), results_df, all_null_failures=all_null_failures,
+                         fs_country_code='nl', file_prefix='nl_coolblue')
 
     except Exception as e:
         # 예외 발생 시 알림

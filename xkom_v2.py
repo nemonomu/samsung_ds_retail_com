@@ -884,7 +884,8 @@ Python 버전: {os.sys.version.split()[0]}
             logger.info(f"파일서버 업로드: {'✅' if save_results['server_uploaded'] else '❌'}")
 
             # 알림 발송
-            monitor_and_alert('pl_xkom', len(urls_data), df)
+            monitor_and_alert('pl_xkom', len(urls_data), df,
+                             fs_country_code='pl', file_prefix='pl_xkom')
         else:
             # 결과 없음
             monitor_and_alert('pl_xkom', len(urls_data), None, error_message="크롤링 결과 없음")

@@ -1638,7 +1638,8 @@ def main():
     logger.info("=" * 80)
 
     # 크롤링 결과 모니터링 및 알림
-    monitor_and_alert(country_code, len(urls_data), results_df)
+    monitor_and_alert(country_code, len(urls_data), results_df,
+                     fs_country_code='es', file_prefix='es_amazon')
 
 if __name__ == "__main__":
     required_packages = [

@@ -1347,7 +1347,8 @@ def main():
 
         # 크롤링 완료 후 알림
         results_df = upload_df
-        monitor_and_alert('usa_bestbuy', len(urls_data), upload_df, error_logs=scraper.error_logs)
+        monitor_and_alert('usa_bestbuy', len(urls_data), upload_df, error_logs=scraper.error_logs,
+                         fs_country_code='usa', file_prefix='usa_bestbuy')
 
     except Exception as e:
         # 예외 발생 시 알림

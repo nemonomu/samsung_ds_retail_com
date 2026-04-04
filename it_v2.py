@@ -1656,7 +1656,8 @@ def main():
         logger.warning(f"title null 실패: {title_null_count}개")
 
     # 크롤링 완료 후 알림 (차단 페이지 실패 개수 및 title null 실패 개수 전달)
-    monitor_and_alert('it', len(urls_data), results_df, blocked_page_failures=len(blocked_failures), title_null_failures=title_null_count)
+    monitor_and_alert('it', len(urls_data), results_df, blocked_page_failures=len(blocked_failures), title_null_failures=title_null_count,
+                     fs_country_code='it', file_prefix='it_amazon')
 
 if __name__ == "__main__":
     required_packages = [

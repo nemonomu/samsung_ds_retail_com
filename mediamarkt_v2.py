@@ -1045,7 +1045,8 @@ def main():
     logger.info("=" * 60)
 
     # 크롤링 완료 후 알림
-    monitor_and_alert('de_mediamarkt', target_count, results_df)
+    monitor_and_alert('de_mediamarkt', target_count, results_df,
+                     fs_country_code='de', file_prefix='de_mediamarkt')
 
 if __name__ == "__main__":
     # 필요한 패키지 확인

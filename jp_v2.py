@@ -1492,7 +1492,8 @@ def main():
     logger.info(f"{'='*80}\n")
 
     # 크롤링 결과 모니터링 및 알림
-    monitor_and_alert(country_code, len(urls_data), results_df)
+    monitor_and_alert(country_code, len(urls_data), results_df,
+                     fs_country_code='jp', file_prefix='jp_amazon')
 
 if __name__ == "__main__":
     # 필요한 패키지 설치 확인

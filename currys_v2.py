@@ -897,7 +897,8 @@ def main():
         logger.info("\n✅ 크롤링 프로세스 완료!")
 
         # 크롤링 완료 후 알림 (빈 값 50% 이상 시 경고)
-        monitor_and_alert('gb_currys', len(urls_data), final_results_df, title_null_failures=final_title_null)
+        monitor_and_alert('gb_currys', len(urls_data), final_results_df, title_null_failures=final_title_null,
+                         fs_country_code='gb', file_prefix='gb_currys')
 
     except Exception as e:
         # 예외 발생 시 알림

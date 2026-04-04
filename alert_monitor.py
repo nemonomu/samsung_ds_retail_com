@@ -59,7 +59,198 @@ COUNTRY_SHORT_NAMES = {
 }
 
 
-def analyze_crawl_results(country_code, target_count, results_df, error_logs=None, blocked_page_failures=0, all_null_failures=0, title_null_failures=0):
+def detect_price_anomalies(current_df, country_code, file_prefix, threshold=20, skip_date=None):
+    """
+    직전 파일서버 데이터 대비 가격 이상 감지
+
+    Args:
+        current_df: 현재 크롤링 결과 DataFrame
+        country_code: 국가 코드 (파일서버 디렉토리명, 예: 'usa')
+        file_prefix: 파일 접두사 (예: 'usa_bestbuy')
+        threshold: 가격 변동 임계값 (%, 기본 20)
+        skip_date: 추가로 건너뛸 날짜 문자열 (예: '20260403', recovery 시 세션 날짜)
+
+    Returns:
+        list: 이상 항목 리스트
+    """
+    try:
+        import paramiko
+        import zipfile
+        import tempfile
+        import os
+        from config import FILE_SERVER_CONFIG
+
+        if current_df is None or current_df.empty:
+            return []
+
+        # 현재 결과에서 컬럼명 소문자 통일
+        curr = current_df.copy()
+        curr.columns = curr.columns.str.lower()
+
+        if 'producturl' not in curr.columns or 'retailprice' not in curr.columns:
+            return []
+
+        # 1. 파일서버 접속
+        transport = paramiko.Transport((FILE_SERVER_CONFIG['host'], FILE_SERVER_CONFIG['port']))
+        transport.connect(
+            username=FILE_SERVER_CONFIG['username'],
+            password=FILE_SERVER_CONFIG['password']
+        )
+        sftp = paramiko.SFTPClient.from_transport(transport)
+
+        try:
+            # 2. 날짜 폴더 목록 조회 (내림차순 정렬)
+            country_dir = f"{FILE_SERVER_CONFIG['upload_path']}/{country_code}"
+            try:
+                date_folders = sorted(sftp.listdir(country_dir), reverse=True)
+            except FileNotFoundError:
+                return []
+
+            # 3. 날짜 폴더만 필터링 (backup 등 제외), 오늘 제외하고 가장 최근 폴더에서 매칭되는 zip 찾기
+            today_str = datetime.now(pytz.timezone('Asia/Seoul')).strftime('%Y%m%d')
+            date_folders = [f for f in date_folders if f.isdigit() and len(f) == 8]
+            prev_zip_path = None
+
+            for folder in date_folders:
+                if folder == today_str or folder == skip_date:
+                    continue
+                # 해당 폴더에서 file_prefix 매칭되는 zip 찾기
+                folder_path = f"{country_dir}/{folder}"
+                try:
+                    files = sftp.listdir(folder_path)
+                    for f in files:
+                        if f.endswith('.zip') and file_prefix in f:
+                            prev_zip_path = f"{folder_path}/{f}"
+                            break
+                except Exception:
+                    continue
+                if prev_zip_path:
+                    break
+
+            if not prev_zip_path:
+                logger.info(f"직전 파일 없음: {country_code}/{file_prefix}")
+                return []
+
+            logger.info(f"직전 파일 발견: {prev_zip_path}")
+
+            # 4. zip 다운로드 → csv 읽기
+            prev_df = None
+            with tempfile.TemporaryDirectory() as tmpdir:
+                local_zip = os.path.join(tmpdir, 'prev.zip')
+                sftp.get(prev_zip_path, local_zip)
+
+                with zipfile.ZipFile(local_zip, 'r') as zf:
+                    csv_names = [n for n in zf.namelist() if n.endswith('.csv')]
+                    if csv_names:
+                        with zf.open(csv_names[0]) as csv_file:
+                            prev_df = pd.read_csv(csv_file)
+
+        finally:
+            sftp.close()
+            transport.close()
+
+        if prev_df is None or prev_df.empty:
+            return []
+
+        prev_df.columns = prev_df.columns.str.lower()
+
+        # 가격 컬럼 숫자 변환 (콤마 포함 문자열 대응)
+        for df in [curr, prev_df]:
+            if df['retailprice'].dtype == object:
+                df['retailprice'] = pd.to_numeric(df['retailprice'].astype(str).str.replace(',', ''), errors='coerce')
+
+        # 5. 비교 (outer merge로 한쪽에만 있는 URL도 포함, indicator로 소속 판별)
+        curr_cols = curr[['producturl', 'retailprice', 'title']]
+        prev_cols = prev_df[['producturl', 'retailprice', 'title']]
+        merged = pd.merge(prev_cols, curr_cols,
+                         on='producturl', suffixes=('_prev', '_curr'), how='outer', indicator=True)
+
+        if merged.empty:
+            return []
+
+        result = []
+
+        for _, row in merged.iterrows():
+            prev_price = row.get('retailprice_prev')
+            curr_price = row.get('retailprice_curr')
+            prev_is_null = prev_price is None or pd.isna(prev_price)
+            curr_is_null = curr_price is None or pd.isna(curr_price)
+            title_prev = row.get('title_prev')
+            title_curr = row.get('title_curr')
+            title = str(title_curr if title_curr and not pd.isna(title_curr) else (title_prev if title_prev and not pd.isna(title_prev) else ''))[:50]
+
+            merge_source = row['_merge']  # 'left_only', 'right_only', 'both'
+
+            # Case 0a: URL이 어제 있었는데 오늘 없음
+            if merge_source == 'left_only':
+                result.append({
+                    'url': row['producturl'],
+                    'title': title,
+                    'prev_price': float(prev_price) if not prev_is_null else None,
+                    'curr_price': None,
+                    'pct_change': None,
+                    'anomaly_type': 'url_removed'
+                })
+                continue
+            # Case 0b: URL이 어제 없었는데 오늘 생김
+            if merge_source == 'right_only':
+                result.append({
+                    'url': row['producturl'],
+                    'title': title,
+                    'prev_price': None,
+                    'curr_price': float(curr_price) if not curr_is_null else None,
+                    'pct_change': None,
+                    'anomaly_type': 'url_added'
+                })
+                continue
+
+            # Case 1: 가격이 있다가 없어진 경우
+            if not prev_is_null and curr_is_null:
+                result.append({
+                    'url': row['producturl'],
+                    'title': title,
+                    'prev_price': float(prev_price),
+                    'curr_price': None,
+                    'pct_change': None,
+                    'anomaly_type': 'price_disappeared'
+                })
+            # Case 2: 가격이 없다가 생긴 경우
+            elif prev_is_null and not curr_is_null:
+                result.append({
+                    'url': row['producturl'],
+                    'title': title,
+                    'prev_price': None,
+                    'curr_price': float(curr_price),
+                    'pct_change': None,
+                    'anomaly_type': 'price_appeared'
+                })
+            # Case 3: 양쪽 다 가격이 있고, 변동률 임계값 초과
+            elif not prev_is_null and not curr_is_null and float(prev_price) > 0:
+                pct = abs(float(curr_price) - float(prev_price)) / float(prev_price) * 100
+                if pct >= threshold:
+                    result.append({
+                        'url': row['producturl'],
+                        'title': title,
+                        'prev_price': float(prev_price),
+                        'curr_price': float(curr_price),
+                        'pct_change': round(pct, 1),
+                        'anomaly_type': 'price_change'
+                    })
+
+        # 변동률 큰 순 정렬 (None은 뒤로)
+        result.sort(key=lambda x: x['pct_change'] if x['pct_change'] is not None else -1, reverse=True)
+
+        if result:
+            logger.info(f"가격 이상 감지: {len(result)}개 (임계값 {threshold}%)")
+
+        return result
+
+    except Exception as e:
+        logger.error(f"가격 이상 감지 실패: {e}")
+        return []
+
+
+def analyze_crawl_results(country_code, target_count, results_df, error_logs=None, blocked_page_failures=0, all_null_failures=0, title_null_failures=0, price_anomalies=None):
     """
     크롤링 결과 분석
 
@@ -71,6 +262,7 @@ def analyze_crawl_results(country_code, target_count, results_df, error_logs=Non
         blocked_page_failures: 차단 페이지로 인한 최종 실패 개수 (선택)
         all_null_failures: title, imageurl, retailprice 모두 NULL인 최종 실패 개수 (선택)
         title_null_failures: title이 NULL인 최종 실패 개수 (선택)
+        price_anomalies: 가격 이상 항목 리스트 (선택, detect_price_anomalies 결과)
 
     Returns:
         dict: 분석 결과
@@ -87,7 +279,8 @@ def analyze_crawl_results(country_code, target_count, results_df, error_logs=Non
         'all_null_failures': all_null_failures,  # title, imageurl, retailprice 모두 NULL인 최종 실패 개수
         'title_null_failures': title_null_failures,  # title이 NULL인 최종 실패 개수
         'field_stats': {},
-        'error_logs': error_logs or []
+        'error_logs': error_logs or [],
+        'price_anomalies': price_anomalies or []
     }
 
     # 크롤링 자체가 실패한 경우
@@ -225,9 +418,13 @@ def send_alert_email(analysis, error_message=None):
         else:
             failed_prefix = ""
 
+        # 가격 이상 접두사
+        price_anomalies = analysis.get('price_anomalies', [])
+        price_anomaly_prefix = f"price anomaly {len(price_anomalies)} " if price_anomalies else ""
+
         # 제목 생성 (간결하게: [DS] + Failed X sku + 사이트명)
         short_name = COUNTRY_SHORT_NAMES.get(analysis['country_code'], analysis['country_code'])
-        subject = f"[DS] {failed_prefix}{price_error_prefix}{short_name}"
+        subject = f"[DS] {failed_prefix}{price_error_prefix}{price_anomaly_prefix}{short_name}"
 
         # 이메일 본문 생성 (HTML)
         html_content = f"""
@@ -330,6 +527,72 @@ def send_alert_email(analysis, error_message=None):
             </div>
             """
 
+        # 가격 이상 / URL 변동 섹션 (항상 표시)
+        price_items = [a for a in price_anomalies if a.get('anomaly_type') in ('price_change', 'price_disappeared', 'price_appeared')]
+        url_items = [a for a in price_anomalies if a.get('anomaly_type') in ('url_removed', 'url_added')]
+
+        # 가격 이상 섹션
+        if price_items:
+            html_content += f"""
+            <div class="section">
+                <h3 class="critical">전일 대비 가격 이상 감지 ({len(price_items)}건)</h3>
+                <table>
+                    <tr><th>제품</th><th>전일 가격</th><th>금일 가격</th><th>상태</th><th>URL</th></tr>
+            """
+            for item in price_items:
+                atype = item.get('anomaly_type')
+                if atype == 'price_disappeared':
+                    status = '<span class="critical">가격 사라짐</span>'
+                    prev_str = f"{item['prev_price']}"
+                    curr_str = '-'
+                elif atype == 'price_appeared':
+                    status = '<span style="color: #ffc107; font-weight: bold;">가격 신규</span>'
+                    prev_str = '-'
+                    curr_str = f"{item['curr_price']}"
+                else:
+                    status = f'<span class="critical">{item["pct_change"]}% 변동</span>'
+                    prev_str = f"{item['prev_price']}"
+                    curr_str = f"{item['curr_price']}"
+                html_content += f"""
+                    <tr>
+                        <td>{item['title']}</td><td>{prev_str}</td><td>{curr_str}</td>
+                        <td>{status}</td><td><a href="{item['url']}">{item['url'][-30:]}</a></td>
+                    </tr>"""
+            html_content += "</table></div>"
+        else:
+            html_content += """
+            <div class="section">
+                <h3 style="color: #28a745;">전일 대비 가격 이상 없음</h3>
+            </div>"""
+
+        # URL 변동 섹션
+        if url_items:
+            html_content += f"""
+            <div class="section">
+                <h3 class="critical">URL 변동 감지 ({len(url_items)}건)</h3>
+                <table>
+                    <tr><th>제품</th><th>가격</th><th>상태</th><th>URL</th></tr>
+            """
+            for item in url_items:
+                atype = item.get('anomaly_type')
+                if atype == 'url_removed':
+                    status = '<span class="critical">삭제됨 (전일 존재 → 금일 없음)</span>'
+                    price_str = f"{item['prev_price']}" if item['prev_price'] is not None else '-'
+                else:
+                    status = '<span style="color: #17a2b8; font-weight: bold;">추가됨 (전일 없음 → 금일 존재)</span>'
+                    price_str = f"{item['curr_price']}" if item['curr_price'] is not None else '-'
+                html_content += f"""
+                    <tr>
+                        <td>{item['title']}</td><td>{price_str}</td>
+                        <td>{status}</td><td><a href="{item['url']}">{item['url'][-30:]}</a></td>
+                    </tr>"""
+            html_content += "</table></div>"
+        else:
+            html_content += """
+            <div class="section">
+                <h3 style="color: #28a745;">전일 대비 URL 변동 없음</h3>
+            </div>"""
+
         # 에러 로그 섹션
         if analysis.get('error_logs'):
             html_content += """
@@ -385,7 +648,7 @@ def send_alert_email(analysis, error_message=None):
         return False
 
 
-def monitor_and_alert(country_code, target_count, results_df, error_message=None, error_logs=None, blocked_page_failures=0, all_null_failures=0, title_null_failures=0):
+def monitor_and_alert(country_code, target_count, results_df, error_message=None, error_logs=None, blocked_page_failures=0, all_null_failures=0, title_null_failures=0, fs_country_code=None, file_prefix=None, skip_date=None):
     """
     크롤링 결과 모니터링 및 알림 (메인 함수)
 
@@ -400,6 +663,9 @@ def monitor_and_alert(country_code, target_count, results_df, error_message=None
         blocked_page_failures: 차단 페이지로 인한 최종 실패 개수 (선택)
         all_null_failures: title, imageurl, retailprice 모두 NULL인 최종 실패 개수 (선택)
         title_null_failures: title이 NULL인 최종 실패 개수 (선택)
+        fs_country_code: 파일서버 국가 디렉토리명 (가격 이상 감지용, 선택. 예: 'usa')
+        file_prefix: 파일서버 파일 접두사 (가격 이상 감지용, 선택. 예: 'usa_bestbuy')
+        skip_date: 건너뛸 날짜 (recovery 시 세션 날짜, 선택. 예: '20260403')
 
     Returns:
         bool: 알림 발송 성공 여부
@@ -407,27 +673,21 @@ def monitor_and_alert(country_code, target_count, results_df, error_message=None
     사용 예시:
         from alert_monitor import monitor_and_alert
 
-        # 크롤링 완료 후
-        monitor_and_alert('jp', len(urls_data), results_df)
+        # 크롤링 완료 후 (가격 이상 감지 포함)
+        monitor_and_alert('usa_bestbuy', len(urls_data), results_df,
+                         fs_country_code='usa', file_prefix='usa_bestbuy')
 
-        # 에러 발생 시
-        monitor_and_alert('jp', len(urls_data), None, error_message="ChromeDriver 초기화 실패")
-
-        # 에러 로그 포함
-        monitor_and_alert('jp', len(urls_data), results_df, error_logs=error_list)
-
-        # 차단 페이지 실패 개수 포함
-        monitor_and_alert('de', len(urls_data), results_df, blocked_page_failures=5)
-
-        # title, imageurl, retailprice 모두 NULL인 실패 개수 포함
-        monitor_and_alert('nl_coolblue', len(urls_data), results_df, all_null_failures=3)
-
-        # title NULL인 실패 개수 포함
-        monitor_and_alert('fr', len(urls_data), results_df, title_null_failures=2)
+        # 에러 발생 시 (가격 비교 불필요)
+        monitor_and_alert('usa_bestbuy', len(urls_data), None, error_message="DB 연결 실패")
     """
     try:
+        # 가격 이상 감지 (파일서버 정보가 있을 때만)
+        price_anomalies = []
+        if fs_country_code and file_prefix and results_df is not None:
+            price_anomalies = detect_price_anomalies(results_df, fs_country_code, file_prefix, skip_date=skip_date)
+
         # 결과 분석
-        analysis = analyze_crawl_results(country_code, target_count, results_df, error_logs, blocked_page_failures, all_null_failures, title_null_failures)
+        analysis = analyze_crawl_results(country_code, target_count, results_df, error_logs, blocked_page_failures, all_null_failures, title_null_failures, price_anomalies=price_anomalies)
 
         # 항상 이메일 발송 (일일 리포트)
         return send_alert_email(analysis, error_message)

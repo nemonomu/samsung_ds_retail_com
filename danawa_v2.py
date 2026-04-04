@@ -985,7 +985,8 @@ def main():
     logger.info("\n✅ 크롤링 프로세스 완료!")
 
     # 크롤링 완료 후 알림 (빈 값 50% 이상 시 경고)
-    monitor_and_alert('kr_danawa', len(urls_data), final_results_df, title_null_failures=final_title_null)
+    monitor_and_alert('kr_danawa', len(urls_data), final_results_df, title_null_failures=final_title_null,
+                     fs_country_code='kr', file_prefix='kr_danawa')
 
 if __name__ == "__main__":
     # 필요한 패키지 설치 확인

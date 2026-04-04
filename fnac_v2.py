@@ -1008,7 +1008,8 @@ def main():
     logger.info("\n크롤링 프로세스 완료!")
 
     # 크롤링 완료 후 알림 (차단 페이지 실패 개수 전달)
-    monitor_and_alert('fr_fnac', len(urls_data), results_df, blocked_page_failures=len(blocked_failures))
+    monitor_and_alert('fr_fnac', len(urls_data), results_df, blocked_page_failures=len(blocked_failures),
+                     fs_country_code='fr', file_prefix='fr_fnac')
 
 
 if __name__ == "__main__":

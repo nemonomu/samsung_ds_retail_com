@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 # 설정 임포트
 from config import DB_CONFIG_V2 as DB_CONFIG
 from config import FILE_SERVER_CONFIG
+from alert_monitor import monitor_and_alert
 
 # 대상별 설정
 TARGET_CONFIG = {
@@ -43,7 +44,8 @@ TARGET_CONFIG = {
         'scraper_module': 'fr_v2',
         'scraper_class': 'AmazonFRScraper',
         'tracking_country': 'fr',
-        'tracking_mall_name': 'amazon'
+        'tracking_mall_name': 'amazon',
+        'alert_code': 'fr'
     },
     'gb': {
         'name': '영국 Amazon',
@@ -54,7 +56,8 @@ TARGET_CONFIG = {
         'scraper_module': 'uk_v2',
         'scraper_class': 'AmazonUKScraper',
         'tracking_country': 'gb',
-        'tracking_mall_name': 'amazon'
+        'tracking_mall_name': 'amazon',
+        'alert_code': 'gb'
     },
     'currys': {
         'name': '영국 Currys',
@@ -65,7 +68,8 @@ TARGET_CONFIG = {
         'scraper_module': 'currys_v2',
         'scraper_class': 'CurrysScraper',
         'tracking_country': 'gb',
-        'tracking_mall_name': 'currys'
+        'tracking_mall_name': 'currys',
+        'alert_code': 'gb_currys'
     },
     'it': {
         'name': '이탈리아 Amazon',
@@ -76,7 +80,8 @@ TARGET_CONFIG = {
         'scraper_module': 'it_v2',
         'scraper_class': 'AmazonITScraper',
         'tracking_country': 'it',
-        'tracking_mall_name': 'amazon'
+        'tracking_mall_name': 'amazon',
+        'alert_code': 'it'
     },
     'de': {
         'name': '독일 Amazon',
@@ -87,7 +92,8 @@ TARGET_CONFIG = {
         'scraper_module': 'de_v2',
         'scraper_class': 'AmazonDEScraper',
         'tracking_country': 'de',
-        'tracking_mall_name': 'amazon'
+        'tracking_mall_name': 'amazon',
+        'alert_code': 'de'
     },
     'bestbuy': {
         'name': '미국 BestBuy',
@@ -98,7 +104,8 @@ TARGET_CONFIG = {
         'scraper_module': 'bestbuy_v2',
         'scraper_class': 'BestBuyScraper',
         'tracking_country': 'usa',
-        'tracking_mall_name': 'bestbuy'
+        'tracking_mall_name': 'bestbuy',
+        'alert_code': 'usa_bestbuy'
     },
     'es': {
         'name': '스페인 Amazon',
@@ -110,7 +117,8 @@ TARGET_CONFIG = {
         'scraper_class': 'AmazonScraper',
         'scraper_kwargs': {'country_code': 'es'},
         'tracking_country': 'es',
-        'tracking_mall_name': 'amazon'
+        'tracking_mall_name': 'amazon',
+        'alert_code': 'es'
     },
     'mediamarkt': {
         'name': '독일 MediaMarkt',
@@ -121,7 +129,8 @@ TARGET_CONFIG = {
         'scraper_module': 'mediamarkt_v2',
         'scraper_class': 'MediaMarktInfiniteScraper',
         'tracking_country': 'de',
-        'tracking_mall_name': 'mediamarkt'
+        'tracking_mall_name': 'mediamarkt',
+        'alert_code': 'de_mediamarkt'
     },
     'xkom': {
         'name': '폴란드 X-Kom',
@@ -133,7 +142,8 @@ TARGET_CONFIG = {
         'scraper_class': 'XKomScraper',
         'needs_manual_check': True,
         'tracking_country': 'pl',
-        'tracking_mall_name': 'x-kom'
+        'tracking_mall_name': 'x-kom',
+        'alert_code': 'pl_xkom'
     },
     'usa': {
         'name': '미국 Amazon',
@@ -145,7 +155,8 @@ TARGET_CONFIG = {
         'scraper_class': 'AmazonScraper',
         'scraper_kwargs': {'country_code': 'usa'},
         'tracking_country': 'usa',
-        'tracking_mall_name': 'amazon'
+        'tracking_mall_name': 'amazon',
+        'alert_code': 'usa'
     },
     'nl': {
         'name': '네덜란드 Amazon',
@@ -156,7 +167,8 @@ TARGET_CONFIG = {
         'scraper_module': 'nl_amazon',
         'scraper_class': 'AmazonNLScraper',
         'tracking_country': 'nl',
-        'tracking_mall_name': 'amazon'
+        'tracking_mall_name': 'amazon',
+        'alert_code': 'nl'
     },
     'danawa': {
         'name': '한국 다나와',
@@ -167,7 +179,8 @@ TARGET_CONFIG = {
         'scraper_module': 'danawa_v2',
         'scraper_class': 'DanawaScraper',
         'tracking_country': 'kr',
-        'tracking_mall_name': 'danawa'
+        'tracking_mall_name': 'danawa',
+        'alert_code': 'kr_danawa'
     },
     'in': {
         'name': '인도 Amazon',
@@ -178,7 +191,8 @@ TARGET_CONFIG = {
         'scraper_module': 'in_v2',
         'scraper_class': 'AmazonIndiaScraper',
         'tracking_country': 'in',
-        'tracking_mall_name': 'amazon'
+        'tracking_mall_name': 'amazon',
+        'alert_code': 'in'
     }
 }
 
@@ -793,6 +807,20 @@ class RecoveryManager:
                 logger.info("파일서버 업로드 완료")
             else:
                 logger.error("파일서버 업로드 실패")
+
+            # 9. 복구 후 가격 이상 감지 알림
+            alert_code = config.get('alert_code')
+            if alert_code:
+                # 세션 날짜 계산 (파일서버 업로드 폴더와 동일)
+                if isinstance(session_start, list):
+                    _first_ss = min(str(s) for s in session_start)
+                else:
+                    _first_ss = str(session_start)
+                session_date_str = _first_ss[:10].replace('-', '')  # 'YYYY-MM-DD' → 'YYYYMMDD'
+
+                monitor_and_alert(alert_code, len(all_records), all_records,
+                                 fs_country_code=config['country_code'], file_prefix=config['file_prefix'],
+                                 skip_date=session_date_str)
 
         return success_count > 0 or fail_count == 0
 
