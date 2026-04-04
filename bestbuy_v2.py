@@ -119,13 +119,16 @@ class BestBuyScraper:
                         '/html/body/div[2]/div/div/div/div[1]/div[2]/a[2]'
                     ],
                     'no_longer_available_flag': [
-                        "//div[contains(@class, 'text-danger') and contains(text(), 'no longer available')]"
+                        "//div[contains(@class, 'text-danger') and contains(., 'no longer available')]",
+                        "/html/body/div[6]/div[4]/div[2]/div/div/div[2]/div[4]"
                     ],
                     'no_longer_available_title': [
-                        '/html/body/div[6]/div[3]/div[1]/div/div[2]/h1'
+                        '/html/body/div[6]/div[3]/div[1]/div/div[2]/h1',
+                        '/html/body/div[6]/div[4]/div[2]/div/div/div[1]/h1'
                     ],
                     'no_longer_available_imageurl': [
-                        '/html/body/div[6]/div[3]/div[1]/div/div[1]/img'
+                        '/html/body/div[6]/div[3]/div[1]/div/div[1]/img',
+                        '/html/body/div[6]/div[4]/div[2]/div/div/div[1]/img'
                     ]
                 })
                 
