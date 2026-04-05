@@ -316,6 +316,7 @@ class RecoveryManager:
     def get_missing_urls(self, target, session_start):
         """세션에서 누락된 URL 조회 (마스터 리스트 vs 크롤 결과 비교)"""
         config = TARGET_CONFIG[target]
+        table = config['table']
         tracking_country = config.get('tracking_country')
         tracking_mall_name = config.get('tracking_mall_name')
 
