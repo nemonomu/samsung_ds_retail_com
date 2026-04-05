@@ -819,6 +819,23 @@ class RecoveryManager:
             # 9. 복구 후 가격 이상 감지 알림
             alert_code = config.get('alert_code')
             if alert_code:
+                # 마스터 리스트 개수 조회 (target_count용)
+                tracking_country = config.get('tracking_country')
+                tracking_mall_name = config.get('tracking_mall_name')
+                master_count = len(all_records)  # 기본값
+                if tracking_country and tracking_mall_name:
+                    try:
+                        count_query = """
+                        SELECT COUNT(*) as cnt
+                        FROM samsung_price_tracking_list
+                        WHERE country = :country AND mall_name = :mall_name AND is_active = TRUE
+                        """
+                        count_df = pd.read_sql(text(count_query), self.db_engine,
+                                              params={'country': tracking_country, 'mall_name': tracking_mall_name})
+                        master_count = int(count_df['cnt'][0])
+                    except Exception:
+                        pass
+
                 # 세션 날짜 계산 (파일서버 업로드 폴더와 동일)
                 if isinstance(session_start, list):
                     _first_ss = min(str(s) for s in session_start)
@@ -826,7 +843,7 @@ class RecoveryManager:
                     _first_ss = str(session_start)
                 session_date_str = _first_ss[:10].replace('-', '')  # 'YYYY-MM-DD' → 'YYYYMMDD'
 
-                monitor_and_alert(alert_code, len(all_records), all_records,
+                monitor_and_alert(alert_code, master_count, all_records,
                                  fs_country_code=config['country_code'], file_prefix=config['file_prefix'],
                                  skip_date=session_date_str)
 
