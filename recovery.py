@@ -799,7 +799,7 @@ class RecoveryManager:
                 all_records = pd.concat([all_records, missing_df], ignore_index=True)
                 logger.info(f"  누락 URL {len(missing_results)}개 추가")
 
-            logger.info(f"파일 생성 대상: {len(all_records)}개 레코드")
+            logger.info(f"파일서버 업로드 대상: {len(all_records)}개 레코드")
 
             # 파일명 일시 입력 받기
             print(f"\n파일명 일시를 입력하세요 (예: 20260206_120000)")
