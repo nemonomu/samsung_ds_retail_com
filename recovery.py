@@ -338,12 +338,19 @@ class RecoveryManager:
             if master_df.empty:
                 return pd.DataFrame()
 
-            # 2. 해당 세션에서 크롤링된 URL 목록
-            crawled = self.get_session_all_records(target, session_start)
-            if crawled is not None and not crawled.empty:
-                crawled_urls = set(crawled['producturl'].tolist())
-            else:
-                crawled_urls = set()
+            # 2. 선택한 세션에서 크롤링된 URL 목록 (DATE + HOUR로 세션 특정)
+            session_list = session_start if isinstance(session_start, list) else [session_start]
+            crawled_urls = set()
+            for ss in session_list:
+                session_query = f"""
+                SELECT producturl
+                FROM {table}
+                WHERE DATE(kr_crawl_datetime) = DATE(:session_start)
+                  AND HOUR(kr_crawl_datetime) = HOUR(:session_start)
+                """
+                session_df = pd.read_sql(text(session_query), self.db_engine, params={'session_start': ss})
+                if not session_df.empty:
+                    crawled_urls.update(session_df['producturl'].tolist())
 
             # 3. 비교: 마스터에는 있지만 크롤 결과에 없는 URL
             missing = master_df[~master_df['url'].isin(crawled_urls)]
