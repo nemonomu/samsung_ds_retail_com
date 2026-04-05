@@ -280,19 +280,16 @@ class RecoveryManager:
             return None
 
     def get_session_all_records(self, target, session_start):
-        """해당 날짜의 전체 레코드 조회 (파일 생성용, producturl 중복 제거 - 최신 것만)
-        session_start가 리스트면 여러 세션의 날짜를 합쳐서 조회"""
+        """선택한 세션의 전체 레코드 조회 (파일 생성용, producturl 중복 제거 - 최신 것만)
+        session_start가 리스트면 여러 세션을 합쳐서 조회 (DATE+HOUR로 세션 특정)"""
         config = TARGET_CONFIG[target]
         table = config['table']
 
-        # session_start가 리스트면 여러 날짜 합쳐서 조회
         session_list = session_start if isinstance(session_start, list) else [session_start]
-        # 날짜 중복 제거 (같은 날짜에 여러 세션이면 한 번만 조회)
-        unique_dates = list(set(str(ss)[:10] for ss in session_list))
 
         try:
             dfs = []
-            for date_str in unique_dates:
+            for ss in session_list:
                 query = f"""
                 SELECT t1.*
                 FROM {table} t1
@@ -300,11 +297,13 @@ class RecoveryManager:
                     SELECT producturl, MAX(kr_crawl_datetime) as max_dt
                     FROM {table}
                     WHERE DATE(kr_crawl_datetime) = DATE(:session_start)
+                      AND HOUR(kr_crawl_datetime) = HOUR(:session_start)
                     GROUP BY producturl
                 ) t2 ON t1.producturl = t2.producturl AND t1.kr_crawl_datetime = t2.max_dt
                 WHERE DATE(t1.kr_crawl_datetime) = DATE(:session_start)
+                  AND HOUR(t1.kr_crawl_datetime) = HOUR(:session_start)
                 """
-                df = pd.read_sql(text(query), self.db_engine, params={'session_start': date_str})
+                df = pd.read_sql(text(query), self.db_engine, params={'session_start': ss})
                 dfs.append(df)
             combined = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
             combined = combined.drop_duplicates(subset=['producturl'], keep='last')
