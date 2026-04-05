@@ -676,6 +676,8 @@ class RecoveryManager:
             logger.error("전체 세션 레코드 조회 실패")
             return False
         logger.info(f"전체 세션 레코드: {len(all_records)}개 (미리 조회 완료)")
+        expected_total = len(all_records) + (len(missing_urls) if has_missing else 0)
+        logger.info(f"파일서버 업로드 예상: {expected_total}개 (세션 {len(all_records)}개 + 누락 {len(missing_urls) if has_missing else 0}개)")
 
         # 4. 스크래퍼 로드
         scraper = self.load_scraper(target)
