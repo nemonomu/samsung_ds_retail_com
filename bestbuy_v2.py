@@ -434,7 +434,7 @@ class BestBuyScraper:
             for flag_xpath in self.XPATHS.get('no_longer_available_flag', []):
                 try:
                     no_longer_element = self.page.ele(f'xpath:{flag_xpath}', timeout=2)
-                    if no_longer_element:
+                    if no_longer_element and 'no longer available' in (no_longer_element.text or '').lower():
                         logger.info("ℹ️ 'No longer available in new condition' 상태 감지")
                         is_no_longer_available = True
 
