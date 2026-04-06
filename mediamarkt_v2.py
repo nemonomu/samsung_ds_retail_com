@@ -535,7 +535,9 @@ class MediaMarktInfiniteScraper:
                         
                         for price_element in price_elements:
                             price_text = price_element.text.strip()
-                            
+                            if not price_text:
+                                price_text = (price_element.get_attribute('innerText') or '').strip()
+
                             if price_text:
                                 # 유로 가격 추출 (다양한 형식 지원)
                                 # 예: "89,99 €", "€ 89.99", "89.99", "89,99"
@@ -602,14 +604,21 @@ class MediaMarktInfiniteScraper:
                             title_element = self.driver.find_element(By.XPATH, selector)
                         else:
                             title_element = self.driver.find_element(By.CSS_SELECTOR, selector)
-                        
+
                         title_text = title_element.text.strip()
+                        if not title_text:
+                            # .text가 빈 경우 get_attribute로 재시도
+                            title_text = (title_element.get_attribute('innerText') or '').strip()
                         if title_text:
                             result['title'] = title_text
                             logger.info(f"제목: {result['title']}")
                             break
+                        else:
+                            logger.debug(f"제목 빈 값 (선택자: {selector})")
                     except:
                         continue
+                if result['title'] is None:
+                    logger.warning("❌ 제목 추출 실패: 모든 선택자에서 빈 값")
             except Exception as e:
                 logger.warning(f"제목 추출 실패: {e}")
             
