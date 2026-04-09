@@ -1321,34 +1321,25 @@ def main():
             if datetime_input:
                 custom_filename = f"{datetime_input}_usa_bestbuy"
 
-        # DB와 파일서버에 최종 결과 저장
+        # DB 저장 (파일서버 업로드는 auto_recovery에서 처리)
         save_results = scraper.save_results(
             upload_df,
             save_db=False,  # 중간 저장으로 이미 DB에 저장됨
-            upload_server=True,
+            upload_server=False,  # auto_recovery에서 처리
             custom_filename=custom_filename,
             custom_date_folder=custom_date_folder
         )
 
-        # 저장 결과 출력
-        logger.info("\n📊 저장 결과:")
-        logger.info(f"DB 저장: {'✅ 성공' if save_results['db_saved'] else '❌ 실패'}")
-        logger.info(f"파일서버 업로드: {'✅ 성공' if save_results['server_uploaded'] else '❌ 실패'}")
+        logger.info("BestBuy 크롤링 완료!")
 
-        # 실패한 URL 로그
-        if final_failed > 0:
-            logger.warning(f"\n⚠️ {final_failed}개 URL에서 가격 추출 실패")
-            failed_items = final_results_df[final_results_df['retailprice'].isna()]
-            logger.warning("실패 목록 (상위 5개):")
-            for idx, row in failed_items.head().iterrows():
-                logger.warning(f"  - {row['brand']} {row['item']}: {row['producturl'][:50]}...")
-
-        logger.info("\n✅ 크롤링 프로세스 완료!")
-
-        # 크롤링 완료 후 알림
-        results_df = upload_df
-        monitor_and_alert('usa_bestbuy', len(urls_data), upload_df, error_logs=scraper.error_logs,
-                         fs_country_code='usa', file_prefix='usa_bestbuy')
+        # 자동 복구 + 파일 업로드 + 메일 알림
+        from auto_recovery import auto_recovery_run
+        auto_recovery_run(
+            target_key='bestbuy',
+            results_df=upload_df,
+            target_count=len(urls_data),
+            error_logs=scraper.error_logs
+        )
 
     except Exception as e:
         # 예외 발생 시 알림

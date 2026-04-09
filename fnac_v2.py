@@ -996,20 +996,20 @@ def main():
     save_results = scraper.save_results(
         results_df,
         save_db=False,
-        upload_server=True
+        upload_server=False  # auto_recovery에서 처리
     )
 
     scraper.analyze_results(results_df)
+    logger.info("Fnac 크롤링 완료!")
 
-    logger.info("\n저장 결과:")
-    logger.info(f"DB 저장: {'성공' if save_results['db_saved'] else '중간 저장에서 처리됨'}")
-    logger.info(f"파일서버 업로드: {'성공' if save_results['server_uploaded'] else '실패'}")
-
-    logger.info("\n크롤링 프로세스 완료!")
-
-    # 크롤링 완료 후 알림 (차단 페이지 실패 개수 전달)
-    monitor_and_alert('fr_fnac', len(urls_data), results_df, blocked_page_failures=len(blocked_failures),
-                     fs_country_code='fr', file_prefix='fr_fnac')
+    # 자동 복구 + 파일 업로드 + 메일 알림
+    from auto_recovery import auto_recovery_run
+    auto_recovery_run(
+        target_key='fnac',
+        results_df=results_df,
+        target_count=len(urls_data),
+        error_logs=None
+    )
 
 
 if __name__ == "__main__":

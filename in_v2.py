@@ -1420,22 +1420,20 @@ def main():
     save_results = scraper.save_results(
         results_df,
         save_db=True,
-        upload_server=True
+        upload_server=False  # auto_recovery에서 처리
     )
-    
-    logger.info(f"\n{'='*80}")
-    logger.info("🇮🇳 인도 저장 결과 (강화 버전)")
-    logger.info(f"{'='*80}")
-    logger.info(f"DB 저장: {'✅ 성공' if save_results['db_saved'] else '❌ 실패'}")
-    logger.info(f"파일서버 업로드: {'✅ 성공' if save_results['server_uploaded'] else '❌ 실패'}")
-    
-    logger.info(f"\n{'='*80}")
-    logger.info("✅ 인도 크롤링 완료! (강화 버전)")
-    logger.info(f"{'='*80}\n")
 
-    # 크롤링 완료 후 알림 (빈 값 50% 이상 시 경고)
-    monitor_and_alert('in', len(urls_data), results_df,
-                     fs_country_code='in', file_prefix='in_amazon')
+    logger.info(f"DB 저장: {'성공' if save_results['db_saved'] else '실패'}")
+    logger.info("인도 크롤링 완료!")
+
+    # 자동 복구 + 파일 업로드 + 메일 알림
+    from auto_recovery import auto_recovery_run
+    auto_recovery_run(
+        target_key='in',
+        results_df=results_df,
+        target_count=len(urls_data),
+        error_logs=None
+    )
 
 if __name__ == "__main__":
     print("\n📦 필요한 패키지:")

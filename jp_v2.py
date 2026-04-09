@@ -1475,25 +1475,19 @@ def main():
     save_results = scraper.save_results(
         results_df,
         save_db=False,  # 중간 저장으로 이미 DB에 저장됨
-        upload_server=True
+        upload_server=False  # auto_recovery에서 처리
     )
-    
-    logger.info(f"\n{'='*80}")
-    logger.info("📊 저장 결과")
-    logger.info(f"{'='*80}")
-    logger.info(f"DB 저장: {'✅ 성공' if save_results['db_saved'] else '❌ 실패'}")
-    logger.info(f"파일서버 업로드: {'✅ 성공' if save_results['server_uploaded'] else '❌ 실패'}")
-    
-    logger.info(f"\n{'='*80}")
-    logger.info("✅ 크롤링 프로세스 완료!")
-    logger.info(f"   🎯 차단 페이지 자동 처리: ショッピングを続ける 버튼 클릭")
-    logger.info(f"   🔄 원래 URL 자동 재시도 기능")
-    logger.info(f"   🛡️ 향상된 일본 아마존 호환성")
-    logger.info(f"{'='*80}\n")
 
-    # 크롤링 결과 모니터링 및 알림
-    monitor_and_alert(country_code, len(urls_data), results_df,
-                     fs_country_code='jp', file_prefix='jp_amazon')
+    logger.info("일본 크롤링 완료!")
+
+    # 자동 복구 + 파일 업로드 + 메일 알림
+    from auto_recovery import auto_recovery_run
+    auto_recovery_run(
+        target_key='jp',
+        results_df=results_df,
+        target_count=len(urls_data),
+        error_logs=None
+    )
 
 if __name__ == "__main__":
     # 필요한 패키지 설치 확인

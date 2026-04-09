@@ -871,34 +871,24 @@ def main():
             improvement = title_null_count - final_title_null
             logger.info(f"✨ 재시도로 title {improvement}개 추가 성공!")
 
-        # 중간 저장(10개마다)에서 이미 DB 저장했으므로, 여기서는 파일 업로드만 수행
+        # 파일 업로드는 auto_recovery에서 처리
         save_results = scraper.save_results(
             final_results_df,
             save_db=False,
-            upload_server=True
+            upload_server=False
         )
 
-        # 상세 분석
         scraper.analyze_results(final_results_df)
+        logger.info("Currys 크롤링 완료!")
 
-        # 저장 결과 출력
-        logger.info("\n📊 저장 결과:")
-        logger.info(f"DB 저장: {'✅ 성공' if save_results['db_saved'] else '❌ 실패'}")
-        logger.info(f"파일서버 업로드: {'✅ 성공' if save_results['server_uploaded'] else '❌ 실패'}")
-
-        # 여전히 실패한 URL 로그
-        if final_failed > 0:
-            logger.warning(f"\n⚠️ 최종적으로 {final_failed}개 URL에서 가격 추출 실패")
-            failed_items = final_results_df[final_results_df['retailprice'].isna()]
-            logger.warning("실패 목록 (상위 5개):")
-            for idx, row in failed_items.head().iterrows():
-                logger.warning(f"  - {row['brand']} {row['item']}: {row['producturl'][:50]}...")
-
-        logger.info("\n✅ 크롤링 프로세스 완료!")
-
-        # 크롤링 완료 후 알림 (빈 값 50% 이상 시 경고)
-        monitor_and_alert('gb_currys', len(urls_data), final_results_df, title_null_failures=final_title_null,
-                         fs_country_code='gb', file_prefix='gb_currys')
+        # 자동 복구 + 파일 업로드 + 메일 알림
+        from auto_recovery import auto_recovery_run
+        auto_recovery_run(
+            target_key='currys',
+            results_df=final_results_df,
+            target_count=len(urls_data),
+            error_logs=None
+        )
 
     except Exception as e:
         # 예외 발생 시 알림

@@ -1633,31 +1633,23 @@ def main():
 
     scraper.analyze_results(results_df)
 
-    # 중간 저장(10개마다)에서 이미 DB 저장했으므로, 여기서는 파일 업로드만 수행
+    # 중간 저장(10개마다)에서 이미 DB 저장했으므로, 파일 업로드는 auto_recovery에서 처리
     save_results = scraper.save_results(
         results_df,
         save_db=False,
-        upload_server=True
+        upload_server=False
     )
 
-    logger.info("=" * 80)
-    logger.info("이탈리아 저장 결과")
-    logger.info("=" * 80)
-    logger.info(f"DB 저장: {'성공' if save_results['db_saved'] else '실패'}")
-    logger.info(f"파일서버 업로드: {'성공' if save_results['server_uploaded'] else '실패'}")
+    logger.info("이탈리아 크롤링 완료!")
 
-    logger.info("=" * 80)
-    logger.info("이탈리아 크롤링 프로세스 완료!")
-    logger.info("=" * 80)
-
-    # title null 실패 개수 계산 (재시도 후에도 title이 null인 경우)
-    title_null_count = results_df['title'].isna().sum()
-    if title_null_count > 0:
-        logger.warning(f"title null 실패: {title_null_count}개")
-
-    # 크롤링 완료 후 알림 (차단 페이지 실패 개수 및 title null 실패 개수 전달)
-    monitor_and_alert('it', len(urls_data), results_df, blocked_page_failures=len(blocked_failures), title_null_failures=title_null_count,
-                     fs_country_code='it', file_prefix='it_amazon')
+    # 자동 복구 + 파일 업로드 + 메일 알림
+    from auto_recovery import auto_recovery_run
+    auto_recovery_run(
+        target_key='it',
+        results_df=results_df,
+        target_count=len(urls_data),
+        error_logs=None
+    )
 
 if __name__ == "__main__":
     required_packages = [

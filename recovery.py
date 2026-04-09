@@ -193,6 +193,55 @@ TARGET_CONFIG = {
         'tracking_country': 'in',
         'tracking_mall_name': 'amazon',
         'alert_code': 'in'
+    },
+    'jp': {
+        'name': '일본 Amazon',
+        'table': 'amazon_price_crawl_tbl_jp_v2',
+        'country_code': 'jp',
+        'file_prefix': 'jp_amazon',
+        'local_tz': 'Asia/Tokyo',
+        'scraper_module': 'jp_v2',
+        'scraper_class': 'AmazonScraper',
+        'scraper_kwargs': {'country_code': 'jp'},
+        'tracking_country': 'jp',
+        'tracking_mall_name': 'amazon',
+        'alert_code': 'jp'
+    },
+    'au': {
+        'name': '호주 Centrecom',
+        'table': 'centrecom_price_crawl_tbl_au',
+        'country_code': 'au',
+        'file_prefix': 'au_centrecom',
+        'local_tz': 'Australia/Sydney',
+        'scraper_module': 'centrecom',
+        'scraper_class': 'CentrecomScraper',
+        'tracking_country': 'au',
+        'tracking_mall_name': 'centrecom',
+        'alert_code': 'au_centrecom'
+    },
+    'coolblue': {
+        'name': '네덜란드 Coolblue',
+        'table': 'coolblue_price_crawl_tbl_nl_v2',
+        'country_code': 'nl',
+        'file_prefix': 'nl_coolblue',
+        'local_tz': 'Europe/Amsterdam',
+        'scraper_module': 'coolblue_nl_v2',
+        'scraper_class': 'CoolblueScraper',
+        'tracking_country': 'nl',
+        'tracking_mall_name': 'coolblue',
+        'alert_code': 'nl_coolblue'
+    },
+    'fnac': {
+        'name': '프랑스 Fnac',
+        'table': 'fnac_price_crawl_tbl_fr',
+        'country_code': 'fr',
+        'file_prefix': 'fr_fnac',
+        'local_tz': 'Europe/Paris',
+        'scraper_module': 'fnac_v2',
+        'scraper_class': 'FnacScraperV2',
+        'tracking_country': 'fr',
+        'tracking_mall_name': 'fnac',
+        'alert_code': 'fr_fnac'
     }
 }
 

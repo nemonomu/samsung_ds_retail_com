@@ -250,7 +250,7 @@ def detect_price_anomalies(current_df, country_code, file_prefix, threshold=20, 
         return []
 
 
-def analyze_crawl_results(country_code, target_count, results_df, error_logs=None, blocked_page_failures=0, all_null_failures=0, title_null_failures=0, price_anomalies=None):
+def analyze_crawl_results(country_code, target_count, results_df, error_logs=None, blocked_page_failures=0, all_null_failures=0, title_null_failures=0, price_anomalies=None, recovery_prefix='', recovery_suffix=''):
     """
     크롤링 결과 분석
 
@@ -280,7 +280,9 @@ def analyze_crawl_results(country_code, target_count, results_df, error_logs=Non
         'title_null_failures': title_null_failures,  # title이 NULL인 최종 실패 개수
         'field_stats': {},
         'error_logs': error_logs or [],
-        'price_anomalies': price_anomalies or []
+        'price_anomalies': price_anomalies or [],
+        'recovery_prefix': recovery_prefix,
+        'recovery_suffix': recovery_suffix
     }
 
     # 크롤링 자체가 실패한 경우
@@ -422,9 +424,14 @@ def send_alert_email(analysis, error_message=None):
         price_anomalies = analysis.get('price_anomalies', [])
         price_anomaly_prefix = f"price anomaly {len(price_anomalies)} " if price_anomalies else ""
 
-        # 제목 생성 (간결하게: [DS] + Failed X sku + 사이트명)
+        # recovery 접두사/접미사
+        recovery_prefix = analysis.get('recovery_prefix', '')
+        recovery_suffix = analysis.get('recovery_suffix', '')
+        recovery_suffix_str = f" - {recovery_suffix}" if recovery_suffix else ""
+
+        # 제목 생성 (간결하게: [DS] + [RE] + Failed X sku + 사이트명 + suffix)
         short_name = COUNTRY_SHORT_NAMES.get(analysis['country_code'], analysis['country_code'])
-        subject = f"[DS] {failed_prefix}{price_error_prefix}{price_anomaly_prefix}{short_name}"
+        subject = f"[DS] {recovery_prefix}{failed_prefix}{price_error_prefix}{price_anomaly_prefix}{short_name}{recovery_suffix_str}"
 
         # 이메일 본문 생성 (HTML)
         html_content = f"""
@@ -648,7 +655,7 @@ def send_alert_email(analysis, error_message=None):
         return False
 
 
-def monitor_and_alert(country_code, target_count, results_df, error_message=None, error_logs=None, blocked_page_failures=0, all_null_failures=0, title_null_failures=0, fs_country_code=None, file_prefix=None, skip_date=None):
+def monitor_and_alert(country_code, target_count, results_df, error_message=None, error_logs=None, blocked_page_failures=0, all_null_failures=0, title_null_failures=0, fs_country_code=None, file_prefix=None, skip_date=None, recovery_prefix='', recovery_suffix=''):
     """
     크롤링 결과 모니터링 및 알림 (메인 함수)
 
@@ -687,7 +694,7 @@ def monitor_and_alert(country_code, target_count, results_df, error_message=None
             price_anomalies = detect_price_anomalies(results_df, fs_country_code, file_prefix, skip_date=skip_date)
 
         # 결과 분석
-        analysis = analyze_crawl_results(country_code, target_count, results_df, error_logs, blocked_page_failures, all_null_failures, title_null_failures, price_anomalies=price_anomalies)
+        analysis = analyze_crawl_results(country_code, target_count, results_df, error_logs, blocked_page_failures, all_null_failures, title_null_failures, price_anomalies=price_anomalies, recovery_prefix=recovery_prefix, recovery_suffix=recovery_suffix)
 
         # 항상 이메일 발송 (일일 리포트)
         return send_alert_email(analysis, error_message)

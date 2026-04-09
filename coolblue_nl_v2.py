@@ -1143,36 +1143,24 @@ def main():
         logger.info(f"성공률: {success_rate:.1f}%")
         logger.info(f"소요 시간: {round((end_time - start_time).total_seconds() / 60, 2)} 분")
 
-        # DB와 파일서버에 최종 결과 저장
+        # 파일 업로드는 auto_recovery에서 처리
         save_results = scraper.save_results(
             results_df,
             save_db=True,
-            upload_server=True
+            upload_server=False
         )
 
-        # 상세 분석
         scraper.analyze_results(results_df)
+        logger.info("Coolblue 크롤링 완료!")
 
-        # 저장 결과 출력
-        logger.info("\n📊 저장 결과:")
-        logger.info(f"DB 저장: {'✅ 성공' if save_results['db_saved'] else '❌ 실패'}")
-        logger.info(f"파일서버 업로드: {'✅ 성공' if save_results['server_uploaded'] else '❌ 실패'}")
-
-        # 실패한 URL 로그
-        if failed_count > 0:
-            logger.warning(f"\n⚠️ {failed_count}개 URL에서 크롤링 실패")
-            failed_items = results_df[results_df['retailprice'].isna()]
-            logger.warning("실패 목록 (상위 5개):")
-            for idx, row in failed_items.head().iterrows():
-                logger.warning(f"  - {row['brand']} {row['item']}: {row['producturl'][:50]}...")
-
-        logger.info("\n✅ 크롤링 프로세스 완료!")
-        logger.info(f"📁 모든 결과 파일이 파일서버에 업로드되었습니다.")
-        logger.info(f"📍 업로드 위치: {FILE_SERVER_CONFIG['host']}:{FILE_SERVER_CONFIG['upload_path']}/")
-
-        # 크롤링 완료 후 알림 (빈 값 50% 이상 시 경고)
-        monitor_and_alert('nl_coolblue', len(urls_data), results_df, all_null_failures=all_null_failures,
-                         fs_country_code='nl', file_prefix='nl_coolblue')
+        # 자동 복구 + 파일 업로드 + 메일 알림
+        from auto_recovery import auto_recovery_run
+        auto_recovery_run(
+            target_key='coolblue',
+            results_df=results_df,
+            target_count=len(urls_data),
+            error_logs=None
+        )
 
     except Exception as e:
         # 예외 발생 시 알림

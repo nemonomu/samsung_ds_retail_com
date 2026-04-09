@@ -1624,22 +1624,22 @@ def main():
     save_results = scraper.save_results(
         results_df,
         save_db=False,  # scrape_urls()에서 이미 10개씩 중간 저장함
-        upload_server=True
+        upload_server=False  # auto_recovery에서 처리
     )
-    
-    logger.info("=" * 80)
-    logger.info("저장 결과")
-    logger.info("=" * 80)
-    logger.info(f"DB 저장: {'성공' if save_results['db_saved'] else '실패'}")
-    logger.info(f"파일서버 업로드: {'성공' if save_results['server_uploaded'] else '실패'}")
-    
-    logger.info("=" * 80)
-    logger.info("165 문제 해결 + 파란색 링크 우회 + 추천상품 필터링 완료! 크롤링 프로세스 완료!")
-    logger.info("=" * 80)
 
-    # 크롤링 결과 모니터링 및 알림
-    monitor_and_alert(country_code, len(urls_data), results_df,
-                     fs_country_code='es', file_prefix='es_amazon')
+    logger.info("=" * 80)
+    logger.info("저장 결과:")
+    logger.info(f"DB: {'성공' if save_results['db_saved'] else '실패'}")
+    logger.info("크롤링 완료!")
+
+    # 자동 복구 + 파일 업로드 + 메일 알림
+    from auto_recovery import auto_recovery_run
+    auto_recovery_run(
+        target_key='es',
+        results_df=results_df,
+        target_count=len(urls_data),
+        error_logs=None
+    )
 
 if __name__ == "__main__":
     required_packages = [

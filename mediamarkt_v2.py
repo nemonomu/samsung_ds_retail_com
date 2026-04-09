@@ -724,7 +724,7 @@ class MediaMarktInfiniteScraper:
         except Exception as e:
             logger.error(f"❌ 파일서버 업로드 실패: {e}")
             return False
-    def save_results(self, df, skip_db=False):
+    def save_results(self, df, skip_db=False, upload_server=True):
         """결과를 DB와 파일서버에 저장"""
         now = datetime.now()
         date_str = now.strftime("%Y%m%d")
@@ -738,6 +738,9 @@ class MediaMarktInfiniteScraper:
             results['db_saved'] = self.save_to_db(df)
         else:
             results['db_saved'] = True  # 이미 중간 저장에서 완료됨
+
+        if not upload_server:
+            return results
 
         # 파일서버 업로드
         try:
@@ -893,9 +896,9 @@ class MediaMarktInfiniteScraper:
                 except Exception as e:
                     logger.error(f"최종 DB 저장 실패: {e}")
 
-            # 전체 결과로 파일 서버 업로드 (DB 저장은 skip)
+            # 전체 결과 DataFrame (파일 업로드는 auto_recovery에서 처리)
             df = pd.DataFrame(results)
-            save_results = self.save_results(df, skip_db=True)
+            save_results = self.save_results(df, skip_db=True, upload_server=False)
 
             # 통계
             logger.info(f"\n📊 === 크롤링 완료 ===")
@@ -1049,13 +1052,16 @@ def main():
         monitor_and_alert('de_mediamarkt', target_count, None, error_message="크롤링 결과가 없습니다")
         return
 
-    logger.info("=" * 60)
-    logger.info("MediaMarkt 크롤링 프로세스 완료!")
-    logger.info("=" * 60)
+    logger.info("MediaMarkt 크롤링 완료!")
 
-    # 크롤링 완료 후 알림
-    monitor_and_alert('de_mediamarkt', target_count, results_df,
-                     fs_country_code='de', file_prefix='de_mediamarkt')
+    # 자동 복구 + 파일 업로드 + 메일 알림
+    from auto_recovery import auto_recovery_run
+    auto_recovery_run(
+        target_key='mediamarkt',
+        results_df=results_df,
+        target_count=target_count,
+        error_logs=None
+    )
 
 if __name__ == "__main__":
     # 필요한 패키지 확인
