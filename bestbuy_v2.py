@@ -931,29 +931,11 @@ class BestBuyScraper:
                 # 제품 정보 추출 (재시도 로직 적용)
                 result = self.extract_with_retry(url, row)
 
-                # ERR_HTTP2_PROTOCOL_ERROR 차단 감지
+                # ERR_HTTP2_PROTOCOL_ERROR 차단 감지 → 즉시 중단 (auto_recovery가 1시간 후 처리)
                 if isinstance(result, dict) and result.get('_blocked'):
-                    retry_count += 1
-                    if retry_count > MAX_RETRIES:
-                        logger.error(f"🛑 최대 재시도 횟수({MAX_RETRIES}) 초과. 중단합니다.")
-                        logger.info(f"📌 {i + 1}번째 항목부터 미처리")
-                        break
-
-                    if retry_count == 1:
-                        logger.info(f"\n{'='*50}")
-                        logger.info(f"🔄 [RETRY {retry_count}/{MAX_RETRIES}] Best Buy 차단 감지. 워밍업 후 재시도...")
-                        logger.info(f"{'='*50}")
-                    else:
-                        wait_time = min(INITIAL_WAIT * (retry_count - 1), 1200)
-                        logger.info(f"\n{'='*50}")
-                        logger.info(f"🔄 [RETRY {retry_count}/{MAX_RETRIES}] Best Buy 차단 감지. {wait_time // 60}분 대기...")
-                        logger.info(f"{'='*50}")
-                        time.sleep(wait_time)
-
-                    self._warmup_with_different_page()
-
-                    # 같은 URL 다시 시도 (i 증가 안 함)
-                    continue
+                    logger.error(f"🛑 Best Buy 차단 감지 (ERR_HTTP2_PROTOCOL_ERROR). 즉시 중단합니다.")
+                    logger.info(f"📌 {i + 1}번째 항목부터 미처리 → auto_recovery에서 1시간 후 복구 예정")
+                    break
 
                 # 실패 여부 확인 - 가격+제목 모두 없으면 차단 의심
                 if result.get('retailprice') is None and result.get('title') is None:
