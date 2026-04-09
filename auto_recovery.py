@@ -368,15 +368,17 @@ def _upload_and_alert(manager, config, target_key, results_df, target_count,
     """파일서버 업로드 + 메일 알림"""
     alert_code = config.get('alert_code', target_key)
 
-    # 현지시간 기준 파일명 및 폴더 생성
+    # 세션 시작 시간을 현지시간으로 변환 (폴더명/파일명 기준)
+    korea_tz = pytz.timezone('Asia/Seoul')
     local_tz = pytz.timezone(config['local_tz'])
-    now_local = datetime.now(local_tz)
-    date_str = now_local.strftime('%Y%m%d')
-    time_str = now_local.strftime('%H%M%S')
+    session_dt_kr = korea_tz.localize(datetime.strptime(session_start[:19], '%Y-%m-%d %H:%M:%S'))
+    session_dt_local = session_dt_kr.astimezone(local_tz)
+    date_str = session_dt_local.strftime('%Y%m%d')
+    time_str = session_dt_local.strftime('%H%M%S')
     custom_filename = f"{date_str}_{time_str}_{config['file_prefix']}"
 
     # 현지시간 기준 session_start (generate_and_upload_file이 폴더 날짜로 사용)
-    local_session_start = now_local.strftime('%Y-%m-%d %H:%M:%S')
+    local_session_start = session_dt_local.strftime('%Y-%m-%d %H:%M:%S')
 
     # 파일서버 업로드
     logger.info(f"파일서버 업로드 대상: {len(results_df)}개 레코드")
