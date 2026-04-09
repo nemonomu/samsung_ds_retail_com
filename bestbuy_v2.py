@@ -937,29 +937,11 @@ class BestBuyScraper:
                     logger.info(f"📌 {i + 1}번째 항목부터 미처리 → auto_recovery에서 1시간 후 복구 예정")
                     break
 
-                # 실패 여부 확인 - 가격+제목 모두 없으면 차단 의심
+                # 가격+제목 모두 없으면 차단 의심 → 즉시 중단 (auto_recovery가 1시간 후 처리)
                 if result.get('retailprice') is None and result.get('title') is None:
-                    retry_count += 1
-                    if retry_count > MAX_RETRIES:
-                        logger.error(f"🛑 최대 재시도 횟수({MAX_RETRIES}) 초과. 중단합니다.")
-                        logger.info(f"📌 {i + 1}번째 항목부터 미처리")
-                        break
-
-                    if retry_count == 1:
-                        logger.info(f"\n{'='*50}")
-                        logger.info(f"🔄 [RETRY {retry_count}/{MAX_RETRIES}] 가격+제목 추출 실패. 차단 의심. 워밍업 후 재시도...")
-                        logger.info(f"{'='*50}")
-                    else:
-                        wait_time = min(INITIAL_WAIT * (retry_count - 1), 1200)
-                        logger.info(f"\n{'='*50}")
-                        logger.info(f"🔄 [RETRY {retry_count}/{MAX_RETRIES}] 가격+제목 추출 실패. 차단 의심. {wait_time // 60}분 대기...")
-                        logger.info(f"{'='*50}")
-                        time.sleep(wait_time)
-
-                    self._warmup_with_different_page()
-
-                    # 같은 URL 다시 시도
-                    continue
+                    logger.error(f"🛑 가격+제목 모두 없음 (차단 의심). 즉시 중단합니다.")
+                    logger.info(f"📌 {i + 1}번째 항목부터 미처리 → auto_recovery에서 1시간 후 복구 예정")
+                    break
 
                 # 성공 (가격 또는 제목 있음)
                 retry_count = 0
