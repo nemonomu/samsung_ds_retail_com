@@ -595,6 +595,9 @@ class RecoveryManager:
         # 파일명 설정
         if custom_filename:
             base_filename = custom_filename
+            # custom_filename의 앞 8자리를 폴더 날짜로 사용 (예: 20260409_094700_usa_bestbuy → 20260409)
+            if len(custom_filename) >= 8 and custom_filename[:8].isdigit():
+                date_str = custom_filename[:8]
         else:
             now = datetime.now(self.korea_tz)
             time_str = now.strftime('%H%M%S')
