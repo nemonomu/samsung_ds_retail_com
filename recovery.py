@@ -952,6 +952,10 @@ def select_target():
     print("11. nl (네덜란드 Amazon)")
     print("12. danawa (한국 다나와)")
     print("13. in (인도 Amazon)")
+    print("14. jp (일본 Amazon)")
+    print("15. au (호주 Centrecom)")
+    print("16. coolblue (네덜란드 Coolblue)")
+    print("17. fnac (프랑스 Fnac)")
     print("0. 종료")
 
     while True:
@@ -985,6 +989,14 @@ def select_target():
                 return 'danawa'
             elif choice == '13':
                 return 'in'
+            elif choice == '14':
+                return 'jp'
+            elif choice == '15':
+                return 'au'
+            elif choice == '16':
+                return 'coolblue'
+            elif choice == '17':
+                return 'fnac'
             else:
                 print("올바른 번호를 입력하세요.")
         except KeyboardInterrupt:
