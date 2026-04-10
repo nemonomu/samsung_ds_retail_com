@@ -513,47 +513,49 @@ class AmazonScraper:
     
     def extract_element_text(self, selectors, element_name="요소"):
         """선택자 목록에서 텍스트 추출"""
-        logger.debug(f"🔍 {element_name} 추출 시작 - 총 {len(selectors)}개 선택자")
-        
+        verbose = element_name in ("판매자", "통합 판매자/배송자")
+        log = logger.info if verbose else logger.debug
+
+        log(f"🔍 {element_name} 추출 시작 - 총 {len(selectors)}개 선택자")
+
         for idx, selector in enumerate(selectors, 1):
             try:
-                logger.debug(f"  [{idx}/{len(selectors)}] 시도 중: {selector}")
-                
+                log(f"  [{idx}/{len(selectors)}] 시도 중: {selector}")
+
                 # XPath인지 CSS 선택자인지 구분
                 if selector.startswith('//') or selector.startswith('('):
-                    # XPath
                     elements = self.driver.find_elements(By.XPATH, selector)
                     selector_type = "XPath"
                 else:
-                    # CSS Selector
                     elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
                     selector_type = "CSS"
-                
-                logger.debug(f"      타입: {selector_type}, 발견: {len(elements)}개")
-                
+
+                log(f"      타입: {selector_type}, 발견: {len(elements)}개")
+
                 if elements:
                     for i, element in enumerate(elements):
                         try:
-                            if element.is_displayed():
-                                # 여러 방법으로 텍스트 추출
-                                text1 = element.text.strip()
-                                text2 = element.get_attribute('textContent').strip() if element.get_attribute('textContent') else ""
-                                text3 = element.get_attribute('innerText').strip() if element.get_attribute('innerText') else ""
-                                
-                                # 가장 긴 텍스트 선택
-                                text = max([text1, text2, text3], key=len)
-                                
-                                if text:
-                                    logger.debug(f"      ✅ 추출 성공: '{text[:100]}'")
-                                    return text
+                            # 여러 방법으로 텍스트 추출 (is_displayed 여부와 무관하게 시도)
+                            displayed = element.is_displayed()
+                            text1 = element.text.strip() if displayed else ""
+                            text2 = element.get_attribute('textContent').strip() if element.get_attribute('textContent') else ""
+                            text3 = element.get_attribute('innerText').strip() if element.get_attribute('innerText') else ""
+
+                            # 가장 긴 텍스트 선택
+                            text = max([text1, text2, text3], key=len)
+                            log(f"      displayed={displayed}, text='{text[:50]}'" if text else f"      displayed={displayed}, text=빈값")
+
+                            if text:
+                                log(f"      ✅ 추출 성공: '{text[:100]}'")
+                                return text
                         except Exception as e:
-                            logger.debug(f"      요소 처리 중 오류: {e}")
-                
+                            log(f"      요소 처리 중 오류: {e}")
+
             except Exception as e:
-                logger.debug(f"      ❌ 선택자 오류: {str(e)}")
+                log(f"      ❌ 선택자 오류: {str(e)}")
                 continue
-        
-        logger.debug(f"❌ {element_name} 추출 실패")
+
+        log(f"❌ {element_name} 추출 실패 - 모든 선택자 소진")
         return None
     
     def extract_price(self, country_code):
