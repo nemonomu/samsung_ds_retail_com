@@ -828,6 +828,10 @@ class AmazonUKScraper:
 
                 logger.info(f"진행률: {idx + 1}/{len(urls_data)} - {item_name}")
 
+                # 첫 번째 제품: 브라우저 워밍업 대기 (가격 동적 로딩 지연 방지)
+                if idx == 0:
+                    time.sleep(3)
+
                 result = self.extract_product_info(url, row)
 
                 # title이 null인 경우 재시도 대상으로 추가 (비정상 상황)
