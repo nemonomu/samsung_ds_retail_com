@@ -513,8 +513,7 @@ class AmazonScraper:
     
     def extract_element_text(self, selectors, element_name="요소"):
         """선택자 목록에서 텍스트 추출"""
-        verbose = element_name in ("판매자", "통합 판매자/배송자")
-        log = logger.info if verbose else logger.debug
+        log = logger.debug
 
         log(f"🔍 {element_name} 추출 시작 - 총 {len(selectors)}개 선택자")
 
