@@ -545,6 +545,13 @@ class AmazonUKScraper:
             # 재고 상태 확인
             has_stock = self.check_stock_availability(url)
             
+            # 가격 요소 렌더링 대기 (동적 로딩 지연 대응)
+            try:
+                self.wait.until(lambda d: d.find_elements(By.CSS_SELECTOR,
+                    "span.a-price-whole, .a-price .a-offscreen, #corePrice_feature_div .a-price"))
+            except Exception:
+                logger.debug("가격 요소 대기 타임아웃, 계속 진행")
+
             # 가격 추출
             result['retailprice'] = self.extract_price(url)
             
@@ -827,10 +834,6 @@ class AmazonUKScraper:
                 item_name = row.get('item', 'Unknown')
 
                 logger.info(f"진행률: {idx + 1}/{len(urls_data)} - {item_name}")
-
-                # 첫 번째 제품: 브라우저 워밍업 대기 (가격 동적 로딩 지연 방지)
-                if idx == 0:
-                    time.sleep(3)
 
                 result = self.extract_product_info(url, row)
 
