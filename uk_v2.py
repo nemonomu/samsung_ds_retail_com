@@ -552,8 +552,12 @@ class AmazonUKScraper:
             except Exception:
                 logger.debug("가격 요소 대기 타임아웃, 계속 진행")
 
-            # 가격 추출
+            # 가격 추출 (실패 시 3초 대기 후 1회 재시도)
             result['retailprice'] = self.extract_price(url)
+            if result['retailprice'] is None:
+                logger.info("가격 추출 실패, 3초 대기 후 재시도")
+                time.sleep(3)
+                result['retailprice'] = self.extract_price(url)
             
             # 가격 검증
             if result['retailprice']:
