@@ -545,42 +545,13 @@ class AmazonUKScraper:
             # 재고 상태 확인
             has_stock = self.check_stock_availability(url)
             
-            # 가격 요소 렌더링 대기 (동적 로딩 지연 대응)
-            try:
-                self.wait.until(lambda d: d.find_elements(By.CSS_SELECTOR,
-                    "span.a-price-whole, .a-price .a-offscreen, #corePrice_feature_div .a-price"))
-            except Exception:
-                logger.debug("가격 요소 대기 타임아웃, 계속 진행")
-
-            # 가격 추출 (실패 시 3초 대기 후 1회 재시도)
-            result['retailprice'] = self.extract_price(url)
-            if result['retailprice'] is None:
-                logger.info("가격 추출 실패, 3초 대기 후 재시도")
-                time.sleep(3)
-                result['retailprice'] = self.extract_price(url)
-            
-            # 가격 검증
-            if result['retailprice']:
-                try:
-                    price_value = float(re.sub(r'[^\d.]', '', str(result['retailprice'])))
-                    if price_value < 5 or price_value > 50000:
-                        logger.warning(f"비정상적인 가격 범위: {result['retailprice']}")
-                        result['retailprice'] = None
-                except:
-                    result['retailprice'] = None
-            
-            # 가격이 없거나 재고가 없으면 0으로 설정
-            if result['retailprice'] is None:
-                result['retailprice'] = None
-            
-            # 판매자 정보 추출 (수정된 함수 사용)
+            # 판매자 정보 추출 (가격 재시도 판단을 위해 먼저 추출)
             result['ships_from'] = self.extract_ships_from(self.selectors.get('ships_from', []))
             result['sold_by'] = self.extract_element_text(self.selectors.get('sold_by', []), "Sold By")
 
             # ships_from이 None이고 sold_by가 있을 때, 통합 라벨 확인
             if not result['ships_from'] and result['sold_by']:
                 try:
-                    # "Shipper / Seller" 라벨이 있는지 확인 (배송자/판매자 통합)
                     combined_label_selectors = [
                         "//span[contains(text(), 'Shipper / Seller')]",
                         "//span[contains(text(), 'Shipper/Seller')]",
@@ -590,7 +561,6 @@ class AmazonUKScraper:
                         try:
                             label_element = self.driver.find_element(By.XPATH, label_selector)
                             if label_element and label_element.is_displayed():
-                                # 통합 라벨 발견 - sold_by 값을 ships_from에도 저장
                                 result['ships_from'] = result['sold_by']
                                 logger.info(f"Shipper / Seller 통합 라벨 발견 - ships_from에 sold_by 값 복사: {result['ships_from']}")
                                 break
@@ -598,6 +568,34 @@ class AmazonUKScraper:
                             continue
                 except Exception as e:
                     logger.debug(f"통합 라벨 확인 중 오류: {e}")
+
+            has_seller = bool(result['ships_from'] or result['sold_by'])
+
+            # 가격 요소 렌더링 대기 (동적 로딩 지연 대응)
+            try:
+                self.wait.until(lambda d: d.find_elements(By.CSS_SELECTOR,
+                    "span.a-price-whole, .a-price .a-offscreen, #corePrice_feature_div .a-price"))
+            except Exception:
+                logger.debug("가격 요소 대기 타임아웃, 계속 진행")
+
+            # 가격 추출
+            result['retailprice'] = self.extract_price(url)
+
+            # 판매자 정보 있는데 가격 없으면 3초 대기 후 1회 재시도
+            if result['retailprice'] is None and has_seller:
+                logger.info("판매자 정보 있지만 가격 없음, 3초 대기 후 재시도")
+                time.sleep(3)
+                result['retailprice'] = self.extract_price(url)
+
+            # 가격 검증
+            if result['retailprice']:
+                try:
+                    price_value = float(re.sub(r'[^\d.]', '', str(result['retailprice'])))
+                    if price_value < 5 or price_value > 50000:
+                        logger.warning(f"비정상적인 가격 범위: {result['retailprice']}")
+                        result['retailprice'] = None
+                except:
+                    result['retailprice'] = None
 
             # 이미지 URL 추출
             for selector in self.selectors.get('imageurl', []):
