@@ -88,11 +88,12 @@ def auto_recovery_run(target_key, results_df, target_count, error_logs=None):
     threshold = thresholds.get(target_key, 0)
     missing_count = target_count - crawled_count
 
-    # 판매자 있는데 가격 없는 경우 카운트
+    # 판매자 있는데 가격 없는 경우 카운트 (ships_from/sold_by 컬럼이 있는 target만)
     price_null_with_seller = 0
     if 'retailprice' in results_df_lower.columns:
-        has_seller = (results_df_lower.get('ships_from', pd.Series()).notna() & (results_df_lower.get('ships_from', pd.Series()) != '')) | \
-                     (results_df_lower.get('sold_by', pd.Series()).notna() & (results_df_lower.get('sold_by', pd.Series()) != ''))
+        has_ships = results_df_lower['ships_from'].notna() & (results_df_lower['ships_from'] != '') if 'ships_from' in results_df_lower.columns else pd.Series(False, index=results_df_lower.index)
+        has_sold = results_df_lower['sold_by'].notna() & (results_df_lower['sold_by'] != '') if 'sold_by' in results_df_lower.columns else pd.Series(False, index=results_df_lower.index)
+        has_seller = has_ships | has_sold
         price_null = results_df_lower['retailprice'].isna()
         price_null_with_seller = (has_seller & price_null).sum()
 
