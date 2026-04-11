@@ -155,8 +155,11 @@ def auto_recovery_run(target_key, results_df, target_count, error_logs=None):
     # recovery 크롤링 (메모리에만 보관, DB 미반영)
     recovered_results = {}   # url → result dict (NULL 복구)
     missing_results = []     # result dict 리스트 (누락 URL)
+    MAX_CONSECUTIVE_FAILS = 5  # 연속 실패 N회 시 즉시 중단
 
     try:
+        consecutive_fails = 0
+
         # NULL 복구 크롤링
         if has_null:
             logger.info(f"\n--- NULL 복구 크롤링 ({len(null_records)}개) ---")
@@ -167,12 +170,17 @@ def auto_recovery_run(target_key, results_df, target_count, error_logs=None):
                 if result and (result.get('title') is not None or result.get('retailprice') is not None):
                     result['producturl'] = url
                     recovered_results[url] = result
+                    consecutive_fails = 0
                     logger.info(f"  -> 성공: title={str(result.get('title', ''))[:30]}, price={result.get('retailprice')}")
                 else:
-                    logger.warning(f"  -> 실패")
+                    consecutive_fails += 1
+                    logger.warning(f"  -> 실패 (연속 {consecutive_fails}회)")
+                    if consecutive_fails >= MAX_CONSECUTIVE_FAILS:
+                        logger.error(f"연속 {MAX_CONSECUTIVE_FAILS}회 실패 → recovery 중단")
+                        break
 
         # 누락 URL 크롤링
-        if has_missing:
+        if has_missing and consecutive_fails < MAX_CONSECUTIVE_FAILS:
             logger.info(f"\n--- 누락 URL 크롤링 ({len(missing_urls)}개) ---")
             for i, (idx, row) in enumerate(missing_urls.iterrows()):
                 url = row['url']
@@ -181,9 +189,14 @@ def auto_recovery_run(target_key, results_df, target_count, error_logs=None):
                 if result and (result.get('title') is not None or result.get('retailprice') is not None):
                     result['producturl'] = url
                     missing_results.append(result)
+                    consecutive_fails = 0
                     logger.info(f"  -> 성공: title={str(result.get('title', ''))[:30]}, price={result.get('retailprice')}")
                 else:
-                    logger.warning(f"  -> 실패")
+                    consecutive_fails += 1
+                    logger.warning(f"  -> 실패 (연속 {consecutive_fails}회)")
+                    if consecutive_fails >= MAX_CONSECUTIVE_FAILS:
+                        logger.error(f"연속 {MAX_CONSECUTIVE_FAILS}회 실패 → recovery 중단")
+                        break
 
     except Exception as e:
         logger.error(f"복구 크롤링 중 오류: {e}")
@@ -208,15 +221,25 @@ def auto_recovery_run(target_key, results_df, target_count, error_logs=None):
     )
 
     recovery_success = len(recovered_results) + len(missing_results)
+    total_collected = crawled_count + len(missing_results)
+    collection_rate = (total_collected / target_count * 100) if target_count > 0 else 0
+
     logger.info(f"\n복구 결과: 성공 {recovery_success}개")
+    logger.info(f"총 수집: {total_collected}/{target_count}개 ({collection_rate:.1f}%)")
     logger.info(f"데이터 변경: {'있음' if is_different else '없음'}")
+
+    # 수집률 50% 미만이면 가격 이상 감지 건너뜀 (수집 실패를 가격 이상으로 오인 방지)
+    skip_price_anomaly = collection_rate < 50
+    if skip_price_anomaly:
+        logger.warning(f"수집률 {collection_rate:.1f}% (50% 미만) → 가격 이상 감지 건너뜀")
 
     if not is_different:
         # === 3-A. same data: 1차 결과 그대로 업로드 ===
         logger.info("복구 전후 동일 → 1차 결과 그대로 업로드")
         _upload_and_alert(manager, config, target_key, results_df, target_count,
                          session_start, error_logs=error_logs,
-                         recovery_prefix='[RE] ', recovery_suffix='same data')
+                         recovery_prefix='[RE] ', recovery_suffix='same data',
+                         skip_price_anomaly=skip_price_anomaly)
     else:
         # === 3-B. update complete: DB 반영 + 복구 데이터로 업로드 ===
         logger.info("복구 전후 다름 → DB 반영 + 복구 데이터 업로드")
@@ -235,7 +258,8 @@ def auto_recovery_run(target_key, results_df, target_count, error_logs=None):
 
         _upload_and_alert(manager, config, target_key, merged_df, target_count,
                          session_start, error_logs=error_logs,
-                         recovery_prefix='[RE] ', recovery_suffix='update complete')
+                         recovery_prefix='[RE] ', recovery_suffix='update complete',
+                         skip_price_anomaly=skip_price_anomaly)
 
     logger.info(f"\n{'='*60}")
     logger.info(f"자동 복구 완료: {config['name']}")
@@ -373,7 +397,8 @@ def _merge_recovery_results(first_crawl_df, recovered_results, missing_results):
 
 def _upload_and_alert(manager, config, target_key, results_df, target_count,
                       session_start, error_logs=None,
-                      recovery_prefix='', recovery_suffix=''):
+                      recovery_prefix='', recovery_suffix='',
+                      skip_price_anomaly=False):
     """파일서버 업로드 + 메일 알림"""
     alert_code = config.get('alert_code', target_key)
 
@@ -399,12 +424,12 @@ def _upload_and_alert(manager, config, target_key, results_df, target_count,
     else:
         logger.error("파일서버 업로드 실패")
 
-    # 메일 알림 (skip_date는 현지시간 기준 폴더 날짜)
+    # 메일 알림 (skip_price_anomaly=True이면 가격 이상 감지 건너뜀)
     monitor_and_alert(
         alert_code, target_count, results_df,
         error_logs=error_logs,
-        fs_country_code=config['country_code'],
-        file_prefix=config['file_prefix'],
+        fs_country_code=None if skip_price_anomaly else config['country_code'],
+        file_prefix=None if skip_price_anomaly else config['file_prefix'],
         skip_date=date_str,
         recovery_prefix=recovery_prefix,
         recovery_suffix=recovery_suffix
