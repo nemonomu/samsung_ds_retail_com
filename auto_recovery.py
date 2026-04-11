@@ -98,7 +98,7 @@ def auto_recovery_run(target_key, results_df, target_count, error_logs=None):
         price_null_with_seller = (has_seller & price_null).sum()
 
     if target_key == 'bestbuy':
-        needs_recovery = title_null_count > threshold
+        needs_recovery = missing_count > 0 or title_null_count > threshold
     else:
         needs_recovery = missing_count > 0 or title_null_count > threshold or price_null_with_seller > 0
 
