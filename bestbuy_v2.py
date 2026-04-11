@@ -1074,6 +1074,9 @@ def get_db_history(engine, days=7):
 
 def main():
     """메인 실행 함수"""
+    from log_utils import setup_log, save_log
+    setup_log('usa_bestbuy')
+
     print("\n🚀 BestBuy 가격 추출 시스템 - DB 기반 버전")
     print("="*60)
     
@@ -1319,6 +1322,7 @@ def main():
         if scraper.page:
             scraper.page.quit()
             logger.info("🔧 드라이버 종료")
+        save_log('usa_bestbuy')
 
 if __name__ == "__main__":
     # 필요한 패키지 설치 확인

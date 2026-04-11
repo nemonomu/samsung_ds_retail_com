@@ -1403,9 +1403,12 @@ class AmazonFRScraper:
 
 def main():
     """메인 실행 함수"""
+    from log_utils import setup_log, save_log
+    setup_log('fr_amazon')
+
     test_mode = os.getenv('TEST_MODE', 'false').lower() == 'true'
     max_items = int(os.getenv('MAX_ITEMS', '0')) or None
-    
+
     print("=" * 60)
     print("Amazon 프랑스 크롤러 v3.0 - 추천상품/관련상품 영역 필터링 강화판")
     print("=" * 60)
@@ -1487,6 +1490,8 @@ def main():
         target_count=len(urls_data),
         error_logs=None
     )
+
+    save_log('fr_amazon')
 
 if __name__ == "__main__":
     print("필요 패키지:")

@@ -1386,6 +1386,9 @@ class AmazonDEScraper:
 
 def main():
     """메인 실행 함수"""
+    from log_utils import setup_log, save_log
+    setup_log('de_amazon')
+
     test_mode = os.getenv('TEST_MODE', 'false').lower() == 'true'
     max_items = int(os.getenv('MAX_ITEMS', '0')) or None
     
@@ -1471,6 +1474,8 @@ def main():
         target_count=len(urls_data),
         error_logs=None
     )
+
+    save_log('de_amazon')
 
 if __name__ == "__main__":
     print("필요 패키지:")

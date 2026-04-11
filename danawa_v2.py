@@ -834,6 +834,9 @@ def get_db_history(engine, days=7):
 
 def main():
     """메인 실행 함수"""
+    from log_utils import setup_log, save_log
+    setup_log('kr_danawa')
+
     print("\n🚀 다나와 가격 추출 시스템 - DB 기반 버전")
     print("="*60)
     
@@ -977,6 +980,8 @@ def main():
         target_count=len(urls_data),
         error_logs=None
     )
+
+    save_log('kr_danawa')
 
 if __name__ == "__main__":
     # 필요한 패키지 설치 확인

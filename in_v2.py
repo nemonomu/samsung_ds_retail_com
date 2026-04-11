@@ -1348,9 +1348,12 @@ class AmazonIndiaScraper:
 
 def main():
     """메인 실행 함수"""
+    from log_utils import setup_log, save_log
+    setup_log('in_amazon')
+
     test_mode = os.getenv('TEST_MODE', 'false').lower() == 'true'
     max_items = int(os.getenv('MAX_ITEMS', '0')) or None
-    
+
     print(f"\n{'='*80}")
     print("🇮🇳 Amazon India 가격 추출 시스템 v2.0 (완전 강화 버전)")
     print(f"{'='*80}")
@@ -1434,6 +1437,8 @@ def main():
         target_count=len(urls_data),
         error_logs=None
     )
+
+    save_log('in_amazon')
 
 if __name__ == "__main__":
     print("\n📦 필요한 패키지:")

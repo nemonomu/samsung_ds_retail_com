@@ -921,6 +921,9 @@ Python 버전: {os.sys.version.split()[0]}
 
 def main():
     """메인 실행 함수"""
+    from log_utils import setup_log, save_log
+    setup_log('pl_xkom')
+
     print("\n🚀 X-kom 크롤러")
     print("="*60)
     print("초기에 수동으로 Cloudflare를 통과한 후")
@@ -937,6 +940,8 @@ def main():
 
     # 시작
     scraper.start()
+
+    save_log('pl_xkom')
 
 if __name__ == "__main__":
     # 필요한 패키지 확인

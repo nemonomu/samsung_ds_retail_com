@@ -772,6 +772,9 @@ class CentrecomScraper:
 
 def main():
     """메인 실행 함수"""
+    from log_utils import setup_log, save_log
+    setup_log('au_centrecom')
+
     country_code = os.getenv('COUNTRY_CODE', 'au').lower()
     test_mode = os.getenv('TEST_MODE', 'false').lower() == 'true'
     max_items = int(os.getenv('MAX_ITEMS', '0')) or None
@@ -875,6 +878,7 @@ def main():
         if scraper.driver:
             scraper.driver.quit()
             logger.info("🔧 드라이버 종료")
+        save_log('au_centrecom')
 
 if __name__ == "__main__":
     required_packages = [

@@ -1402,6 +1402,9 @@ class AmazonScraper:
 
 def main():
     """메인 실행 함수"""
+    from log_utils import setup_log, save_log
+    setup_log('jp_amazon')
+
     # 환경변수에서 국가 코드 읽기
     country_code = os.getenv('COUNTRY_CODE', 'jp').lower()  # 기본값을 jp로 변경
     test_mode = os.getenv('TEST_MODE', 'false').lower() == 'true'
@@ -1489,6 +1492,8 @@ def main():
         target_count=len(urls_data),
         error_logs=None
     )
+
+    save_log('jp_amazon')
 
 if __name__ == "__main__":
     # 필요한 패키지 설치 확인

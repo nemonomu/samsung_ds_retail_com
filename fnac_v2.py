@@ -911,6 +911,9 @@ class FnacScraperV2:
 
 def main():
     """메인 실행 함수"""
+    from log_utils import setup_log, save_log
+    setup_log('fr_fnac')
+
     print("\nFnac 가격 추출 시스템 v2 - Playwright 기반")
     print("="*60)
 
@@ -1010,6 +1013,8 @@ def main():
         target_count=len(urls_data),
         error_logs=None
     )
+
+    save_log('fr_fnac')
 
 
 if __name__ == "__main__":

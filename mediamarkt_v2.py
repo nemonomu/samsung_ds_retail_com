@@ -1029,6 +1029,9 @@ class MediaMarktInfiniteScraper:
 
 def main():
     """메인 실행 함수"""
+    from log_utils import setup_log, save_log
+    setup_log('de_mediamarkt')
+
     print("\n🚀 MediaMarkt 크롤러")
     print("="*60)
 
@@ -1062,6 +1065,8 @@ def main():
         target_count=target_count,
         error_logs=None
     )
+
+    save_log('de_mediamarkt')
 
 if __name__ == "__main__":
     # 필요한 패키지 확인

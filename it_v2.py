@@ -1554,6 +1554,9 @@ class AmazonITScraper:
 
 def main():
     """이탈리아 메인 실행 함수"""
+    from log_utils import setup_log, save_log
+    setup_log('it_amazon')
+
     test_mode = os.getenv('TEST_MODE', 'false').lower() == 'true'
     max_items = int(os.getenv('MAX_ITEMS', '0')) or None
     
@@ -1651,6 +1654,8 @@ def main():
         error_logs=None
     )
 
+    save_log('it_amazon')
+
 if __name__ == "__main__":
     required_packages = [
         'undetected-chromedriver',
@@ -1661,7 +1666,7 @@ if __name__ == "__main__":
         'paramiko',
         'openpyxl'
     ]
-    
+
     print("필요한 패키지:")
     print("pip install " + " ".join(required_packages))
     print("환경변수 설정:")
