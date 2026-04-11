@@ -115,11 +115,6 @@ def auto_recovery_run(target_key, results_df, target_count, error_logs=None):
         return
 
     # === 2-B. 실패 시: 자동 recovery ===
-    # bestbuy: 봇감지 회피를 위해 1시간 대기
-    if target_key == 'bestbuy':
-        import time
-        logger.info("BestBuy: 봇감지 회피를 위해 1시간 대기...")
-        time.sleep(3600)
 
     logger.info(f"\n--- 자동 복구 시작 ---")
 
