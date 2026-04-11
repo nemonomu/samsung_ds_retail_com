@@ -97,7 +97,10 @@ def auto_recovery_run(target_key, results_df, target_count, error_logs=None):
         price_null = results_df_lower['retailprice'].isna()
         price_null_with_seller = (has_seller & price_null).sum()
 
-    needs_recovery = missing_count > 0 or title_null_count > threshold or price_null_with_seller > 0
+    if target_key == 'bestbuy':
+        needs_recovery = title_null_count > threshold
+    else:
+        needs_recovery = missing_count > 0 or title_null_count > threshold or price_null_with_seller > 0
 
     logger.info(f"누락: {missing_count}개, title NULL: {title_null_count}개 (임계값: {threshold}개), 판매자有/가격無: {price_null_with_seller}개")
     logger.info(f"복구 필요: {'예' if needs_recovery else '아니오'}")
