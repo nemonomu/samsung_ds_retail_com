@@ -59,19 +59,17 @@ COUNTRY_SHORT_NAMES = {
 }
 
 
-def detect_price_anomalies(current_df, country_code, file_prefix, threshold=20, skip_date=None):
+def _download_previous_df(country_code, file_prefix, skip_date=None):
     """
-    직전 파일서버 데이터 대비 가격 이상 감지
+    파일서버에서 직전 날짜의 CSV 데이터를 다운로드
 
     Args:
-        current_df: 현재 크롤링 결과 DataFrame
         country_code: 국가 코드 (파일서버 디렉토리명, 예: 'usa')
         file_prefix: 파일 접두사 (예: 'usa_bestbuy')
-        threshold: 가격 변동 임계값 (%, 기본 20)
-        skip_date: 추가로 건너뛸 날짜 문자열 (예: '20260403', recovery 시 세션 날짜)
+        skip_date: 추가로 건너뛸 날짜 문자열 (예: '20260403')
 
     Returns:
-        list: 이상 항목 리스트
+        DataFrame or None
     """
     try:
         import paramiko
@@ -80,17 +78,6 @@ def detect_price_anomalies(current_df, country_code, file_prefix, threshold=20, 
         import os
         from config import FILE_SERVER_CONFIG
 
-        if current_df is None or current_df.empty:
-            return []
-
-        # 현재 결과에서 컬럼명 소문자 통일
-        curr = current_df.copy()
-        curr.columns = curr.columns.str.lower()
-
-        if 'producturl' not in curr.columns or 'retailprice' not in curr.columns:
-            return []
-
-        # 1. 파일서버 접속
         transport = paramiko.Transport((FILE_SERVER_CONFIG['host'], FILE_SERVER_CONFIG['port']))
         transport.connect(
             username=FILE_SERVER_CONFIG['username'],
@@ -99,14 +86,12 @@ def detect_price_anomalies(current_df, country_code, file_prefix, threshold=20, 
         sftp = paramiko.SFTPClient.from_transport(transport)
 
         try:
-            # 2. 날짜 폴더 목록 조회 (내림차순 정렬)
             country_dir = f"{FILE_SERVER_CONFIG['upload_path']}/{country_code}"
             try:
                 date_folders = sorted(sftp.listdir(country_dir), reverse=True)
             except FileNotFoundError:
-                return []
+                return None
 
-            # 3. 날짜 폴더만 필터링 (backup 등 제외), 오늘 제외하고 가장 최근 폴더에서 매칭되는 zip 찾기
             today_str = datetime.now(pytz.timezone('Asia/Seoul')).strftime('%Y%m%d')
             date_folders = [f for f in date_folders if f.isdigit() and len(f) == 8]
             prev_zip_path = None
@@ -114,7 +99,6 @@ def detect_price_anomalies(current_df, country_code, file_prefix, threshold=20, 
             for folder in date_folders:
                 if folder == today_str or folder == skip_date:
                     continue
-                # 해당 폴더에서 file_prefix 매칭되는 zip 찾기
                 folder_path = f"{country_dir}/{folder}"
                 try:
                     files = sftp.listdir(folder_path)
@@ -129,11 +113,10 @@ def detect_price_anomalies(current_df, country_code, file_prefix, threshold=20, 
 
             if not prev_zip_path:
                 logger.info(f"직전 파일 없음: {country_code}/{file_prefix}")
-                return []
+                return None
 
             logger.info(f"직전 파일 발견: {prev_zip_path}")
 
-            # 4. zip 다운로드 → csv 읽기
             prev_df = None
             with tempfile.TemporaryDirectory() as tmpdir:
                 local_zip = os.path.join(tmpdir, 'prev.zip')
@@ -149,9 +132,107 @@ def detect_price_anomalies(current_df, country_code, file_prefix, threshold=20, 
             sftp.close()
             transport.close()
 
+        if prev_df is not None and not prev_df.empty:
+            prev_df.columns = prev_df.columns.str.lower()
+            return prev_df
+        return None
+
+    except Exception as e:
+        logger.error(f"직전 데이터 다운로드 실패: {e}")
+        return None
+
+
+def detect_field_empty_changes(current_df, prev_df, fields_to_check=None):
+    """
+    전일 대비 필드별 빈 값 변동 감지
+
+    Args:
+        current_df: 현재 크롤링 결과 DataFrame
+        prev_df: 전일 크롤링 결과 DataFrame
+        fields_to_check: 비교할 필드 리스트 (선택, 기본 5개 전체)
+
+    Returns:
+        dict: 필드별 {prev_empty_count, newly_empty_urls} 정보
+    """
+    if current_df is None or prev_df is None:
+        return {}
+
+    curr = current_df.copy()
+    prev = prev_df.copy()
+    curr.columns = curr.columns.str.lower()
+    prev.columns = prev.columns.str.lower()
+
+    if 'producturl' not in curr.columns or 'producturl' not in prev.columns:
+        return {}
+
+    if fields_to_check is None:
+        fields_to_check = ['retailprice', 'imageurl', 'ships_from', 'sold_by', 'title']
+    result = {}
+
+    for field in fields_to_check:
+        if field not in curr.columns or field not in prev.columns:
+            continue
+
+        # 현재 빈 값 URL
+        if curr[field].dtype in ['float64', 'int64', 'float', 'int']:
+            curr_empty_mask = curr[field].isna()
+        else:
+            curr_empty_mask = curr[field].isna() | (curr[field] == '')
+        curr_empty_urls = set(curr.loc[curr_empty_mask, 'producturl'])
+
+        # 전일 빈 값 URL
+        if prev[field].dtype in ['float64', 'int64', 'float', 'int']:
+            prev_empty_mask = prev[field].isna()
+        else:
+            prev_empty_mask = prev[field].isna() | (prev[field] == '')
+        prev_empty_urls = set(prev.loc[prev_empty_mask, 'producturl'])
+
+        # 신규 빈 값 = 오늘 빈 값인데 어제는 빈 값이 아니었던 URL (어제 데이터에 존재했던 URL만)
+        prev_all_urls = set(prev['producturl'])
+        newly_empty_urls = (curr_empty_urls - prev_empty_urls) & prev_all_urls
+
+        result[field] = {
+            'prev_empty_count': int(prev_empty_mask.sum()),
+            'newly_empty_urls': sorted(list(newly_empty_urls))
+        }
+
+    return result
+
+
+def detect_price_anomalies(current_df, country_code, file_prefix, threshold=20, skip_date=None, prev_df=None):
+    """
+    직전 파일서버 데이터 대비 가격 이상 감지
+
+    Args:
+        current_df: 현재 크롤링 결과 DataFrame
+        country_code: 국가 코드 (파일서버 디렉토리명, 예: 'usa')
+        file_prefix: 파일 접두사 (예: 'usa_bestbuy')
+        threshold: 가격 변동 임계값 (%, 기본 20)
+        skip_date: 추가로 건너뛸 날짜 문자열 (예: '20260403', recovery 시 세션 날짜)
+        prev_df: 전일 데이터 DataFrame (이미 다운로드한 경우, 선택)
+
+    Returns:
+        list: 이상 항목 리스트
+    """
+    try:
+        if current_df is None or current_df.empty:
+            return []
+
+        # 현재 결과에서 컬럼명 소문자 통일
+        curr = current_df.copy()
+        curr.columns = curr.columns.str.lower()
+
+        if 'producturl' not in curr.columns or 'retailprice' not in curr.columns:
+            return []
+
+        # prev_df가 없으면 다운로드
+        if prev_df is None:
+            prev_df = _download_previous_df(country_code, file_prefix, skip_date)
+
         if prev_df is None or prev_df.empty:
             return []
 
+        prev_df = prev_df.copy()
         prev_df.columns = prev_df.columns.str.lower()
 
         # 가격 컬럼 숫자 변환 (콤마 포함 문자열 대응)
@@ -282,7 +363,8 @@ def analyze_crawl_results(country_code, target_count, results_df, error_logs=Non
         'error_logs': error_logs or [],
         'price_anomalies': price_anomalies or [],
         'recovery_prefix': recovery_prefix,
-        'recovery_suffix': recovery_suffix
+        'recovery_suffix': recovery_suffix,
+        'fields_to_check': []
     }
 
     # 크롤링 자체가 실패한 경우
@@ -306,7 +388,13 @@ def analyze_crawl_results(country_code, target_count, results_df, error_logs=Non
         analysis['is_critical'] = True
 
     # 각 필드별 빈 값 비율 분석
-    fields_to_check = ['retailprice', 'imageurl', 'ships_from', 'sold_by', 'title']
+    # ships_from/sold_by를 직접 수집하지 않는 크롤러는 제외
+    db_only_crawlers = ['usa_bestbuy', 'gb_currys', 'de_mediamarkt', 'nl_coolblue', 'au_centrecom', 'kr_danawa', 'fr_fnac', 'pl_xkom']
+    if country_code in db_only_crawlers:
+        fields_to_check = ['retailprice', 'imageurl', 'title']
+    else:
+        fields_to_check = ['retailprice', 'imageurl', 'ships_from', 'sold_by', 'title']
+    analysis['fields_to_check'] = fields_to_check
     field_names = {
         'retailprice': '가격',
         'imageurl': '이미지 URL',
@@ -336,12 +424,13 @@ def analyze_crawl_results(country_code, target_count, results_df, error_logs=Non
                 'empty_rate': round(empty_rate, 1)
             }
 
-            # 50% 이상 빈 값이면 긴급 알림
-            if empty_rate >= 50:
+            # 빈 값이 있는 필드만 알림
+            if empty_count > 0:
                 analysis['alerts'].append({
-                    'type': 'CRITICAL',
+                    'type': 'NOTICE',
                     'message': f'{field_names.get(field, field)} 빈 값 {empty_rate:.1f}% ({empty_count}/{crawled_count})'
                 })
+            if empty_rate >= 50:
                 analysis['is_critical'] = True
 
     # ships_from 또는 sold_by가 있는데 retailprice가 없는 경우 감지
@@ -385,44 +474,39 @@ def send_alert_email(analysis, error_message=None):
         # 이메일 제목 생성
         country_name = analysis['country_name']
 
-        # 가격 미수집 개수 및 비율 확인
-        price_stats = analysis['field_stats'].get('retailprice', {})
-        price_empty_count = price_stats.get('empty_count', 0)
-        price_empty_rate = price_stats.get('empty_rate', 0)
-
         # price error 접두사 (ships_from/sold_by 있는데 price 없는 경우)
         price_error_prefix = "price error " if analysis.get('has_price_error', False) else ""
 
-        # title 누락 개수 확인
-        title_stats = analysis['field_stats'].get('title', {})
-        title_empty_count = title_stats.get('empty_count', 0)
+        # # 아래 변수들은 Failed 접두사 로직 변경(A/B/C failed)으로 미사용 상태
+        # price_stats = analysis['field_stats'].get('retailprice', {})
+        # price_empty_count = price_stats.get('empty_count', 0)
+        # price_empty_rate = price_stats.get('empty_rate', 0)
+        # title_stats = analysis['field_stats'].get('title', {})
+        # title_empty_count = title_stats.get('empty_count', 0)
+        # blocked_failures = analysis.get('blocked_page_failures', 0)
+        # all_null_failures = analysis.get('all_null_failures', 0)
+        # title_null_failures = analysis.get('title_null_failures', 0)
 
-        # 차단 페이지 실패 개수 확인
-        blocked_failures = analysis.get('blocked_page_failures', 0)
+        # Failed 접두사
+        failed_parts = []
+        # A failed: 대상 제품 수 > 수집 시도 수
+        if analysis['crawled_count'] < analysis['target_count']:
+            missing = analysis['target_count'] - analysis['crawled_count']
+            failed_parts.append(f"A failed {missing}")
+        # B failed: 전일 대비 title 신규 빈 값
+        field_empty_changes = analysis.get('field_empty_changes', {})
+        title_newly_empty = len(field_empty_changes.get('title', {}).get('newly_empty_urls', []))
+        if title_newly_empty > 0:
+            failed_parts.append(f"B failed {title_newly_empty}")
+        # C failed: 전일 대비 imageurl 신규 빈 값
+        imageurl_newly_empty = len(field_empty_changes.get('imageurl', {}).get('newly_empty_urls', []))
+        if imageurl_newly_empty > 0:
+            failed_parts.append(f"C failed {imageurl_newly_empty}")
+        failed_prefix = ' '.join(failed_parts) + ' ' if failed_parts else ''
 
-        # title, imageurl, retailprice 모두 NULL인 최종 실패 개수 확인
-        all_null_failures = analysis.get('all_null_failures', 0)
-
-        # title NULL인 최종 실패 개수 확인
-        title_null_failures = analysis.get('title_null_failures', 0)
-
-        # Failed 접두사 (우선순위: title_null > all_null_failures > blocked_failures > title_empty > price_empty)
-        if title_null_failures > 0:
-            failed_prefix = f"title null {title_null_failures} "
-        elif all_null_failures > 0:
-            failed_prefix = f"{all_null_failures} failed "
-        elif blocked_failures > 0:
-            failed_prefix = f"Failed {blocked_failures} sku "
-        elif title_empty_count > 0:
-            failed_prefix = f"Failed {title_empty_count} sku "
-        elif price_empty_rate >= 20:
-            failed_prefix = "Failed "
-        else:
-            failed_prefix = ""
-
-        # 가격 이상 접두사
+        # 가격 변동 접두사
         price_anomalies = analysis.get('price_anomalies', [])
-        price_anomaly_prefix = f"price anomaly {len(price_anomalies)} " if price_anomalies else ""
+        price_anomaly_prefix = f"price changed {len(price_anomalies)} " if price_anomalies else ""
 
         # recovery 접두사/접미사
         recovery_prefix = analysis.get('recovery_prefix', '')
@@ -441,6 +525,7 @@ def send_alert_email(analysis, error_message=None):
                 body {{ font-family: 'Malgun Gothic', Arial, sans-serif; }}
                 .critical {{ color: #dc3545; font-weight: bold; }}
                 .warning {{ color: #ffc107; font-weight: bold; }}
+                .notice {{ color: #17a2b8; font-weight: bold; }}
                 table {{ border-collapse: collapse; width: 100%; margin: 10px 0; }}
                 th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
                 th {{ background-color: #4CAF50; color: white; }}
@@ -476,9 +561,11 @@ def send_alert_email(analysis, error_message=None):
 
         # 알림 메시지 섹션
         if analysis['alerts'] or error_message:
-            html_content += """
+            fields_desc = ', '.join(analysis['field_stats'][f]['name'] for f in analysis.get('fields_to_check', []) if f in analysis['field_stats'])
+            fields_note = f' <span style="font-size: 12px; color: #666; font-weight: normal;">({fields_desc} 중 빈 값이 있는 필드만 표시)</span>' if fields_desc else ''
+            html_content += f"""
             <div class="section">
-                <h3>알림 내용</h3>
+                <h3>알림 내용{fields_note}</h3>
                 <ul>
             """
 
@@ -486,7 +573,7 @@ def send_alert_email(analysis, error_message=None):
                 html_content += f'<li class="critical">[CRITICAL] {error_message}</li>'
 
             for alert in analysis['alerts']:
-                alert_class = 'critical' if alert['type'] == 'CRITICAL' else 'warning'
+                alert_class = 'critical' if alert['type'] == 'CRITICAL' else ('warning' if alert['type'] == 'WARNING' else 'notice')
                 html_content += f'<li class="{alert_class}">[{alert["type"]}] {alert["message"]}</li>'
 
             html_content += """
@@ -495,6 +582,7 @@ def send_alert_email(analysis, error_message=None):
             """
 
         # 필드별 통계 섹션 (가격, 제목만 표시)
+        field_empty_changes = analysis.get('field_empty_changes', {})
         if analysis['field_stats']:
             html_content += """
             <div class="section">
@@ -503,26 +591,44 @@ def send_alert_email(analysis, error_message=None):
                     <tr>
                         <th>필드명</th>
                         <th>빈 값 개수</th>
+                        <th>전일 빈 값</th>
+                        <th>차이</th>
                         <th>총 개수</th>
                         <th>빈 값 비율</th>
                         <th>상태</th>
                     </tr>
             """
 
-            # 가격, 제목 필드만 표시 (순서대로)
-            priority_fields = ['retailprice', 'title']
+            priority_fields = analysis.get('fields_to_check', ['retailprice', 'imageurl', 'ships_from', 'sold_by', 'title'])
             for field in priority_fields:
                 if field in analysis['field_stats']:
                     stats = analysis['field_stats'][field]
-                    # 20% 이상이면 ERROR, 그렇지 않으면 정상
+                    # 20% 이상이면 do check, 그렇지 않으면 정상
                     if stats['empty_rate'] >= 20:
-                        status = '<span class="critical">ERROR</span>'
+                        status = '<span class="critical">do check</span>'
                     else:
                         status = '<span style="color: #28a745;">정상</span>'
+
+                    # 전일 비교 정보
+                    field_change = field_empty_changes.get(field, {})
+                    prev_empty = field_change.get('prev_empty_count', '-')
+                    if prev_empty != '-':
+                        diff = stats['empty_count'] - prev_empty
+                        if diff > 0:
+                            diff_str = f'<span class="critical">+{diff}</span>'
+                        elif diff < 0:
+                            diff_str = f'<span style="color: #28a745;">{diff}</span>'
+                        else:
+                            diff_str = '0'
+                    else:
+                        diff_str = '-'
+
                     html_content += f"""
                     <tr>
                         <td>{stats['name']}</td>
                         <td>{stats['empty_count']}</td>
+                        <td>{prev_empty}</td>
+                        <td>{diff_str}</td>
                         <td>{stats['total_count']}</td>
                         <td>{stats['empty_rate']}%</td>
                         <td>{status}</td>
@@ -533,6 +639,23 @@ def send_alert_email(analysis, error_message=None):
                 </table>
             </div>
             """
+
+            # 신규 빈 값 URL 목록 (차이가 있는 필드만)
+            for field in priority_fields:
+                field_change = field_empty_changes.get(field, {})
+                newly_empty_urls = field_change.get('newly_empty_urls', [])
+                if newly_empty_urls:
+                    field_name = analysis['field_stats'].get(field, {}).get('name', field)
+                    html_content += f"""
+            <div class="section">
+                <h3 class="critical">신규 빈 값 URL - {field_name} ({len(newly_empty_urls)}건)</h3>
+                <p style="color: #666; font-size: 12px;">전일에는 값이 있었으나 금일 빈 값으로 변경된 URL</p>
+                <table>
+                    <tr><th>#</th><th>URL</th></tr>
+            """
+                    for i, url in enumerate(newly_empty_urls, 1):
+                        html_content += f'<tr><td>{i}</td><td><a href="{url}">{url}</a></td></tr>'
+                    html_content += "</table></div>"
 
         # 가격 이상 / URL 변동 섹션 (항상 표시)
         price_items = [a for a in price_anomalies if a.get('anomaly_type') in ('price_change', 'price_disappeared', 'price_appeared')]
@@ -688,13 +811,22 @@ def monitor_and_alert(country_code, target_count, results_df, error_message=None
         monitor_and_alert('usa_bestbuy', len(urls_data), None, error_message="DB 연결 실패")
     """
     try:
-        # 가격 이상 감지 (파일서버 정보가 있을 때만)
+        # 전일 데이터 한 번만 다운로드
+        prev_df = None
         price_anomalies = []
+        field_empty_changes = {}
         if fs_country_code and file_prefix and results_df is not None:
-            price_anomalies = detect_price_anomalies(results_df, fs_country_code, file_prefix, skip_date=skip_date)
+            prev_df = _download_previous_df(fs_country_code, file_prefix, skip_date)
+            # 가격 이상 감지 (다운로드한 prev_df 전달)
+            price_anomalies = detect_price_anomalies(results_df, fs_country_code, file_prefix, skip_date=skip_date, prev_df=prev_df)
 
         # 결과 분석
         analysis = analyze_crawl_results(country_code, target_count, results_df, error_logs, blocked_page_failures, all_null_failures, title_null_failures, price_anomalies=price_anomalies, recovery_prefix=recovery_prefix, recovery_suffix=recovery_suffix)
+
+        # 필드별 빈 값 전일 비교 (analyze 후 fields_to_check 활용)
+        if prev_df is not None:
+            field_empty_changes = detect_field_empty_changes(results_df, prev_df, fields_to_check=analysis['fields_to_check'])
+        analysis['field_empty_changes'] = field_empty_changes
 
         # 항상 이메일 발송 (일일 리포트)
         return send_alert_email(analysis, error_message)
