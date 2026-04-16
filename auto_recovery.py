@@ -84,6 +84,7 @@ def auto_recovery_run(target_key, results_df, target_count, error_logs=None):
 
     # === 1. 성공/실패 판정 ===
     title_null_count = results_df_lower['title'].isna().sum() if 'title' in results_df_lower.columns else 0
+    imageurl_null_count = (results_df_lower['imageurl'].isna() | (results_df_lower['imageurl'] == '')).sum() if 'imageurl' in results_df_lower.columns else 0
     thresholds = _load_title_null_thresholds(manager.db_engine)
     threshold = thresholds.get(target_key, 0)
     missing_count = target_count - crawled_count
@@ -98,11 +99,11 @@ def auto_recovery_run(target_key, results_df, target_count, error_logs=None):
         price_null_with_seller = (has_seller & price_null).sum()
 
     if target_key == 'bestbuy':
-        needs_recovery = missing_count > 0 or title_null_count > threshold
+        needs_recovery = missing_count > 0 or title_null_count > threshold or imageurl_null_count > 1
     else:
         needs_recovery = missing_count > 0 or title_null_count > threshold or price_null_with_seller > 0
 
-    logger.info(f"누락: {missing_count}개, title NULL: {title_null_count}개 (임계값: {threshold}개), 판매자有/가격無: {price_null_with_seller}개")
+    logger.info(f"누락: {missing_count}개, title NULL: {title_null_count}개 (임계값: {threshold}개), imageurl NULL: {imageurl_null_count}개, 판매자有/가격無: {price_null_with_seller}개")
     logger.info(f"복구 필요: {'예' if needs_recovery else '아니오'}")
 
     # xkom 예외: 봇감지 수동 필요 → recovery 건너뜀
