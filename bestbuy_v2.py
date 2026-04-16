@@ -87,71 +87,55 @@ class BestBuyScraper:
                 self.XPATHS[element_type] = type_selectors
 
             logger.info(f"✅ DB에서 선택자 로드 완료: {len(df)}개")
-            
-            # 기본값 설정 (DB에 없는 경우 - price 제외)
-            if not self.XPATHS.get('title'):
-                logger.warning("⚠️ DB에 선택자가 없어 기본값 사용")
-                self.XPATHS.update({
-                    'title': [
-                        '/html/body/div[6]/div[5]/div[1]/div/div[2]/h1',
-                        '/html/body/div[5]/div[4]/div[1]/div/h1',
-                        '/html/body/div[5]/div[4]/div[2]/div/h1',
-                        '//h1[@class="sku-title"]',
-                        '//div[@class="sku-title"]//h1'
-                    ],
-                    'imageurl': [
-                        '/html/body/div[6]/div[5]/div[2]/div/div[2]/div[2]/div/div[2]/div/button/img',
-                        '/html/body/div[5]/div[4]/div[2]/div/div[2]/div[2]/div/div[2]/div/button/img',
-                        '/html/body/div[5]/div[4]/div[2]/div/div[2]/div[2]/div/div[2]/div/button[1]/img',
-                        '/html/body/div[5]/div[4]/div[1]/div/div[2]/div[2]/div/div[2]/div/button/img',
-                        '/html/body/div[5]/div[4]/div[1]/div/div[2]/div[2]/div/div[2]/div/button[1]/img',
-                        '//img[@class="primary-image"]',
-                        '//div[@class="media-gallery"]//img'
-                    ],
-                    'imageurl_fallback': [
-                        '/html/body/div[5]/div[3]/div[1]/div/div[1]/img'
-                    ],
-                    'stock_flag': [
-                        'Out of Stock', 'Sold Out', 'Currently unavailable',
-                        'Coming Soon', 'Temporarily out of stock'
-                    ],
-                    'country_select': [
-                        '/html/body/div[2]/div/div/div/div[1]/div[2]/a[2]'
-                    ],
-                    'no_longer_available_flag': [
-                        "//div[contains(@class, 'text-danger') and contains(., 'no longer available')]",
-                        "/html/body/div[6]/div[4]/div[2]/div/div/div[2]/div[4]"
-                    ],
-                    'no_longer_available_title': [
-                        '/html/body/div[6]/div[3]/div[1]/div/div[2]/h1',
-                        '/html/body/div[6]/div[4]/div[2]/div/div/div[1]/h1'
-                    ],
-                    'no_longer_available_imageurl': [
-                        '/html/body/div[6]/div[3]/div[1]/div/div[1]/img',
-                        '/html/body/div[6]/div[4]/div[2]/div/div/div[1]/img'
-                    ]
-                })
-                
-                # fallback 이미지 선택자 추가
-                if 'imageurl_fallback' not in self.XPATHS:
-                    self.XPATHS['imageurl_fallback'] = ['/html/body/div[5]/div[3]/div[1]/div/div[1]/img']
-                
+
+            # DB에 없는 경우 기본값 설정 (stock_flag, country_select, no_longer_available_*)
+            if 'stock_flag' not in self.XPATHS:
+                self.XPATHS['stock_flag'] = [
+                    'Out of Stock', 'Sold Out', 'Currently unavailable',
+                    'Coming Soon', 'Temporarily out of stock'
+                ]
+            if 'country_select' not in self.XPATHS:
+                self.XPATHS['country_select'] = [
+                    '/html/body/div[2]/div/div/div/div[1]/div[2]/a[2]'
+                ]
+            if 'no_longer_available_flag' not in self.XPATHS:
+                self.XPATHS['no_longer_available_flag'] = [
+                    "//div[contains(@class, 'text-danger') and contains(., 'no longer available')]",
+                    "/html/body/div[6]/div[4]/div[2]/div/div/div[2]/div[4]"
+                ]
+            if 'no_longer_available_title' not in self.XPATHS:
+                self.XPATHS['no_longer_available_title'] = [
+                    '/html/body/div[6]/div[3]/div[1]/div/div[2]/h1',
+                    '/html/body/div[6]/div[4]/div[2]/div/div/div[1]/h1'
+                ]
+            if 'no_longer_available_imageurl' not in self.XPATHS:
+                self.XPATHS['no_longer_available_imageurl'] = [
+                    '/html/body/div[6]/div[3]/div[1]/div/div[1]/img',
+                    '/html/body/div[6]/div[4]/div[2]/div/div/div[1]/img'
+                ]
+
         except Exception as e:
             logger.error(f"선택자 로드 실패: {e}")
-            # 기본값 사용
             self.XPATHS = {
-                'price': [
-                    '/html/body/div[6]/div[5]/div[1]/div/div[4]/div/div/div/div[1]/div/div[1]/div[1]/div[1]/div/div/div/div[1]/span',
-                    '/html/body/div[5]/div[4]/div[2]/div/div[3]/div/div/div[1]/div/div[1]/div[2]/div[1]/div/div/div/div[1]',
-                    '/html/body/div[5]/div[4]/div[2]/div/div[3]/div/div/div[1]/div/div[1]/div[2]/div[1]/div/div/div/div[1]/span',
-                    '/html/body/div[5]/div[4]/div[2]/div/div[3]/div/div/div[1]/div/div[1]/div[1]/div[1]/div/div/div/div[1]/span',
-                    '/html/body/div[5]/div[4]/div[2]/div/div[4]/div/div/div[1]/div/div[1]/div[1]/div[1]/div/div/div/div[1]/span'
+                'stock_flag': [
+                    'Out of Stock', 'Sold Out', 'Currently unavailable',
+                    'Coming Soon', 'Temporarily out of stock'
                 ],
-                'title': [],
-                'imageurl': [],
-                'imageurl_fallback': ['/html/body/div[5]/div[3]/div[1]/div/div[1]/img'],
-                'stock_flag': [],
-                'country_select': []
+                'country_select': [
+                    '/html/body/div[2]/div/div/div/div[1]/div[2]/a[2]'
+                ],
+                'no_longer_available_flag': [
+                    "//div[contains(@class, 'text-danger') and contains(., 'no longer available')]",
+                    "/html/body/div[6]/div[4]/div[2]/div/div/div[2]/div[4]"
+                ],
+                'no_longer_available_title': [
+                    '/html/body/div[6]/div[3]/div[1]/div/div[2]/h1',
+                    '/html/body/div[6]/div[4]/div[2]/div/div/div[1]/h1'
+                ],
+                'no_longer_available_imageurl': [
+                    '/html/body/div[6]/div[3]/div[1]/div/div[1]/img',
+                    '/html/body/div[6]/div[4]/div[2]/div/div/div[1]/img'
+                ]
             }
     
     def get_crawl_targets(self, limit=None, include_failed=False):
@@ -571,14 +555,6 @@ class BestBuyScraper:
                     except:
                         continue
 
-                # 이미지 추출 실패 시 품절 상품용 fallback 시도
-                if not result['imageurl']:
-                    try:
-                        image_element = self.page.ele('xpath:/html/body/div[5]/div[3]/div[1]/div/div[1]/img', timeout=2)
-                        result['imageurl'] = image_element.attr('src')
-                        logger.info(f"이미지 URL (품절 fallback): {result['imageurl'][:50]}...")
-                    except:
-                        pass
             except Exception as e:
                 logger.warning(f"이미지 URL 추출 실패: {e}")
 
