@@ -293,10 +293,65 @@ class CoolblueScraper:
         try:
             logger.info(f"🔍 페이지 접속: {url} (시도: {retry_count + 1}/{max_retries + 1})")
             self.driver.get(url)
-            
+
             # 페이지 로드 대기
             wait = WebDriverWait(self.driver, 6)
             time.sleep(random.uniform(3, 5))
+
+            # main-content 로드 대기 (최대 10초)
+            try:
+                WebDriverWait(self.driver, 10).until(
+                    EC.presence_of_element_located((By.ID, "main-content"))
+                )
+                logger.info("✅ main-content 로드 완료")
+            except:
+                logger.warning("⚠️ main-content 로드 실패 - 페이지 새로고침 시도")
+                self.driver.refresh()
+                time.sleep(random.uniform(3, 5))
+                try:
+                    WebDriverWait(self.driver, 10).until(
+                        EC.presence_of_element_located((By.ID, "main-content"))
+                    )
+                    logger.info("✅ 새로고침 후 main-content 로드 완료")
+                except:
+                    logger.warning("⚠️ 새로고침 후에도 main-content 로드 실패")
+                    if retry_count < max_retries:
+                        logger.info(f"🔄 재시도 {retry_count + 2}/{max_retries + 1}")
+                        return self.extract_product_info(url, row_data, retry_count + 1, max_retries)
+                    else:
+                        logger.error(f"❌ main-content 로드 최종 실패: {url}")
+                        now_time = datetime.now(self.korea_tz)
+                        local_time = datetime.now(self.local_tz)
+                        crawl_dt = local_time.strftime("%Y-%m-%dT%H:%M:%S")
+                        tz_offset = local_time.strftime("%z")
+                        tz_formatted = f"{tz_offset[:3]}:{tz_offset[3:]}" if tz_offset else "+00:00"
+                        crawl_datetime_iso = f"{crawl_dt}{tz_formatted}"
+                        return {
+                            'retailerid': row_data.get('retailerid', ''),
+                            'country_code': row_data.get('country', 'nl'),
+                            'ships_from': 'NL',
+                            'channel_name': 'coolblue',
+                            'channel': row_data.get('channel', 'Online'),
+                            'retailersku': row_data.get('retailersku', ''),
+                            'brand': row_data.get('brand', ''),
+                            'brand_eng': row_data.get('brand_eng', row_data.get('brand', '')),
+                            'form_factor': row_data.get('form_factor', ''),
+                            'segment_lv1': row_data.get('seg_lv1', ''),
+                            'segment_lv2': row_data.get('seg_lv2', ''),
+                            'segment_lv3': row_data.get('seg_lv3', ''),
+                            'capacity': row_data.get('capacity', ''),
+                            'item': row_data.get('item', ''),
+                            'retailprice': None,
+                            'sold_by': 'Coolblue',
+                            'imageurl': None,
+                            'producturl': url,
+                            'crawl_datetime': crawl_datetime_iso,
+                            'crawl_strdatetime': local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4],
+                            'kr_crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),
+                            'kr_crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4],
+                            'title': None,
+                            'vat': row_data.get('vat', 'o')
+                        }
 
             # 에러 페이지 감지 및 재로드 버튼 클릭
             try:
