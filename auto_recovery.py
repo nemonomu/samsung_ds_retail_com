@@ -37,7 +37,7 @@ def _load_title_null_thresholds(db_engine):
         return {}
 
 
-def auto_recovery_run(target_key, results_df, target_count, error_logs=None):
+def auto_recovery_run(target_key, results_df, target_count, error_logs=None, out_of_stock_urls=None):
     """
     스크래퍼 크롤링 완료 후 자동 복구 + 파일 업로드 + 메일 알림
 
@@ -115,7 +115,8 @@ def auto_recovery_run(target_key, results_df, target_count, error_logs=None):
     if not needs_recovery:
         logger.info("1차 수집 성공 → 파일서버 업로드")
         _upload_and_alert(manager, config, target_key, results_df, target_count,
-                         session_start, error_logs=error_logs)
+                         session_start, error_logs=error_logs,
+                         out_of_stock_urls=out_of_stock_urls)
         return
 
     # === 2-B. 실패 시: 자동 recovery ===
@@ -139,7 +140,8 @@ def auto_recovery_run(target_key, results_df, target_count, error_logs=None):
     if not has_missing and not has_null:
         logger.info("복구 대상 없음 (DB 기준) → 1차 결과 그대로 업로드")
         _upload_and_alert(manager, config, target_key, results_df, target_count,
-                         session_start, error_logs=error_logs)
+                         session_start, error_logs=error_logs,
+                         out_of_stock_urls=out_of_stock_urls)
         return
 
     # 스크래퍼 로드
@@ -148,7 +150,8 @@ def auto_recovery_run(target_key, results_df, target_count, error_logs=None):
         logger.error("스크래퍼 로드 실패 → 1차 결과 그대로 업로드")
         _upload_and_alert(manager, config, target_key, results_df, target_count,
                          session_start, error_logs=error_logs,
-                         recovery_prefix='[RE] ', recovery_suffix='scraper load failed')
+                         recovery_prefix='[RE] ', recovery_suffix='scraper load failed',
+                         out_of_stock_urls=out_of_stock_urls)
         return
 
     # recovery 크롤링 (메모리에만 보관, DB 미반영)
@@ -238,7 +241,8 @@ def auto_recovery_run(target_key, results_df, target_count, error_logs=None):
         _upload_and_alert(manager, config, target_key, results_df, target_count,
                          session_start, error_logs=error_logs,
                          recovery_prefix='[RE] ', recovery_suffix='same data',
-                         skip_price_anomaly=skip_price_anomaly)
+                         skip_price_anomaly=skip_price_anomaly,
+                         out_of_stock_urls=out_of_stock_urls)
     else:
         # === 3-B. update complete: DB 반영 + 복구 데이터로 업로드 ===
         logger.info("복구 전후 다름 → DB 반영 + 복구 데이터 업로드")
@@ -258,7 +262,8 @@ def auto_recovery_run(target_key, results_df, target_count, error_logs=None):
         _upload_and_alert(manager, config, target_key, merged_df, target_count,
                          session_start, error_logs=error_logs,
                          recovery_prefix='[RE] ', recovery_suffix='update complete',
-                         skip_price_anomaly=skip_price_anomaly)
+                         skip_price_anomaly=skip_price_anomaly,
+                         out_of_stock_urls=out_of_stock_urls)
 
     logger.info(f"\n{'='*60}")
     logger.info(f"자동 복구 완료: {config['name']}")
@@ -397,7 +402,7 @@ def _merge_recovery_results(first_crawl_df, recovered_results, missing_results):
 def _upload_and_alert(manager, config, target_key, results_df, target_count,
                       session_start, error_logs=None,
                       recovery_prefix='', recovery_suffix='',
-                      skip_price_anomaly=False):
+                      skip_price_anomaly=False, out_of_stock_urls=None):
     """파일서버 업로드 + 메일 알림"""
     alert_code = config.get('alert_code', target_key)
 
@@ -431,5 +436,6 @@ def _upload_and_alert(manager, config, target_key, results_df, target_count,
         file_prefix=None if skip_price_anomaly else config['file_prefix'],
         skip_date=date_str,
         recovery_prefix=recovery_prefix,
-        recovery_suffix=recovery_suffix
+        recovery_suffix=recovery_suffix,
+        out_of_stock_urls=out_of_stock_urls
     )

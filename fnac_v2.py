@@ -424,75 +424,91 @@ class FnacScraperV2:
                         logger.error("모든 재시도 후에도 제목 추출 실패")
                         raise Exception("Title extraction failed - possible blocked page")
 
-            # 가격 추출
+            # 품절 체크 (가격 추출 전)
+            is_out_of_stock = False
             try:
-                price_found = False
-                logger.info("가격 추출 시도...")
+                oos_locator = self.page.locator('[data-automation-id="product-availability"]')
+                if oos_locator.count() > 0:
+                    oos_text = oos_locator.first.inner_text()
+                    if 'épuisé' in oos_text.lower():
+                        is_out_of_stock = True
+                        result['_out_of_stock'] = True
+                        logger.info(f"품절 감지: {oos_text.strip()}")
+            except Exception:
+                pass
 
-                for selector in self.XPATHS.get('price', []):
-                    try:
-                        if selector.startswith('//'):
-                            locator = self.page.locator(f'xpath={selector}')
-                        else:
-                            locator = self.page.locator(selector)
+            # 가격 추출 (품절이 아닌 경우만)
+            if is_out_of_stock:
+                logger.info("품절 상품 → 가격 추출 건너뜀")
+            else:
+                try:
+                    price_found = False
+                    logger.info("가격 추출 시도...")
 
-                        locator.wait_for(state='visible', timeout=5000)
-                        price_text = locator.inner_text()
+                    for selector in self.XPATHS.get('price', []):
+                        try:
+                            if selector.startswith('//'):
+                                locator = self.page.locator(f'xpath={selector}')
+                            else:
+                                locator = self.page.locator(selector)
 
-                        if price_text and price_text.strip():
-                            # Fnac 프랑스 가격 형식: "419,99 €" 또는 "1 234,56 €"
-                            price_text_clean = price_text.replace(',', '.').replace('€', '').replace('\xa0', '').replace(' ', '').strip()
-                            price_match = re.search(r'(\d+\.?\d*)', price_text_clean)
-                            if price_match:
-                                price_number = price_match.group(1)
-                                result['retailprice'] = float(price_number)
-                                logger.info(f"가격 추출 성공: {result['retailprice']}")
-                                price_found = True
-                                break
+                            locator.wait_for(state='visible', timeout=5000)
+                            price_text = locator.inner_text()
 
-                    except Exception as e:
-                        continue
+                            if price_text and price_text.strip():
+                                # Fnac 프랑스 가격 형식: "419,99 €" 또는 "1 234,56 €"
+                                price_text_clean = price_text.replace(',', '.').replace('€', '').replace('\xa0', '').replace(' ', '').strip()
+                                price_match = re.search(r'(\d+\.?\d*)', price_text_clean)
+                                if price_match:
+                                    price_number = price_match.group(1)
+                                    result['retailprice'] = float(price_number)
+                                    logger.info(f"가격 추출 성공: {result['retailprice']}")
+                                    price_found = True
+                                    break
 
-                # JavaScript로 가격 찾기 (최후 수단)
-                if not price_found:
-                    try:
-                        js_result = self.page.evaluate("""
-                            () => {
-                                var priceSelectors = [
-                                    '.f-faPriceBox__price',
-                                    '[class*="price"]',
-                                    'span[class*="Price"]'
-                                ];
+                        except Exception as e:
+                            continue
 
-                                for (var i = 0; i < priceSelectors.length; i++) {
-                                    var elements = document.querySelectorAll(priceSelectors[i]);
-                                    for (var j = 0; j < elements.length; j++) {
-                                        var text = elements[j].textContent || elements[j].innerText;
-                                        if (text && /\\d/.test(text) && text.includes('€')) {
-                                            return text.trim();
+                    # JavaScript로 가격 찾기 (최후 수단)
+                    if not price_found:
+                        try:
+                            js_result = self.page.evaluate("""
+                                () => {
+                                    var priceSelectors = [
+                                        '.f-faPriceBox__price',
+                                        '[class*="price"]',
+                                        'span[class*="Price"]'
+                                    ];
+
+                                    for (var i = 0; i < priceSelectors.length; i++) {
+                                        var elements = document.querySelectorAll(priceSelectors[i]);
+                                        for (var j = 0; j < elements.length; j++) {
+                                            var text = elements[j].textContent || elements[j].innerText;
+                                            if (text && /\\d/.test(text) && text.includes('€')) {
+                                                return text.trim();
+                                            }
                                         }
                                     }
+                                    return null;
                                 }
-                                return null;
-                            }
-                        """)
+                            """)
 
-                        if js_result:
-                            price_text_clean = js_result.replace(',', '.').replace('€', '').replace('\xa0', '').replace(' ', '').strip()
-                            price_match = re.search(r'(\d+\.?\d*)', price_text_clean)
-                            if price_match:
-                                price_number = price_match.group(1)
-                                result['retailprice'] = float(price_number)
-                                logger.info(f"가격 추출 성공 (JS): {result['retailprice']}")
-                                price_found = True
-                    except Exception as e:
-                        logger.debug(f"JavaScript 가격 추출 실패: {e}")
+                            if js_result:
+                                price_text_clean = js_result.replace(',', '.').replace('€', '').replace('\xa0', '').replace(' ', '').strip()
+                                price_match = re.search(r'(\d+\.?\d*)', price_text_clean)
+                                if price_match:
+                                    price_number = price_match.group(1)
+                                    result['retailprice'] = float(price_number)
+                                    logger.info(f"가격 추출 성공 (JS): {result['retailprice']}")
+                                    price_found = True
+                        except Exception as e:
+                            logger.debug(f"JavaScript 가격 추출 실패: {e}")
 
-                if not price_found:
-                    logger.warning("모든 가격 추출 방법 실패")
+                    if not price_found:
+                        logger.warning("모든 가격 추출 방법 실패")
 
-            except Exception as e:
-                logger.warning(f"가격 추출 실패: {e}")
+                except Exception as e:
+                    logger.warning(f"가격 추출 실패: {e}")
 
             # 이미지 URL 추출
             try:
@@ -743,6 +759,7 @@ class FnacScraperV2:
         results = []
         failed_urls = []
         blocked_page_failures = []
+        out_of_stock_urls = []
 
         try:
             for idx, row in enumerate(urls_data):
@@ -751,6 +768,16 @@ class FnacScraperV2:
 
                 url = row.get('url')
                 result = self.extract_product_info(url, row)
+
+                # 품절 플래그 처리 (DB 저장 전에 제거)
+                is_oos = result.pop('_out_of_stock', False)
+                if is_oos:
+                    out_of_stock_urls.append({
+                        'url': url,
+                        'item': row.get('item', ''),
+                        'brand': row.get('brand', ''),
+                        'title': result.get('title', '')
+                    })
 
                 if result['retailprice'] is None and result['title'] is None:
                     # 차단 페이지로 인한 실패
@@ -823,6 +850,7 @@ class FnacScraperV2:
                     for retry in range(10):
                         logger.info(f"차단 페이지 재시도 {retry + 1}/10: {url}")
                         result = self.extract_product_info(url, row_data, retry_count=0, max_retries=1)
+                        result.pop('_out_of_stock', False)
 
                         if result['title'] is not None or result['retailprice'] is not None:
                             logger.info(f"재시도 성공! title={result['title']}, price={result['retailprice']}")
@@ -874,7 +902,7 @@ class FnacScraperV2:
                 self.playwright.stop()
                 logger.info("Playwright 종료")
 
-        return pd.DataFrame(results), blocked_page_failures
+        return pd.DataFrame(results), blocked_page_failures, out_of_stock_urls
 
     def analyze_results(self, df):
         """결과 분석"""
@@ -973,7 +1001,7 @@ def main():
     logger.info(f"크롤링 대상: {len(urls_data)}개")
 
     start_time = datetime.now(scraper.korea_tz)
-    results_df, blocked_failures = scraper.scrape_urls(urls_data)
+    results_df, blocked_failures, out_of_stock_urls = scraper.scrape_urls(urls_data)
 
     if results_df is None or results_df.empty:
         logger.error("크롤링 결과가 없습니다.")
@@ -1011,7 +1039,8 @@ def main():
         target_key='fnac',
         results_df=results_df,
         target_count=len(urls_data),
-        error_logs=None
+        error_logs=None,
+        out_of_stock_urls=out_of_stock_urls
     )
 
     save_log('fr_fnac')

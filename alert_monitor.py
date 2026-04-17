@@ -723,6 +723,26 @@ def send_alert_email(analysis, error_message=None):
                 <h3 style="color: #28a745;">전일 대비 URL 변동 없음</h3>
             </div>"""
 
+        # 품절 URL 섹션
+        oos_urls = analysis.get('out_of_stock_urls', [])
+        if oos_urls:
+            html_content += f"""
+            <div class="section">
+                <h3 style="color: #ff6600;">품절 상품 ({len(oos_urls)}건)</h3>
+                <table>
+                    <tr><th>#</th><th>브랜드</th><th>제품</th><th>제목</th><th>URL</th></tr>
+            """
+            for i, oos in enumerate(oos_urls, 1):
+                html_content += f"""
+                    <tr>
+                        <td>{i}</td>
+                        <td>{oos.get('brand', '')}</td>
+                        <td>{oos.get('item', '')}</td>
+                        <td>{oos.get('title', '')[:50]}</td>
+                        <td><a href="{oos.get('url', '')}">{oos.get('url', '')[-40:]}</a></td>
+                    </tr>"""
+            html_content += "</table></div>"
+
         # 에러 로그 섹션
         if analysis.get('error_logs'):
             html_content += """
@@ -778,7 +798,7 @@ def send_alert_email(analysis, error_message=None):
         return False
 
 
-def monitor_and_alert(country_code, target_count, results_df, error_message=None, error_logs=None, blocked_page_failures=0, all_null_failures=0, title_null_failures=0, fs_country_code=None, file_prefix=None, skip_date=None, recovery_prefix='', recovery_suffix=''):
+def monitor_and_alert(country_code, target_count, results_df, error_message=None, error_logs=None, blocked_page_failures=0, all_null_failures=0, title_null_failures=0, fs_country_code=None, file_prefix=None, skip_date=None, recovery_prefix='', recovery_suffix='', out_of_stock_urls=None):
     """
     크롤링 결과 모니터링 및 알림 (메인 함수)
 
@@ -827,6 +847,7 @@ def monitor_and_alert(country_code, target_count, results_df, error_message=None
         if prev_df is not None:
             field_empty_changes = detect_field_empty_changes(results_df, prev_df, fields_to_check=analysis['fields_to_check'])
         analysis['field_empty_changes'] = field_empty_changes
+        analysis['out_of_stock_urls'] = out_of_stock_urls or []
 
         # 항상 이메일 발송 (일일 리포트)
         return send_alert_email(analysis, error_message)
