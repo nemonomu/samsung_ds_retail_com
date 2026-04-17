@@ -152,6 +152,8 @@ class CurrysScraper:
         
         try:
             options = uc.ChromeOptions()
+            # 페이지 로드 전략: eager (DOM 로드 완료 시 즉시 반환)
+            options.page_load_strategy = 'eager'
             # 메모리 최적화 옵션
             options.add_argument('--disable-gpu')
             options.add_argument('--disable-extensions')
@@ -179,6 +181,7 @@ class CurrysScraper:
 
             self.driver = uc.Chrome(options=options, version_main=chrome_version)
             self.driver.maximize_window()
+            self.driver.set_page_load_timeout(30)
             logger.info("✅ 드라이버 설정 완료")
             return True
         except Exception as e:
@@ -374,15 +377,14 @@ class CurrysScraper:
                 wait_time = (retry_count + 1) * 10  # 재시도마다 대기 시간 증가
                 logger.info(f"🔄 {wait_time}초 후 재시도합니다... (재시도 {retry_count + 1}/{max_retries})")
                 time.sleep(wait_time)
-                
-                # 드라이버 새로고침
+
+                # 타임아웃 시 refresh 대신 바로 드라이버 재시작
+                logger.info("🔧 드라이버 재시작 중...")
                 try:
-                    self.driver.refresh()
-                except:
-                    # 드라이버가 죽었으면 재시작
-                    logger.info("🔧 드라이버 재시작 중...")
                     self.driver.quit()
-                    self.setup_driver()
+                except:
+                    pass
+                self.setup_driver()
                 
                 # 재귀 호출로 재시도
                 return self.extract_product_info(url, row_data, retry_count + 1, max_retries)
