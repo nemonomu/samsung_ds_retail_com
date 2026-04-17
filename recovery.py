@@ -428,7 +428,12 @@ class RecoveryManager:
 
             # 브라우저 초기화
             logger.info("브라우저 초기화 중...")
-            scraper.setup_driver()
+            if hasattr(scraper, 'setup_driver'):
+                scraper.setup_driver()
+            elif hasattr(scraper, 'setup_browser'):
+                scraper.setup_browser()
+            else:
+                raise AttributeError(f"{class_name}에 setup_driver/setup_browser 메서드 없음")
             logger.info("브라우저 초기화 완료")
 
             return scraper
