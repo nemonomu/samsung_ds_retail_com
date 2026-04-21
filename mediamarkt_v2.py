@@ -9,6 +9,7 @@ import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException
 import pandas as pd
 import pymysql
 from sqlalchemy import create_engine
@@ -452,19 +453,49 @@ class MediaMarktInfiniteScraper:
         """제품 정보 추출"""
         try:
             logger.info(f"🔍 페이지 접속: {url}")
-            self.driver.get(url)
-
-            # 페이지 로드 대기
-            time.sleep(random.uniform(3, 5))
-
-            # 주요 요소 렌더링 대기 (price 또는 title)
             try:
-                WebDriverWait(self.driver, 10).until(
-                    lambda d: d.find_elements(By.XPATH, '//*[@id="mms-pdp-wrapper"]//h1') and
-                              d.find_elements(By.XPATH, '//*[@id="mms-pdp-wrapper"]//h1')[0].text.strip()
+                self.driver.get(url)
+            except TimeoutException:
+                logger.warning("⚠️ driver.get 30초 타임아웃, 필수 요소 대기로 계속 진행")
+
+            # price / title / imageurl 3개 요소만 로드되면 즉시 진행 (최대 15초 대기)
+            def _ready(selectors, attr='text'):
+                for sel in selectors:
+                    try:
+                        if sel.startswith('//'):
+                            elems = self.driver.find_elements(By.XPATH, sel)
+                        else:
+                            elems = self.driver.find_elements(By.CSS_SELECTOR, sel)
+                        for el in elems:
+                            if attr == 'text':
+                                val = el.text.strip() or (el.get_attribute('innerText') or '').strip()
+                            else:
+                                val = (el.get_attribute(attr) or '').strip()
+                            if val:
+                                return True
+                    except Exception:
+                        continue
+                return False
+
+            price_selectors = self.XPATHS.get('price', [])
+            title_selectors = self.XPATHS.get('title', [])
+            imageurl_selectors = self.XPATHS.get('imageurl', [])
+
+            try:
+                WebDriverWait(self.driver, 15).until(
+                    lambda d: _ready(price_selectors, 'text')
+                              and _ready(title_selectors, 'text')
+                              and _ready(imageurl_selectors, 'src')
                 )
+                logger.info("✅ price/title/imageurl 로드 확인")
+            except TimeoutException:
+                logger.warning("⚠️ 필수 요소 15초 타임아웃, 현재 DOM으로 진행")
+
+            # 나머지 리소스(광고/트래킹/이미지) 로드 중단
+            try:
+                self.driver.execute_script("window.stop()")
             except Exception:
-                logger.debug("h1 대기 타임아웃, 계속 진행")
+                pass
 
             # 쿠키 팝업 처리 (페이지 이동 후 다시 뜰 수 있음)
             self.accept_cookies()
