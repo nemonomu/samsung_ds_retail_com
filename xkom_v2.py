@@ -539,12 +539,25 @@ Python 버전: {os.sys.version.split()[0]}
                 'vat': row_data.get('vat', 'x')
             }
             
+            # 단종 상품 확인 (Produkt wycofany = 상품 단종)
+            is_wycofany = False
+            try:
+                wycofany_elems = self.driver.find_elements(
+                    By.XPATH,
+                    '//*[@id="app"]/div[2]/div/div[1]/div[2]/div[2]/div[2]/div[2]/div/div[1]/div/button/span/span[1]/span'
+                )
+                if wycofany_elems and 'Produkt wycofany' in wycofany_elems[0].text:
+                    is_wycofany = True
+                    logger.info("⚠️ 단종 상품 감지 (Produkt wycofany) - price NULL 저장")
+            except Exception:
+                pass
+
             # 가격 추출
             try:
                 price_found = False
-                
-                # DB에서 가져온 선택자로 시도
-                for selector in self.XPATHS.get('price', []):
+
+                # DB에서 가져온 선택자로 시도 (단종 상품은 건너뜀)
+                for selector in ([] if is_wycofany else self.XPATHS.get('price', [])):
                     try:
                         if selector.startswith('//'):
                             # XPath인 경우
@@ -567,10 +580,10 @@ Python 버전: {os.sys.version.split()[0]}
                         else:
                             # CSS 선택자인 경우
                             price_elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                        
+
                         for price_element in price_elements:
                             price_text = price_element.text.strip()
-                            
+
                             if price_text:
                                 # PLN 가격 추출 (다양한 형식 지원)
                                 # 예: "899 zł", "899,00 zł", "899", "zł 899"
@@ -584,17 +597,17 @@ Python 버전: {os.sys.version.split()[0]}
                                     logger.info(f"✅ 가격 추출 성공: {result['retailprice']} PLN (선택자: {selector})")
                                     price_found = True
                                     break
-                        
+
                         if price_found:
                             break
-                            
+
                     except Exception as e:
                         logger.debug(f"선택자 {selector} 실패: {e}")
                         continue
-                
-                if not price_found:
+
+                if not price_found and not is_wycofany:
                     logger.warning("❌ DB 선택자로 가격을 찾을 수 없습니다")
-                    
+
             except Exception as e:
                 logger.warning(f"가격 추출 실패: {e}")
             
