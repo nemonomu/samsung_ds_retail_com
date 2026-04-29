@@ -220,9 +220,13 @@ class XKomScraper:
         logger.info("="*60)
 
         try:
-            # X-kom 메인 페이지 접속
-            logger.info("X-kom 접속 중...")
-            self.driver.get("https://www.x-kom.pl")
+            # 첫 크롤링 대상 URL로 접속 (메인페이지에서 Cloudflare가 안 뜨고
+            # 첫 상품 페이지에서 떠서 누락되는 문제 방지)
+            first_url = (self.urls_data[0]['url']
+                         if getattr(self, 'urls_data', None)
+                         else "https://www.x-kom.pl")
+            logger.info(f"X-kom 접속 중: {first_url}")
+            self.driver.get(first_url)
 
             logger.info("\n📋 다음 단계를 수행해주세요:")
             logger.info("1. Cloudflare 챌린지가 나타나면 해결하세요")
@@ -806,9 +810,9 @@ Python 버전: {os.sys.version.split()[0]}
         logger.info(f"시작 시간: {datetime.now()}")
         logger.info(f"{'='*60}")
         
-        # DB에서 URL 목록 조회
-        urls_data = self.get_crawl_targets()
-        
+        # DB에서 URL 목록 조회 (start()에서 미리 조회한 경우 재사용)
+        urls_data = getattr(self, 'urls_data', None) or self.get_crawl_targets()
+
         if not urls_data:
             logger.warning("크롤링 대상이 없습니다.")
             return
@@ -916,11 +920,17 @@ Python 버전: {os.sys.version.split()[0]}
             return
         
         try:
+            # 크롤링 대상 URL 미리 조회 (첫 URL을 수동 로그인 페이지로 사용)
+            self.urls_data = self.get_crawl_targets()
+            if not self.urls_data:
+                logger.warning("크롤링 대상이 없습니다.")
+                return
+
             # 초기 수동 로그인
             if not self.initial_manual_login():
                 logger.error("초기 로그인 실패로 종료합니다.")
                 return
-            
+
             # 1회 크롤링 실행
             self.crawl_once()
             
