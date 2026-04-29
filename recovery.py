@@ -743,18 +743,32 @@ class RecoveryManager:
             return False
 
         # 4-1. 봇감지 수동 체크 (xkom 등)
+        # 첫 페이지에서 봇체크박스가 안 떠도 첫 상품 추출이 실패하는 경우가 있어
+        # 동일 URL을 2회 접속해서 워밍업 (1차에서 Cloudflare 통과, 2차에서 정상 로드 확인)
         if config.get('needs_manual_check'):
             if has_null:
                 first_url = null_records.iloc[0]['producturl']
             else:
                 first_url = missing_urls.iloc[0]['url']
-            logger.info(f"봇감지 수동 체크를 위해 첫 번째 URL 접속: {first_url}")
+
+            # 1차 접속
+            logger.info(f"봇감지 수동 체크 (1차 접속): {first_url}")
             scraper.driver.get(first_url)
             print(f"\n{'='*60}")
-            print(f"  봇감지(Cloudflare) 수동 체크가 필요합니다.")
+            print(f"  [1차 접속] 봇감지(Cloudflare) 수동 체크가 필요합니다.")
             print(f"  브라우저에서 봇감지를 통과한 후 Enter를 눌러주세요.")
             print(f"{'='*60}")
             input("\n  준비 완료 후 Enter를 누르세요... ")
+
+            # 2차 접속 (워밍업)
+            logger.info(f"봇감지 수동 체크 (2차 접속): {first_url}")
+            scraper.driver.get(first_url)
+            print(f"\n{'='*60}")
+            print(f"  [2차 접속] 페이지가 정상 로드되었는지 확인 후 Enter를 눌러주세요.")
+            print(f"  (필요시 봇감지를 다시 통과시켜주세요)")
+            print(f"{'='*60}")
+            input("\n  준비 완료 후 Enter를 누르세요... ")
+
             scraper.is_logged_in = True
             logger.info("봇감지 수동 체크 완료, 복구 시작")
 
