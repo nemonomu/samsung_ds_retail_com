@@ -5,6 +5,7 @@
 import io
 import gc
 import os
+import re
 import sys
 import json
 import time
@@ -487,11 +488,11 @@ class ScreenshotMonitor:
             else:
                 return False
 
-            # 숫자 상태 코드는 단어 경계로 매칭 (제품 모델명 오탐 방지: T500, 404K 등)
-            import re
+            # 숫자 상태 코드는 단어 경계로 매칭 (제품 모델명 오탐 방지: T500, 404K, 14.500, 14,500 등)
+            # \b는 점/콤마 옆 숫자도 단어 경계로 보기 때문에 룩어라운드로 숫자/점/콤마 인접 차단
             status_code_keywords = ['503', '502', '500', '404']
             for code in status_code_keywords:
-                if re.search(r'\b' + code + r'\b', page_title):
+                if re.search(r'(?<![\d.,])' + code + r'(?![\d.,])', page_title):
                     logger.warning(f"⚠️ 에러 페이지 타이틀 감지: '{page_title}' (keyword: {code})")
                     return True
 
