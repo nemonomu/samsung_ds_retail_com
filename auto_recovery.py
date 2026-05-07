@@ -6,6 +6,7 @@
 
 import logging
 import sys
+import time
 import pandas as pd
 import pytz
 from datetime import datetime
@@ -169,6 +170,18 @@ def auto_recovery_run(target_key, results_df, target_count, error_logs=None, out
                 url = row['producturl']
                 logger.info(f"[{i+1}/{len(null_records)}] 재크롤링: {url[:60]}...")
                 result = manager.recrawl_url(scraper, url, row, target_key)
+
+                # seller有/price無 URL은 일시적 throttle 가능성 높으므로 추가 재시도 1회
+                old_has_seller = (pd.notna(row.get('ships_from')) and row.get('ships_from') != '') or \
+                                 (pd.notna(row.get('sold_by')) and row.get('sold_by') != '')
+                old_price_null = pd.isna(row.get('retailprice'))
+                if old_has_seller and old_price_null:
+                    new_price_null = result is None or pd.isna(result.get('retailprice'))
+                    if new_price_null:
+                        logger.info(f"  -> seller有/price無 → 5초 대기 후 추가 재시도 1회")
+                        time.sleep(5)
+                        result = manager.recrawl_url(scraper, url, row, target_key)
+
                 if result and (result.get('title') is not None or result.get('retailprice') is not None):
                     result['producturl'] = url
                     recovered_results[url] = result
