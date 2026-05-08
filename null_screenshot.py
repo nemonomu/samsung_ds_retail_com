@@ -9,6 +9,7 @@ NULL 필드 발생 시 스크린샷 캡처 + S3 업로드 헬퍼
     if is_null_result(result):
         capture_and_upload(self.driver, 'amazon_gb', row_data.get('retailersku', ''), url)
 """
+import io
 import logging
 from datetime import datetime, timezone, timedelta
 
@@ -97,6 +98,54 @@ def _capture_bytes(driver):
     raise ValueError(f"지원하지 않는 드라이버 타입: {type(driver).__name__}")
 
 
+def _add_watermark(screenshot_bytes, url):
+    """스크린샷에 워터마크 추가 (URL 좌상단, KST 타임스탬프 우하단)"""
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+
+        image = Image.open(io.BytesIO(screenshot_bytes))
+        draw = ImageDraw.Draw(image)
+
+        try:
+            font = ImageFont.truetype("arial.ttf", 20)
+        except Exception:
+            font = ImageFont.load_default()
+
+        padding = 4
+
+        # 좌상단: URL
+        url_bbox = draw.textbbox((0, 0), url, font=font)
+        url_width = url_bbox[2] - url_bbox[0]
+        url_height = url_bbox[3] - url_bbox[1]
+        url_x = 10
+        url_y = 10
+        draw.rectangle(
+            [url_x - padding, url_y - padding, url_x + url_width + padding, url_y + url_height + padding],
+            fill=(0, 0, 0, 200)
+        )
+        draw.text((url_x, url_y), url, font=font, fill=(255, 255, 255))
+
+        # 우하단: KST 타임스탬프
+        timestamp_text = datetime.now(KST).strftime('%Y-%m-%d %H:%M:%S KST')
+        ts_bbox = draw.textbbox((0, 0), timestamp_text, font=font)
+        ts_width = ts_bbox[2] - ts_bbox[0]
+        ts_height = ts_bbox[3] - ts_bbox[1]
+        ts_x = image.width - ts_width - 10
+        ts_y = image.height - ts_height - 10
+        draw.rectangle(
+            [ts_x - padding, ts_y - padding, ts_x + ts_width + padding, ts_y + ts_height + padding],
+            fill=(0, 0, 0, 200)
+        )
+        draw.text((ts_x, ts_y), timestamp_text, font=font, fill=(255, 255, 255))
+
+        output = io.BytesIO()
+        image.save(output, format='PNG')
+        return output.getvalue()
+    except Exception as e:
+        logger.warning(f"워터마크 추가 실패 (원본 그대로 업로드): {e}")
+        return screenshot_bytes
+
+
 def _delete_existing_screenshots(s3_client, bucket, prefix):
     """기존 (retailer, sku, 날짜) 패턴과 일치하는 S3 객체 모두 삭제.
     초기 수집 후 auto_recovery 재크롤링 시 동일 SKU의 이전 스크린샷을 교체하기 위함.
@@ -164,6 +213,9 @@ def capture_and_upload(driver, retailer, retailsku, url):
         if not screenshot_bytes:
             logger.warning(f"NULL 스크린샷 캡처 결과 비어있음 (url={url})")
             return None
+
+        # 워터마크: URL 좌상단, KST 시각 우하단
+        screenshot_bytes = _add_watermark(screenshot_bytes, url)
 
         now_kst = datetime.now(KST)
         year = now_kst.strftime('%Y')
