@@ -165,10 +165,31 @@ def auto_recovery_run(target_key, results_df, target_count, error_logs=None, out
 
         # NULL 복구 크롤링
         if has_null:
+            # 1차 수집 시 저장된 NULL 스크린샷 삭제용 헬퍼 (실패해도 무시)
+            try:
+                from null_screenshot import RETAILER_NAME_BY_TARGET_KEY, delete_screenshots_for_sku
+                _retailer_name = RETAILER_NAME_BY_TARGET_KEY.get(target_key)
+            except Exception:
+                _retailer_name = None
+                delete_screenshots_for_sku = None
+
             logger.info(f"\n--- NULL 복구 크롤링 ({len(null_records)}개) ---")
             for i, (idx, row) in enumerate(null_records.iterrows()):
                 url = row['producturl']
                 logger.info(f"[{i+1}/{len(null_records)}] 재크롤링: {url[:60]}...")
+
+                # 1차 수집 NULL 스크린샷 삭제 (auto_recovery 진입 시 일괄 제거)
+                # 재크롤링 결과가 NULL이면 extract_product_info 내부에서 새로 업로드함
+                if _retailer_name and delete_screenshots_for_sku:
+                    try:
+                        sku = row.get('retailersku', '')
+                        original_kr = str(row.get('kr_crawl_datetime', ''))[:10]  # 'YYYY-MM-DD'
+                        original_date = original_kr.replace('-', '')  # 'YYYYMMDD'
+                        if sku and len(original_date) == 8:
+                            delete_screenshots_for_sku(_retailer_name, sku, original_date)
+                    except Exception as e:
+                        logger.debug(f"1차 스크린샷 삭제 시도 중 무시된 오류: {e}")
+
                 result = manager.recrawl_url(scraper, url, row, target_key)
 
                 # seller有/price無 URL은 일시적 throttle 가능성 높으므로 추가 재시도 1회
