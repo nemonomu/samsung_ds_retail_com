@@ -99,47 +99,56 @@ def _capture_bytes(driver):
 
 
 def _add_watermark(screenshot_bytes, url):
-    """스크린샷에 워터마크 추가 (URL 좌상단, KST 타임스탬프 우하단)"""
+    """스크린샷 위/아래에 흰 띠를 추가하고 그 영역에 워터마크를 그림.
+    - 상단 띠: URL (좌측 정렬)
+    - 하단 띠: KST 타임스탬프 (우측 정렬)
+    - 원본 페이지 콘텐츠는 변경 없이 그대로 보존
+    """
     try:
         from PIL import Image, ImageDraw, ImageFont
 
-        image = Image.open(io.BytesIO(screenshot_bytes))
-        draw = ImageDraw.Draw(image)
+        image = Image.open(io.BytesIO(screenshot_bytes)).convert('RGB')
 
         try:
             font = ImageFont.truetype("arial.ttf", 20)
         except Exception:
             font = ImageFont.load_default()
 
-        padding = 4
+        # 텍스트 크기 측정 (임시 draw 사용)
+        tmp_draw = ImageDraw.Draw(image)
 
-        # 좌상단: URL
-        url_bbox = draw.textbbox((0, 0), url, font=font)
+        url_bbox = tmp_draw.textbbox((0, 0), url, font=font)
         url_width = url_bbox[2] - url_bbox[0]
         url_height = url_bbox[3] - url_bbox[1]
-        url_x = 10
-        url_y = 10
-        draw.rectangle(
-            [url_x - padding, url_y - padding, url_x + url_width + padding, url_y + url_height + padding],
-            fill=(0, 0, 0, 200)
-        )
-        draw.text((url_x, url_y), url, font=font, fill=(255, 255, 255))
 
-        # 우하단: KST 타임스탬프
         timestamp_text = datetime.now(KST).strftime('%Y-%m-%d %H:%M:%S KST')
-        ts_bbox = draw.textbbox((0, 0), timestamp_text, font=font)
+        ts_bbox = tmp_draw.textbbox((0, 0), timestamp_text, font=font)
         ts_width = ts_bbox[2] - ts_bbox[0]
         ts_height = ts_bbox[3] - ts_bbox[1]
-        ts_x = image.width - ts_width - 10
-        ts_y = image.height - ts_height - 10
-        draw.rectangle(
-            [ts_x - padding, ts_y - padding, ts_x + ts_width + padding, ts_y + ts_height + padding],
-            fill=(0, 0, 0, 200)
-        )
-        draw.text((ts_x, ts_y), timestamp_text, font=font, fill=(255, 255, 255))
+
+        margin_y = 15  # 띠 안쪽 위/아래 여백
+        margin_x = 20  # 좌우 가장자리에서 떨어진 거리
+        top_band = url_height + margin_y * 2
+        bottom_band = ts_height + margin_y * 2
+
+        # 새 캔버스 (원본 위/아래에 흰 띠 추가)
+        new_width = image.width
+        new_height = image.height + top_band + bottom_band
+        canvas = Image.new('RGB', (new_width, new_height), (255, 255, 255))
+        canvas.paste(image, (0, top_band))
+
+        draw = ImageDraw.Draw(canvas)
+
+        # 상단 띠 좌측: URL
+        draw.text((margin_x, margin_y), url, font=font, fill=(0, 0, 0))
+
+        # 하단 띠 우측: 타임스탬프
+        ts_x = new_width - ts_width - margin_x
+        ts_y = top_band + image.height + margin_y
+        draw.text((ts_x, ts_y), timestamp_text, font=font, fill=(0, 0, 0))
 
         output = io.BytesIO()
-        image.save(output, format='PNG')
+        canvas.save(output, format='PNG')
         return output.getvalue()
     except Exception as e:
         logger.warning(f"워터마크 추가 실패 (원본 그대로 업로드): {e}")
