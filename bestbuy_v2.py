@@ -27,6 +27,8 @@ logger = logging.getLogger(__name__)
 from config import DB_CONFIG_V2 as DB_CONFIG
 from config import FILE_SERVER_CONFIG
 from alert_monitor import monitor_and_alert
+from null_screenshot import is_null_result, capture_and_upload
+from cookie_consent import accept_cookies
 
 class BestBuyScraper:
     def __init__(self):
@@ -308,6 +310,9 @@ class BestBuyScraper:
             
             self.page.get(url)
 
+            # 쿠키 동의 팝업 자동 수락 (있으면 클릭)
+            accept_cookies(self.page, 'bestbuy')
+
             # ERR_HTTP2_PROTOCOL_ERROR 감지
             try:
                 page_source = self.page.html or ''
@@ -582,6 +587,10 @@ class BestBuyScraper:
             if is_soldout_fallback and result['retailprice'] is None:
                 logger.info("ℹ️ 품절 상품으로 판단, 가격 재시도 생략")
 
+            # NULL 필드 발견 시 스크린샷 + S3 업로드
+            if is_null_result(result):
+                capture_and_upload(self.page, 'bestbuy', row_data.get('retailersku', ''), url)
+
             return result
 
         except Exception as e:
@@ -623,7 +632,7 @@ class BestBuyScraper:
             tz_formatted = f"{tz_offset[:3]}:{tz_offset[3:]}" if tz_offset else "+00:00"
             crawl_datetime_iso = f"{crawl_dt}{tz_formatted}"
 
-            return {
+            fail_result = {
                 'retailerid': row_data.get('retailerid', ''),
                 'country_code': row_data.get('country', 'usa'),
                 'ships_from': 'usa',
@@ -649,6 +658,15 @@ class BestBuyScraper:
                 'title': None,
                 'vat': row_data.get('vat', 'x')
             }
+
+            # NULL 필드 발견 시 스크린샷 + S3 업로드 (best-effort)
+            try:
+                if is_null_result(fail_result):
+                    capture_and_upload(self.page, 'bestbuy', row_data.get('retailersku', ''), url)
+            except Exception:
+                pass
+
+            return fail_result
 
     def extract_with_retry(self, url, row_data):
         """제품 정보 추출 (extract_product_info 내부에 재시도 로직 포함)"""

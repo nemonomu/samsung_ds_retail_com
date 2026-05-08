@@ -125,7 +125,7 @@ COMMON_COOKIE_SELECTORS = [
 ]
 
 
-def _click_element(driver, element, selector_desc=""):
+def _click_element_selenium(driver, element, selector_desc=""):
     """Selenium 일반 클릭 → 실패 시 JS 클릭 fallback"""
     try:
         element.click()
@@ -140,43 +140,80 @@ def _click_element(driver, element, selector_desc=""):
     return False
 
 
+def _accept_cookies_selenium(driver, retailer, selectors):
+    """Selenium WebDriver용 쿠키 수락"""
+    from selenium.webdriver.common.by import By
+
+    for selector in selectors:
+        try:
+            if selector.startswith('//') or selector.startswith('/html'):
+                elements = driver.find_elements(By.XPATH, selector)
+            else:
+                elements = driver.find_elements(By.CSS_SELECTOR, selector)
+
+            for elem in elements:
+                if elem.is_displayed():
+                    if _click_element_selenium(driver, elem, selector):
+                        logger.info(f"쿠키 팝업 수락 완료 (retailer={retailer}, selector={selector})")
+                        return True
+        except Exception as e:
+            logger.debug(f"쿠키 셀렉터 실패 ({selector}): {e}")
+            continue
+    return False
+
+
+def _accept_cookies_drission(page, retailer, selectors):
+    """DrissionPage ChromiumPage용 쿠키 수락"""
+    for selector in selectors:
+        try:
+            if selector.startswith('//') or selector.startswith('/html'):
+                elements = page.eles(f'xpath:{selector}', timeout=1)
+            else:
+                elements = page.eles(f'css:{selector}', timeout=1)
+
+            for elem in elements:
+                try:
+                    elem.click()
+                    logger.info(f"쿠키 팝업 수락 완료 (retailer={retailer}, selector={selector})")
+                    return True
+                except Exception as e:
+                    logger.debug(f"DrissionPage 클릭 실패 ({selector}): {e}")
+                    continue
+        except Exception as e:
+            logger.debug(f"쿠키 셀렉터 실패 ({selector}): {e}")
+            continue
+    return False
+
+
 def accept_cookies(driver, retailer):
-    """쿠키 동의 팝업 자동 수락 (Selenium WebDriver 전용).
+    """쿠키 동의 팝업 자동 수락 (Selenium / DrissionPage 자동 분기).
 
     리테일러별 셀렉터를 우선 시도하고, 실패 시 공통 fallback 셀렉터 시도.
     팝업 자체가 없는 경우 조용히 False 반환.
 
     Args:
-        driver: Selenium WebDriver 인스턴스
-        retailer: 'amazon_gb', 'amazon_es', 'currys' 등 리테일러명
+        driver: Selenium WebDriver 또는 DrissionPage ChromiumPage 인스턴스
+        retailer: 'amazon_gb', 'bestbuy' 등 리테일러명
 
     Returns:
         True (클릭 성공) / False (셀렉터 일치 없음 또는 모두 실패)
     """
     try:
-        from selenium.webdriver.common.by import By
-
         retailer_selectors = list(RETAILER_COOKIE_SELECTORS.get(retailer, []))
         all_selectors = retailer_selectors + COMMON_COOKIE_SELECTORS
 
-        for selector in all_selectors:
-            try:
-                if selector.startswith('//') or selector.startswith('/html'):
-                    elements = driver.find_elements(By.XPATH, selector)
-                else:
-                    elements = driver.find_elements(By.CSS_SELECTOR, selector)
+        # DrissionPage는 .eles 메서드를 가지고 Selenium WebDriver에는 없음
+        if hasattr(driver, 'eles'):
+            success = _accept_cookies_drission(driver, retailer, all_selectors)
+        elif hasattr(driver, 'find_elements'):
+            success = _accept_cookies_selenium(driver, retailer, all_selectors)
+        else:
+            logger.warning(f"지원하지 않는 driver 타입: {type(driver).__name__}")
+            return False
 
-                for elem in elements:
-                    if elem.is_displayed():
-                        if _click_element(driver, elem, selector):
-                            logger.info(f"쿠키 팝업 수락 완료 (retailer={retailer}, selector={selector})")
-                            return True
-            except Exception as e:
-                logger.debug(f"쿠키 셀렉터 실패 ({selector}): {e}")
-                continue
-
-        logger.debug(f"쿠키 팝업 미발견 (retailer={retailer})")
-        return False
+        if not success:
+            logger.debug(f"쿠키 팝업 미발견 (retailer={retailer})")
+        return success
 
     except Exception as e:
         logger.warning(f"쿠키 수락 처리 중 오류 (retailer={retailer}): {e}")
