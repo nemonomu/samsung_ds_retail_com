@@ -38,6 +38,7 @@ from config import DB_CONFIG_V2 as DB_CONFIG
 from config import FILE_SERVER_CONFIG
 from alert_monitor import monitor_and_alert
 from null_screenshot import is_null_result, capture_and_upload
+from cookie_consent import accept_cookies
 
 class AmazonUKScraper:
     def __init__(self):
@@ -485,13 +486,16 @@ class AmazonUKScraper:
             
             self.driver.get(url)
             time.sleep(random.uniform(2, 4))
-            
+
             # 페이지 로드 대기
             try:
                 self.wait.until(lambda driver: driver.execute_script("return document.readyState") == "complete")
             except:
                 pass
-            
+
+            # 쿠키 동의 팝업 자동 수락 (있으면 클릭)
+            accept_cookies(self.driver, 'amazon_gb')
+
             # 차단 페이지 확인
             page_source_lower = self.driver.page_source.lower()
             if any(text in page_source_lower for text in ['continue shopping', 'weiter einkaufen']):
