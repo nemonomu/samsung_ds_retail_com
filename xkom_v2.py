@@ -42,6 +42,8 @@ logger = logging.getLogger(__name__)
 from config import DB_CONFIG_V2 as DB_CONFIG
 from config import FILE_SERVER_CONFIG
 from alert_monitor import monitor_and_alert
+from null_screenshot import is_null_result, capture_and_upload
+from cookie_consent import accept_cookies
 
 class XKomScraper:
     def __init__(self):
@@ -467,6 +469,10 @@ Python 버전: {os.sys.version.split()[0]}
 
                 # 페이지 로드 대기
                 time.sleep(random.uniform(3, 5))
+
+                # 쿠키 동의 팝업 자동 수락 (있으면 클릭)
+                accept_cookies(self.driver, 'x-kom')
+
                 break  # 성공 시 루프 탈출
 
             except Exception as e:
@@ -658,9 +664,13 @@ Python 버전: {os.sys.version.split()[0]}
                         continue
             except Exception as e:
                 logger.warning(f"이미지 URL 추출 실패: {e}")
-            
+
+            # NULL 필드 발견 시 스크린샷 + S3 업로드
+            if is_null_result(result):
+                capture_and_upload(self.driver, 'x-kom', row_data.get('retailersku', ''), url)
+
             return result
-            
+
         except Exception as e:
             logger.error(f"❌ 페이지 처리 오류: {e}")
             return None

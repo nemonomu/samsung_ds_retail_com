@@ -34,6 +34,8 @@ logger = logging.getLogger(__name__)
 from config import DB_CONFIG_V2 as DB_CONFIG
 from config import FILE_SERVER_CONFIG
 from alert_monitor import monitor_and_alert
+from null_screenshot import is_null_result, capture_and_upload
+from cookie_consent import accept_cookies
 
 class AmazonScraper:
     def __init__(self, country_code='usa'):
@@ -718,9 +720,12 @@ class AmazonScraper:
             
             self.driver.get(url)
             time.sleep(random.uniform(2, 4))
-            
+
+            # 쿠키 동의 팝업 자동 수락 (있으면 클릭)
+            accept_cookies(self.driver, 'amazon_usa')
+
             page_source_lower = self.driver.page_source.lower()
-            if ('continue shopping' in page_source_lower or 
+            if ('continue shopping' in page_source_lower or
                 'click the button below' in page_source_lower or
                 'weiter shoppen' in page_source_lower or
                 'klicke auf die schaltfläche' in page_source_lower):
@@ -887,9 +892,13 @@ class AmazonScraper:
             logger.info(f"판매자: {result['sold_by']}")
             logger.info(f"배송지: {result['ships_from']}")
             # logger.info(f"VAT: {result['vat']}")
-            
+
+            # NULL 필드 발견 시 스크린샷 + S3 업로드
+            if is_null_result(result):
+                capture_and_upload(self.driver, 'amazon_usa', row_data.get('retailersku', ''), url)
+
             return result
-            
+
         except Exception as e:
             logger.error(f"페이지 처리 오류: {e}")
             
@@ -921,7 +930,7 @@ class AmazonScraper:
             tz_formatted = f"{tz_offset[:3]}:{tz_offset[3:]}" if tz_offset else "+00:00"
             crawl_datetime_iso = f"{crawl_dt}{tz_formatted}"
 
-            return {
+            fail_result = {
                 'retailerid': row_data.get('retailerid', ''),
                 'country_code': self.country_code,
                 'ships_from': None,
@@ -947,6 +956,15 @@ class AmazonScraper:
                 'title': None,
                 'vat': row_data.get('vat', 'x')
             }
+
+            # NULL 필드 발견 시 스크린샷 + S3 업로드 (best-effort)
+            try:
+                if is_null_result(fail_result):
+                    capture_and_upload(self.driver, 'amazon_usa', row_data.get('retailersku', ''), url)
+            except Exception:
+                pass
+
+            return fail_result
 
     def get_crawl_targets(self, limit=None):
         """DB에서 크롤링 대상 URL 목록 조회"""

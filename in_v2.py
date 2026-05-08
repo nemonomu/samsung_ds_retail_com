@@ -41,6 +41,8 @@ logger = logging.getLogger(__name__)
 from config import DB_CONFIG_V2 as DB_CONFIG
 from config import FILE_SERVER_CONFIG
 from alert_monitor import monitor_and_alert
+from null_screenshot import is_null_result, capture_and_upload
+from cookie_consent import accept_cookies
 
 class AmazonIndiaScraper:
     def __init__(self):
@@ -895,7 +897,10 @@ class AmazonIndiaScraper:
             # 페이지 로드
             self.driver.get(url)
             time.sleep(random.uniform(3, 6))
-            
+
+            # 쿠키 동의 팝업 자동 수락 (있으면 클릭)
+            accept_cookies(self.driver, 'amazon_in')
+
             # 차단 페이지 처리
             page_source_lower = self.driver.page_source.lower()
             if 'continue shopping' in page_source_lower:
@@ -1008,9 +1013,13 @@ class AmazonIndiaScraper:
             logger.info(f"   💰 가격: ₹{result['retailprice']}" if result['retailprice'] else "   💰 가격: 없음")
             logger.info(f"   🚢 Ships From: {result['ships_from']}")
             logger.info(f"   🏪 판매자: {result['sold_by']}")
-            
+
+            # NULL 필드 발견 시 스크린샷 + S3 업로드
+            if is_null_result(result):
+                capture_and_upload(self.driver, 'amazon_in', row_data.get('retailersku', ''), url)
+
             return result
-            
+
         except Exception as e:
             logger.error(f"❌ 페이지 처리 오류: {e}")
             
@@ -1039,7 +1048,7 @@ class AmazonIndiaScraper:
             tz_formatted = f"{tz_offset[:3]}:{tz_offset[3:]}" if tz_offset else "+00:00"
             crawl_datetime_iso = f"{crawl_dt}{tz_formatted}"
 
-            return {
+            fail_result = {
                 'retailerid': row_data.get('retailerid', ''),
                 'country_code': 'in',
                 'ships_from': None,
@@ -1065,6 +1074,15 @@ class AmazonIndiaScraper:
                 'title': None,
                 'vat': row_data.get('vat', 'o')
             }
+
+            # NULL 필드 발견 시 스크린샷 + S3 업로드 (best-effort)
+            try:
+                if is_null_result(fail_result):
+                    capture_and_upload(self.driver, 'amazon_in', row_data.get('retailersku', ''), url)
+            except Exception:
+                pass
+
+            return fail_result
 
     def get_crawl_targets(self, limit=None):
         """DB에서 인도 크롤링 대상 조회"""

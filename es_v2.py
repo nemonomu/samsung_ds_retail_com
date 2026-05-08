@@ -37,6 +37,8 @@ logger = logging.getLogger(__name__)
 from config import DB_CONFIG_V2 as DB_CONFIG
 from config import FILE_SERVER_CONFIG
 from alert_monitor import monitor_and_alert
+from null_screenshot import is_null_result, capture_and_upload
+from cookie_consent import accept_cookies
 
 class AmazonScraper:
     def __init__(self, country_code='usa'):
@@ -995,7 +997,10 @@ class AmazonScraper:
             
             self.driver.get(url)
             time.sleep(random.uniform(2, 4))
-            
+
+            # 쿠키 동의 팝업 자동 수락 (있으면 클릭)
+            accept_cookies(self.driver, 'amazon_es')
+
             # 정상 페이지인지 먼저 확인
             if self.is_normal_product_page():
                 logger.info("정상 제품 페이지 확인 - 크롤링 진행")
@@ -1172,9 +1177,13 @@ class AmazonScraper:
             logger.info(f"이미지: {'있음' if result['imageurl'] else '없음'}")
             logger.info(f"판매자: {result['sold_by']}")
             logger.info(f"배송지: {result['ships_from']}")
-            
+
+            # NULL 필드 발견 시 스크린샷 + S3 업로드
+            if is_null_result(result):
+                capture_and_upload(self.driver, 'amazon_es', row_data.get('retailersku', ''), url)
+
             return result
-            
+
         except Exception as e:
             logger.error(f"페이지 처리 오류: {e}")
             
@@ -1202,7 +1211,7 @@ class AmazonScraper:
             tz_formatted = f"{tz_offset[:3]}:{tz_offset[3:]}" if tz_offset else "+00:00"
             crawl_datetime_iso = f"{crawl_dt}{tz_formatted}"
 
-            return {
+            fail_result = {
                 'retailerid': row_data.get('retailerid', ''),
                 'country_code': self.country_code,
                 'ships_from': None,
@@ -1228,6 +1237,15 @@ class AmazonScraper:
                 'title': None,
                 'vat': row_data.get('vat', 'o')
             }
+
+            # NULL 필드 발견 시 스크린샷 + S3 업로드 (best-effort)
+            try:
+                if is_null_result(fail_result):
+                    capture_and_upload(self.driver, 'amazon_es', row_data.get('retailersku', ''), url)
+            except Exception:
+                pass
+
+            return fail_result
 
     def get_crawl_targets(self, limit=None):
         """DB에서 크롤링 대상 URL 목록 조회"""

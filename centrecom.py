@@ -34,6 +34,8 @@ from config import DB_CONFIG_V2 as DB_CONFIG
 
 from config import FILE_SERVER_CONFIG
 from alert_monitor import monitor_and_alert
+from null_screenshot import is_null_result, capture_and_upload
+from cookie_consent import accept_cookies
 
 class CentrecomScraper:
     def __init__(self, country_code='au'):
@@ -334,6 +336,9 @@ class CentrecomScraper:
             time.sleep(random.uniform(2, 4))
             self.wait_for_page_load()
 
+            # 쿠키 동의 팝업 자동 수락 (있으면 클릭)
+            accept_cookies(self.driver, 'centrecom')
+
             # V2: 타임존 분리
             now_time = datetime.now(self.korea_tz)
             local_time = datetime.now(self.local_tz)
@@ -416,6 +421,10 @@ class CentrecomScraper:
             logger.info(f"판매자: {result['sold_by']}")
             logger.info(f"배송지: {result['ships_from']}")
 
+            # NULL 필드 발견 시 스크린샷 + S3 업로드
+            if is_null_result(result):
+                capture_and_upload(self.driver, 'centrecom', row_data.get('retailersku', ''), url)
+
             return result
 
         except Exception as e:
@@ -444,7 +453,7 @@ class CentrecomScraper:
             tz_formatted = f"{tz_offset[:3]}:{tz_offset[3:]}" if tz_offset else "+00:00"
             crawl_datetime_iso = f"{crawl_dt}{tz_formatted}"
 
-            return {
+            fail_result = {
                 'retailerid': row_data.get('retailerid', ''),
                 'country_code': self.country_code,
                 'ships_from': 'AU',
@@ -470,6 +479,15 @@ class CentrecomScraper:
                 'title': None,
                 'vat': row_data.get('vat', 'x')
             }
+
+            # NULL 필드 발견 시 스크린샷 + S3 업로드 (best-effort)
+            try:
+                if is_null_result(fail_result):
+                    capture_and_upload(self.driver, 'centrecom', row_data.get('retailersku', ''), url)
+            except Exception:
+                pass
+
+            return fail_result
 
     def get_crawl_targets(self, limit=None):
         """DB에서 크롤링 대상 URL 목록 조회"""
