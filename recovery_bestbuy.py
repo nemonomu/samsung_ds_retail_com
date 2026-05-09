@@ -258,11 +258,30 @@ def run_auto_recovery():
     try:
         # NULL 복구
         if has_null:
+            # 1차 수집 NULL 스크린샷 삭제용 헬퍼 (실패해도 무시)
+            try:
+                from null_screenshot import RETAILER_NAME_BY_TARGET_KEY, delete_screenshots_for_sku
+                _retailer_name = RETAILER_NAME_BY_TARGET_KEY.get(TARGET)
+            except Exception:
+                _retailer_name = None
+                delete_screenshots_for_sku = None
+
             logger.info(f"\n--- NULL 복구 시작 ({len(null_records)}개) ---")
             for i, (idx, row) in enumerate(null_records.iterrows()):
                 url = row['producturl']
                 original_kr_crawl_datetime = row['kr_crawl_datetime']
                 logger.info(f"\n[{i+1}/{len(null_records)}] 재크롤링: {url[:60]}...")
+
+                # 1차 수집 NULL 스크린샷 삭제 (recovery 진입 시 일괄 제거)
+                # 재크롤링 결과가 NULL이면 extract_product_info 내부에서 새로 업로드함
+                if _retailer_name and delete_screenshots_for_sku:
+                    try:
+                        sku = row.get('retailersku', '')
+                        original_date = str(original_kr_crawl_datetime)[:10].replace('-', '')  # 'YYYYMMDD'
+                        if sku and len(original_date) == 8:
+                            delete_screenshots_for_sku(_retailer_name, sku, original_date)
+                    except Exception as e:
+                        logger.debug(f"1차 스크린샷 삭제 시도 중 무시된 오류: {e}")
 
                 result = manager.recrawl_url(scraper, url, row, TARGET)
 

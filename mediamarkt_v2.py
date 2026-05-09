@@ -30,6 +30,7 @@ ssl._create_default_https_context = ssl._create_unverified_context
 # Import configuration V2
 from config import DB_CONFIG_V2 as DB_CONFIG, FILE_SERVER_CONFIG
 from alert_monitor import monitor_and_alert
+from null_screenshot import is_null_result, capture_and_upload
 
 # 로깅 설정
 logging.basicConfig(
@@ -669,9 +670,13 @@ class MediaMarktInfiniteScraper:
                         continue
             except Exception as e:
                 logger.warning(f"이미지 URL 추출 실패: {e}")
-            
+
+            # NULL 필드 발견 시 스크린샷 + S3 업로드
+            if is_null_result(result):
+                capture_and_upload(self.driver, 'mediamarkt', row_data.get('retailersku', ''), url)
+
             return result
-            
+
         except Exception as e:
             logger.error(f"❌ 페이지 처리 오류: {e}")
             return None

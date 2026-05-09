@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 from config import DB_CONFIG_V2 as DB_CONFIG
 from config import FILE_SERVER_CONFIG
 from alert_monitor import monitor_and_alert
+from null_screenshot import is_null_result, capture_and_upload
 
 class FnacScraperV2:
     def __init__(self):
@@ -561,6 +562,10 @@ class FnacScraperV2:
             except Exception as e:
                 logger.warning(f"이미지 URL 추출 실패: {e}")
 
+            # NULL 필드 발견 시 스크린샷 + S3 업로드
+            if is_null_result(result):
+                capture_and_upload(self.page, 'fnac', row_data.get('retailersku', ''), url)
+
             return result
 
         except Exception as e:
@@ -583,7 +588,7 @@ class FnacScraperV2:
             tz_formatted = f"{tz_offset[:3]}:{tz_offset[3:]}" if tz_offset else "+00:00"
             crawl_datetime_iso = f"{crawl_dt}{tz_formatted}"
 
-            return {
+            fail_result = {
                 'retailerid': row_data.get('retailerid', ''),
                 'country_code': row_data.get('country', 'fr'),
                 'ships_from': 'FR',
@@ -609,6 +614,15 @@ class FnacScraperV2:
                 'title': None,
                 'vat': row_data.get('vat', 'o')
             }
+
+            # NULL 필드 발견 시 스크린샷 + S3 업로드 (best-effort)
+            try:
+                if is_null_result(fail_result):
+                    capture_and_upload(self.page, 'fnac', row_data.get('retailersku', ''), url)
+            except Exception:
+                pass
+
+            return fail_result
 
     def save_to_db(self, df):
         """DB에 결과 저장"""

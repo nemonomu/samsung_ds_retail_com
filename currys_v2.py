@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 from config import DB_CONFIG_V2 as DB_CONFIG
 from config import FILE_SERVER_CONFIG
 from alert_monitor import monitor_and_alert
+from null_screenshot import is_null_result, capture_and_upload
 
 class CurrysScraper:
     def __init__(self):
@@ -366,9 +367,13 @@ class CurrysScraper:
             # if vat_texts:
             #     page_source = self.driver.page_source
             #     result['vat'] = 'o' if any(text in page_source for text in vat_texts) else 'x'
-            
+
+            # NULL 필드 발견 시 스크린샷 + S3 업로드
+            if is_null_result(result):
+                capture_and_upload(self.driver, 'currys', row_data.get('retailersku', ''), url)
+
             return result
-            
+
         except Exception as e:
             logger.error(f"❌ 페이지 처리 오류: {e}")
             
@@ -401,7 +406,7 @@ class CurrysScraper:
             tz_formatted = f"{tz_offset[:3]}:{tz_offset[3:]}" if tz_offset else "+00:00"
             crawl_datetime_iso = f"{crawl_dt}{tz_formatted}"
 
-            return {
+            fail_result = {
                 'retailerid': row_data.get('retailerid', ''),
                 'country_code': row_data.get('country', 'gb'),
                 'ships_from': 'gb',
@@ -427,7 +432,16 @@ class CurrysScraper:
                 'title': None,
                 'vat': row_data.get('vat', 'o')
             }
-    
+
+            # NULL 필드 발견 시 스크린샷 + S3 업로드 (best-effort)
+            try:
+                if is_null_result(fail_result):
+                    capture_and_upload(self.driver, 'currys', row_data.get('retailersku', ''), url)
+            except Exception:
+                pass
+
+            return fail_result
+
     def save_to_db(self, df):
         """DB에 결과 저장"""
         if self.db_engine is None:
