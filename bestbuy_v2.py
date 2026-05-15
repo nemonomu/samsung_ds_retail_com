@@ -7,6 +7,7 @@ from DrissionPage import ChromiumPage, ChromiumOptions
 import pandas as pd
 import pymysql
 from sqlalchemy import create_engine
+from sqlalchemy.exc import DBAPIError, OperationalError
 import paramiko
 import time
 import random
@@ -52,6 +53,9 @@ class BestBuyScraper:
     def setup_db_connection(self):
         """DB 연결 설정"""
         try:
+            if self.db_engine is not None:
+                self.db_engine.dispose()
+
             # SQLAlchemy 엔진 생성
             connection_string = (
                 f"mysql+pymysql://{DB_CONFIG['user']}:{DB_CONFIG['password']}@"
@@ -67,6 +71,31 @@ class BestBuyScraper:
         except Exception as e:
             logger.error(f"❌ DB 연결 실패: {e}")
             self.db_engine = None
+
+    def read_sql_with_retry(self, query, params=None, retries=3, delay=5):
+        """Run a DB query, recreating the engine if MySQL drops the connection."""
+        last_error = None
+
+        for attempt in range(1, retries + 1):
+            try:
+                if self.db_engine is None:
+                    self.setup_db_connection()
+                return pd.read_sql(query, self.db_engine, params=params)
+            except (OperationalError, DBAPIError, pymysql.err.OperationalError) as e:
+                last_error = e
+                logger.warning(f"DB 쿼리 실패({attempt}/{retries}), 재연결 후 재시도: {e}")
+                try:
+                    if self.db_engine is not None:
+                        self.db_engine.dispose()
+                except Exception:
+                    pass
+                self.db_engine = None
+
+                if attempt < retries:
+                    time.sleep(delay * attempt)
+                    self.setup_db_connection()
+
+        raise last_error
     
     def load_xpaths_from_db(self):
         """DB에서 BestBuy용 선택자 로드"""
@@ -80,7 +109,7 @@ class BestBuyScraper:
             ORDER BY element_type, priority DESC
             """
             
-            df = pd.read_sql(query, self.db_engine)
+            df = self.read_sql_with_retry(query)
             
             # element_type별로 그룹화 (모든 타입 포함)
             self.XPATHS = {}
@@ -175,7 +204,7 @@ class BestBuyScraper:
             if limit:
                 query += f" LIMIT {limit}"
             
-            df = pd.read_sql(query, self.db_engine)
+            df = self.read_sql_with_retry(query)
             logger.info(f"✅ 크롤링 대상 {len(df)}개 조회 완료")
             return df.to_dict('records')
             
@@ -1042,7 +1071,7 @@ class BestBuyScraper:
                 for capacity, stats in capacity_stats.iterrows():
                     logger.info(f"  {capacity}: ${stats['mean']:.2f} ({int(stats['count'])}개)")
 
-def get_db_history(engine, days=7):
+def get_db_history(engine, days=7, query_runner=None):
     """DB에서 최근 기록 조회"""
     try:
         query = f"""
@@ -1057,7 +1086,7 @@ def get_db_history(engine, days=7):
         ORDER BY date DESC
         """
         
-        df = pd.read_sql(query, engine)
+        df = query_runner(query) if query_runner else pd.read_sql(query, engine)
         logger.info(f"\n📅 최근 {days}일 크롤링 기록:")
         if not df.empty:
             print(df.to_string(index=False))
@@ -1084,7 +1113,7 @@ def main():
         return
 
     # 최근 크롤링 기록 확인
-    get_db_history(scraper.db_engine, 7)
+    get_db_history(scraper.db_engine, 7, scraper.read_sql_with_retry)
 
     # resume 지원: 커맨드라인 인자로 시작 번호 지정 (예: python bestbuy_v2.py 51)
     start_from = 0
@@ -1254,7 +1283,7 @@ def main():
             WHERE DATE(kr_crawl_datetime) = CURDATE()
             """
             try:
-                upload_df = pd.read_sql(today_query, scraper.db_engine)
+                upload_df = scraper.read_sql_with_retry(today_query)
                 upload_df = upload_df.drop_duplicates(subset=['producturl'], keep='last')
                 logger.info(f"오늘 전체 레코드: {len(upload_df)}개")
             except Exception as e:
