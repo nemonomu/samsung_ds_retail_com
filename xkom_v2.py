@@ -227,15 +227,23 @@ class XKomScraper:
             first_url = (self.urls_data[0]['url']
                          if getattr(self, 'urls_data', None)
                          else "https://www.x-kom.pl")
-            logger.info(f"X-kom 접속 중: {first_url}")
+            logger.info(f"봇감지 수동 체크 (1차 접속): {first_url}")
             self.driver.get(first_url)
 
-            logger.info("\n📋 다음 단계를 수행해주세요:")
-            logger.info("1. Cloudflare 챌린지가 나타나면 해결하세요")
-            logger.info("2. 쿠키 동의 팝업이 나타나면 수락하세요")
-            logger.info("3. 사이트가 완전히 로드될 때까지 기다리세요")
+            print(f"\n{'='*60}")
+            print("  [1차 접속] 봇감지(Cloudflare) 수동 체크가 필요합니다.")
+            print("  브라우저에서 봇감지를 통과한 후 Enter를 눌러주세요.")
+            print(f"{'='*60}")
+            input("\n  준비 완료 후 Enter를 누르세요... ")
 
-            input("\n✅ 모든 작업이 완료되면 Enter를 누르세요...")
+            logger.info(f"봇감지 수동 체크 (2차 접속): {first_url}")
+            self.driver.get(first_url)
+
+            print(f"\n{'='*60}")
+            print("  [2차 접속] 페이지가 정상 로드되었는지 확인 후 Enter를 눌러주세요.")
+            print("  필요하면 봇감지를 다시 통과하고, 쿠키 팝업이 뜨면 수락해주세요.")
+            print(f"{'='*60}")
+            input("\n  준비 완료 후 Enter를 누르세요... ")
             
             # 현재 상태 확인
             current_url = self.driver.current_url
