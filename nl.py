@@ -816,25 +816,6 @@ class AmazonNLScraper:
             
         return None
 
-    def is_non_retail_offer_seller(self, seller_text):
-        """반품/중고/리퍼 계열 판매자는 신품 retailprice 대상에서 제외"""
-        if not seller_text:
-            return False
-
-        seller_lower = str(seller_text).lower()
-        non_retail_patterns = [
-            'retourdeals',
-            'warehouse',
-            'used',
-            'renewed',
-            'refurb',
-            'open box',
-            'open-box',
-            'tweedehands',
-            'gereviseerd'
-        ]
-        return any(pattern in seller_lower for pattern in non_retail_patterns)
-
     def extract_price_from_price_container(self, price_container):
         """같은 a-price 컨테이너 내부의 가격 조각만 사용"""
         try:
@@ -960,6 +941,58 @@ class AmazonNLScraper:
         logger.error("네덜란드 모든 방법으로 가격 추출 실패 (메인 상품 영역만 검색)")
         return None
     
+    def has_visible_purchase_button(self):
+        """실제로 화면에 보이는 직접 구매 버튼이 있는지 확인"""
+        buy_buttons = [
+            "add-to-cart-button",
+            "buy-now-button",
+            "add-to-cart-button-ubb"
+        ]
+
+        for button_id in buy_buttons:
+            try:
+                buttons = self.driver.find_elements(By.ID, button_id)
+                for button in buttons:
+                    if button.is_displayed() and button.is_enabled():
+                        return True
+            except Exception:
+                continue
+
+        return False
+
+    def has_only_buying_options_offer(self):
+        """직접 구매 버튼 없이 전체 구매 옵션 보기만 노출되는 상태인지 확인"""
+        if self.has_visible_purchase_button():
+            return False
+
+        selectors = [
+            "#buybox-see-all-buying-choices",
+            "#unqualifiedBuyBox",
+            "a[href*='/gp/offer-listing/']"
+        ]
+        buying_options_markers = [
+            "alle koopopties bekijken",
+            "bekijk alle koopopties",
+            "see all buying options",
+            "all buying options"
+        ]
+
+        for selector in selectors:
+            try:
+                elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                for element in elements:
+                    text = (
+                        (element.text or "") or
+                        (element.get_attribute("textContent") or "")
+                    ).strip().lower()
+                    if element.is_displayed() and any(marker in text for marker in buying_options_markers):
+                        logger.info(f"네덜란드 직접 구매 불가 - 구매 옵션만 표시: {text[:80]}")
+                        return True
+            except Exception:
+                continue
+
+        return False
+
     def check_stock_availability(self):
         """네덜란드 재고 상태 확인"""
         try:
@@ -1001,21 +1034,14 @@ class AmazonNLScraper:
             except NoSuchElementException:
                 logger.debug("네덜란드 availability 요소를 찾을 수 없음")
             
-            # 구매 버튼 확인
-            buy_buttons = [
-                "add-to-cart-button",
-                "buy-now-button",
-                "add-to-cart-button-ubb"
-            ]
-            
-            for button_id in buy_buttons:
-                try:
-                    button = self.driver.find_element(By.ID, button_id)
-                    if button and button.is_enabled():
-                        logger.info("네덜란드 구매 버튼 활성화 - 재고 있음")
-                        return True
-                except:
-                    continue
+            # 구매 버튼 확인: 숨겨진 버튼은 재고 있음으로 보지 않음
+            if self.has_visible_purchase_button():
+                logger.info("네덜란드 구매 버튼 표시 및 활성화 - 재고 있음")
+                return True
+
+            if self.has_only_buying_options_offer():
+                logger.info("네덜란드 직접 구매 버튼 없음 - 구매 옵션만 표시")
+                return False
             
             logger.info("네덜란드 재고 상태 불명확 - 기본값: 재고 있음")
             return True
@@ -1180,8 +1206,9 @@ class AmazonNLScraper:
                 except Exception as e:
                     logger.debug(f"통합 라벨 확인 중 오류: {e}")
 
-            if self.is_non_retail_offer_seller(result['sold_by']):
-                logger.warning(f"반품/중고성 판매자 감지 - retailprice를 빈 값으로 설정: {result['sold_by']}")
+            # 직접 구매 가능한 offer가 없으면 가격도 빈 값으로 처리
+            if not has_stock:
+                logger.warning("직접 구매 가능한 offer 없음 - 가격을 빈 값으로 설정")
                 result['retailprice'] = None
             # Ships From과 Sold By가 모두 없으면 가격도 빈 값으로 처리
             elif not result['ships_from'] and not result['sold_by']:
