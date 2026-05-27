@@ -13,10 +13,10 @@ SEOUL_TZ = pytz.timezone('Asia/Seoul')
 
 
 COMMON_PRICE_SELECTORS = [
-    "(//*[@id='centerCol']//*[@id='corePriceDisplay_desktop_feature_div']//span[contains(@class,'a-price') and not(contains(@class,'a-text-price'))][1])[1]",
-    "(//*[@id='centerCol']//*[@id='corePrice_feature_div']//span[contains(@class,'a-price') and not(contains(@class,'a-text-price'))][1])[1]",
-    "(//*[@id='centerCol']//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-offscreen' and normalize-space(.)!=''][1])[1]",
-    "(//*[@id='centerCol']//*[@id='corePrice_feature_div']//span[@class='a-offscreen' and normalize-space(.)!=''][1])[1]",
+    "//*[@id='centerCol']//*[@id='corePriceDisplay_desktop_feature_div']//span[contains(@class,'a-price') and not(contains(@class,'a-text-price'))]",
+    "//*[@id='centerCol']//*[@id='corePrice_feature_div']//span[contains(@class,'a-price') and not(contains(@class,'a-text-price'))]",
+    "//*[@id='centerCol']//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-offscreen' and normalize-space(.)!='']",
+    "//*[@id='centerCol']//*[@id='corePrice_feature_div']//span[@class='a-offscreen' and normalize-space(.)!='']",
 ]
 
 
@@ -33,16 +33,16 @@ COUNTRY_CONFIGS = {
         ],
         'selectors': {
             'ships_from': [
-                "(//div[@id='fulfillerInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!=''])[1]",
-                "(//div[@id='usedOnlyLayoutFulfillerInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!=''])[1]",
-                "(//div[@id='merchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][contains(normalize-space(.),'Shipper') and contains(normalize-space(.),'Seller')]]//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
-                "(//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][contains(normalize-space(.),'Shipper') and contains(normalize-space(.),'Seller')]]//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
+                "//div[@id='fulfillerInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!='']",
+                "//div[@id='usedOnlyLayoutFulfillerInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!='']",
+                "//div[@id='merchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][contains(normalize-space(.),'Shipper') and contains(normalize-space(.),'Seller')]]//a[@id='sellerProfileTriggerId' and normalize-space(.)!='']",
+                "//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][contains(normalize-space(.),'Shipper') and contains(normalize-space(.),'Seller')]]//a[@id='sellerProfileTriggerId' and normalize-space(.)!='']",
             ],
             'sold_by': [
-                "(//div[@id='merchantInfoFeature_feature_div']//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
-                "(//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div']//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
-                "(//div[@id='merchantInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!=''])[1]",
-                "(//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!=''])[1]",
+                "//div[@id='merchantInfoFeature_feature_div']//a[@id='sellerProfileTriggerId' and normalize-space(.)!='']",
+                "//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div']//a[@id='sellerProfileTriggerId' and normalize-space(.)!='']",
+                "//div[@id='merchantInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!='']",
+                "//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!='']",
             ],
             'price': COMMON_PRICE_SELECTORS,
         },
@@ -60,16 +60,16 @@ COUNTRY_CONFIGS = {
         ],
         'selectors': {
             'ships_from': [
-                "(//div[@id='fulfillerInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!=''])[1]",
-                "(//div[@id='usedOnlyLayoutFulfillerInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!=''])[1]",
-                "(//div[@id='merchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][(contains(normalize-space(.),'Sped') or contains(normalize-space(.),'Mittente') or contains(normalize-space(.),'Shipper')) and (contains(normalize-space(.),'Vend') or contains(normalize-space(.),'Seller'))]]//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
-                "(//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][(contains(normalize-space(.),'Sped') or contains(normalize-space(.),'Mittente') or contains(normalize-space(.),'Shipper')) and (contains(normalize-space(.),'Vend') or contains(normalize-space(.),'Seller'))]]//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
+                "//div[@id='fulfillerInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!='']",
+                "//div[@id='usedOnlyLayoutFulfillerInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!='']",
+                "//div[@id='merchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][(contains(normalize-space(.),'Sped') or contains(normalize-space(.),'Mittente') or contains(normalize-space(.),'Shipper')) and (contains(normalize-space(.),'Vend') or contains(normalize-space(.),'Seller'))]]//a[@id='sellerProfileTriggerId' and normalize-space(.)!='']",
+                "//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][(contains(normalize-space(.),'Sped') or contains(normalize-space(.),'Mittente') or contains(normalize-space(.),'Shipper')) and (contains(normalize-space(.),'Vend') or contains(normalize-space(.),'Seller'))]]//a[@id='sellerProfileTriggerId' and normalize-space(.)!='']",
             ],
             'sold_by': [
-                "(//div[@id='merchantInfoFeature_feature_div']//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
-                "(//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div']//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
-                "(//div[@id='merchantInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!=''])[1]",
-                "(//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!=''])[1]",
+                "//div[@id='merchantInfoFeature_feature_div']//a[@id='sellerProfileTriggerId' and normalize-space(.)!='']",
+                "//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div']//a[@id='sellerProfileTriggerId' and normalize-space(.)!='']",
+                "//div[@id='merchantInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!='']",
+                "//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!='']",
             ],
             'price': COMMON_PRICE_SELECTORS,
         },
@@ -87,16 +87,16 @@ COUNTRY_CONFIGS = {
         ],
         'selectors': {
             'ships_from': [
-                "(//div[@id='fulfillerInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!=''])[1]",
-                "(//div[@id='usedOnlyLayoutFulfillerInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!=''])[1]",
-                "(//div[@id='merchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][(contains(normalize-space(.),'Remitente') or contains(normalize-space(.),'Enviado') or contains(normalize-space(.),'Shipper')) and (contains(normalize-space(.),'Vendedor') or contains(normalize-space(.),'Vendido') or contains(normalize-space(.),'Seller'))]]//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
-                "(//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][(contains(normalize-space(.),'Remitente') or contains(normalize-space(.),'Enviado') or contains(normalize-space(.),'Shipper')) and (contains(normalize-space(.),'Vendedor') or contains(normalize-space(.),'Vendido') or contains(normalize-space(.),'Seller'))]]//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
+                "//div[@id='fulfillerInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!='']",
+                "//div[@id='usedOnlyLayoutFulfillerInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!='']",
+                "//div[@id='merchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][(contains(normalize-space(.),'Remitente') or contains(normalize-space(.),'Enviado') or contains(normalize-space(.),'Shipper')) and (contains(normalize-space(.),'Vendedor') or contains(normalize-space(.),'Vendido') or contains(normalize-space(.),'Seller'))]]//a[@id='sellerProfileTriggerId' and normalize-space(.)!='']",
+                "//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][(contains(normalize-space(.),'Remitente') or contains(normalize-space(.),'Enviado') or contains(normalize-space(.),'Shipper')) and (contains(normalize-space(.),'Vendedor') or contains(normalize-space(.),'Vendido') or contains(normalize-space(.),'Seller'))]]//a[@id='sellerProfileTriggerId' and normalize-space(.)!='']",
             ],
             'sold_by': [
-                "(//div[@id='merchantInfoFeature_feature_div']//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
-                "(//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div']//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
-                "(//div[@id='merchantInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!=''])[1]",
-                "(//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!=''])[1]",
+                "//div[@id='merchantInfoFeature_feature_div']//a[@id='sellerProfileTriggerId' and normalize-space(.)!='']",
+                "//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div']//a[@id='sellerProfileTriggerId' and normalize-space(.)!='']",
+                "//div[@id='merchantInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!='']",
+                "//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!='']",
             ],
             'price': COMMON_PRICE_SELECTORS,
         },
@@ -114,16 +114,98 @@ COUNTRY_CONFIGS = {
         ],
         'selectors': {
             'ships_from': [
-                "(//div[@id='fulfillerInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!=''])[1]",
-                "(//div[@id='usedOnlyLayoutFulfillerInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!=''])[1]",
-                "(//div[@id='merchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][(contains(normalize-space(.),'出荷元') or contains(normalize-space(.),'発送元') or contains(normalize-space(.),'Shipper')) and (contains(normalize-space(.),'販売元') or contains(normalize-space(.),'Seller'))]]//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
-                "(//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][(contains(normalize-space(.),'出荷元') or contains(normalize-space(.),'発送元') or contains(normalize-space(.),'Shipper')) and (contains(normalize-space(.),'販売元') or contains(normalize-space(.),'Seller'))]]//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
+                "//div[@id='fulfillerInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!='']",
+                "//div[@id='usedOnlyLayoutFulfillerInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!='']",
+                "//div[@id='merchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][(contains(normalize-space(.),'出荷元') or contains(normalize-space(.),'発送元') or contains(normalize-space(.),'Shipper')) and (contains(normalize-space(.),'販売元') or contains(normalize-space(.),'Seller'))]]//a[@id='sellerProfileTriggerId' and normalize-space(.)!='']",
+                "//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][(contains(normalize-space(.),'出荷元') or contains(normalize-space(.),'発送元') or contains(normalize-space(.),'Shipper')) and (contains(normalize-space(.),'販売元') or contains(normalize-space(.),'Seller'))]]//a[@id='sellerProfileTriggerId' and normalize-space(.)!='']",
             ],
             'sold_by': [
-                "(//div[@id='merchantInfoFeature_feature_div']//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
-                "(//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div']//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
-                "(//div[@id='merchantInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!=''])[1]",
-                "(//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!=''])[1]",
+                "//div[@id='merchantInfoFeature_feature_div']//a[@id='sellerProfileTriggerId' and normalize-space(.)!='']",
+                "//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div']//a[@id='sellerProfileTriggerId' and normalize-space(.)!='']",
+                "//div[@id='merchantInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!='']",
+                "//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!='']",
+            ],
+            'price': COMMON_PRICE_SELECTORS,
+        },
+    },
+    'usa': {
+        'module': 'usa_v2',
+        'class': 'AmazonScraper',
+        'display': 'USA',
+        'selector_mode': 'nested',
+        'target_method': 'get_crawl_targets',
+        'log_name': 'usa_amazon_v3',
+        'init_country_code': True,
+        'test_urls': [
+            'https://www.amazon.com/dp/B0CTRVZKG7?th=1',
+            'https://www.amazon.com/dp/B0CX5C3LBQ?th=1',
+        ],
+        'selectors': {
+            'ships_from': [
+                "//div[@id='fulfillerInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!='']",
+                "//div[@id='usedOnlyLayoutFulfillerInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!='']",
+                "//div[@id='merchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][contains(normalize-space(.),'Shipper') and contains(normalize-space(.),'Seller')]]//a[@id='sellerProfileTriggerId' and normalize-space(.)!='']",
+                "//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][contains(normalize-space(.),'Shipper') and contains(normalize-space(.),'Seller')]]//a[@id='sellerProfileTriggerId' and normalize-space(.)!='']",
+            ],
+            'sold_by': [
+                "//div[@id='merchantInfoFeature_feature_div']//a[@id='sellerProfileTriggerId' and normalize-space(.)!='']",
+                "//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div']//a[@id='sellerProfileTriggerId' and normalize-space(.)!='']",
+                "//div[@id='merchantInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!='']",
+                "//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!='']",
+            ],
+            'price': COMMON_PRICE_SELECTORS,
+        },
+    },
+    'fr': {
+        'module': 'fr_v2',
+        'class': 'AmazonFRScraper',
+        'display': 'FR',
+        'selector_mode': 'flat',
+        'target_method': 'get_crawl_targets',
+        'log_name': 'fr_amazon_v3',
+        'test_urls': [
+            'https://www.amazon.fr/dp/B0CTRVZKG7?th=1',
+            'https://www.amazon.fr/dp/B0CX5C3LBQ?th=1',
+        ],
+        'selectors': {
+            'ships_from': [
+                "//div[@id='fulfillerInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!='']",
+                "//div[@id='usedOnlyLayoutFulfillerInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!='']",
+                "//div[@id='merchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][(contains(normalize-space(.),'Exp') or contains(normalize-space(.),'Shipper')) and (contains(normalize-space(.),'Vend') or contains(normalize-space(.),'Seller'))]]//a[@id='sellerProfileTriggerId' and normalize-space(.)!='']",
+                "//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][(contains(normalize-space(.),'Exp') or contains(normalize-space(.),'Shipper')) and (contains(normalize-space(.),'Vend') or contains(normalize-space(.),'Seller'))]]//a[@id='sellerProfileTriggerId' and normalize-space(.)!='']",
+            ],
+            'sold_by': [
+                "//div[@id='merchantInfoFeature_feature_div']//a[@id='sellerProfileTriggerId' and normalize-space(.)!='']",
+                "//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div']//a[@id='sellerProfileTriggerId' and normalize-space(.)!='']",
+                "//div[@id='merchantInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!='']",
+                "//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!='']",
+            ],
+            'price': COMMON_PRICE_SELECTORS,
+        },
+    },
+    'in': {
+        'module': 'in_v2',
+        'class': 'AmazonIndiaScraper',
+        'display': 'IN',
+        'selector_mode': 'nested',
+        'target_method': 'get_crawl_targets',
+        'log_name': 'in_amazon_v3',
+        'test_urls': [
+            'https://www.amazon.in/dp/B0CTRVZKG7?th=1',
+            'https://www.amazon.in/dp/B0CX5C3LBQ?th=1',
+        ],
+        'selectors': {
+            'ships_from': [
+                "//div[@id='fulfillerInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!='']",
+                "//div[@id='usedOnlyLayoutFulfillerInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!='']",
+                "//div[@id='merchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][contains(normalize-space(.),'Shipper') and contains(normalize-space(.),'Seller')]]//a[@id='sellerProfileTriggerId' and normalize-space(.)!='']",
+                "//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][contains(normalize-space(.),'Shipper') and contains(normalize-space(.),'Seller')]]//a[@id='sellerProfileTriggerId' and normalize-space(.)!='']",
+            ],
+            'sold_by': [
+                "//div[@id='merchantInfoFeature_feature_div']//a[@id='sellerProfileTriggerId' and normalize-space(.)!='']",
+                "//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div']//a[@id='sellerProfileTriggerId' and normalize-space(.)!='']",
+                "//div[@id='merchantInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!='']",
+                "//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!='']",
             ],
             'price': COMMON_PRICE_SELECTORS,
         },
@@ -354,7 +436,7 @@ def run_country_v3(country_code):
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
-        print('Usage: python amazon_v3_test_runner.py <gb|it|es|jp>')
+        print('Usage: python amazon_v3_test_runner.py <gb|it|es|jp|usa|fr|in>')
         sys.exit(1)
 
     run_country_v3(sys.argv[1])
