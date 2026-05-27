@@ -1512,11 +1512,14 @@ class AmazonDEV3Scraper(AmazonDEScraper):
         """Prepend verified v3 selectors while keeping DB-loaded selectors available."""
         overrides = {
             'ships_from': [
-                "(//div[@id='merchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][contains(normalize-space(.),'Versender') and contains(normalize-space(.),'Verk')]]//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
+                "(//div[@id='fulfillerInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!=''])[1]",
                 "(//div[@id='usedOnlyLayoutFulfillerInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!=''])[1]",
-                "(//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][contains(normalize-space(.),'Versender') and contains(normalize-space(.),'Verk')]]//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
+                "(//div[@id='merchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][(contains(normalize-space(.),'Versender') and contains(normalize-space(.),'Verk')) or (contains(normalize-space(.),'Shipper') and contains(normalize-space(.),'Seller'))]]//div[contains(@class,'offer-display-feature-text')]//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
+                "(//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][(contains(normalize-space(.),'Versender') and contains(normalize-space(.),'Verk')) or (contains(normalize-space(.),'Shipper') and contains(normalize-space(.),'Seller'))]]//div[contains(@class,'offer-display-feature-text')]//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
+                "(//div[@id='shipFromSoldByAbbreviated_feature_div']//span[contains(normalize-space(.),'Versand durch')]/following-sibling::span[normalize-space(.)!=''][1])[1]",
             ],
             'sold_by': [
+                "(//div[@id='used_buybox_desktop']//div[contains(@class,'a-row')][contains(normalize-space(.),'Verkauft von')]//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
                 "(//div[@id='merchantInfoFeature_feature_div']//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
                 "(//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div']//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
             ],
@@ -1528,7 +1531,10 @@ class AmazonDEV3Scraper(AmazonDEScraper):
 
         for element_type, candidates in overrides.items():
             existing = self.selectors.setdefault(element_type, [])
-            self.selectors[element_type] = candidates + [s for s in existing if s not in candidates]
+            if element_type == 'ships_from':
+                self.selectors[element_type] = candidates
+            else:
+                self.selectors[element_type] = candidates + [s for s in existing if s not in candidates]
 
         logger.info(
             "DE V3 runtime selector overrides applied: "
@@ -1638,58 +1644,56 @@ class AmazonDEV3Scraper(AmazonDEScraper):
         except Exception as e:
             logger.debug(f"DE V3 debug HTML save failed: {e}")
 
-    def _collect_offer_source_text(self):
-        """Collect text from source/seller offer sections for ambiguity checks."""
-        section_ids = [
-            'merchantInfoFeature_feature_div',
-            'fulfillerInfoFeature_feature_div',
-            'usedOnlyLayoutMerchantInfoFeature_feature_div',
-            'usedOnlyLayoutFulfillerInfoFeature_feature_div',
-            'shipsFromSoldBy_feature_div',
-            'shipFromSoldByAbbreviated_feature_div',
-            'shipsFromSoldByAbbreviatedPSUFeature_feature_div',
-            'sfsbFallbackExpanded_feature_div',
-        ]
+    def _get_offer_section_text(self, section_id):
         texts = []
+        try:
+            elements = self.driver.find_elements(By.ID, section_id)
+            for element in elements:
+                text = (element.text or element.get_attribute('textContent') or '').strip()
+                if text:
+                    texts.append(text)
+        except Exception:
+            pass
+        return ' '.join(texts).casefold()
 
-        for section_id in section_ids:
-            try:
-                elements = self.driver.find_elements(By.ID, section_id)
-                for element in elements:
-                    text = (element.text or element.get_attribute('textContent') or '').strip()
-                    if text:
-                        texts.append(text)
-            except Exception:
-                continue
-
-        return ' '.join(texts).lower()
-
-    def _has_explicit_ship_from_source(self):
-        """Return True only when the offer section explicitly exposes a shipper/source label."""
-        text = self._collect_offer_source_text()
-        if not text:
-            return False
-
-        source_markers = [
+    def _has_explicit_ship_from_source(self, ships_from):
+        """Return True only when the offer area exposes a real shipper/source field."""
+        ships_from_cf = (ships_from or '').strip().casefold()
+        combined_label_markers = [
             'versender / verk\u00e4ufer',
             'versender/verk\u00e4ufer',
             'versender / verkaufer',
             'versender/verkaufer',
             'shipper / seller',
             'shipper/seller',
-            'versender',
-            'versand durch',
-            'versendet durch',
-            'versendet von',
-            'versandt durch',
-            'versandt von',
-            'verkauf und versand durch',
-            'ships from',
-            'shipped from',
-            'shipper',
         ]
 
-        return any(marker in text for marker in source_markers)
+        combined_section_ids = [
+            'merchantInfoFeature_feature_div',
+            'usedOnlyLayoutMerchantInfoFeature_feature_div',
+            'shipsFromSoldBy_feature_div',
+            'shipFromSoldByAbbreviated_feature_div',
+            'shipsFromSoldByAbbreviatedPSUFeature_feature_div',
+            'sfsbFallbackExpanded_feature_div',
+        ]
+        for section_id in combined_section_ids:
+            text = self._get_offer_section_text(section_id)
+            if text and any(marker in text for marker in combined_label_markers):
+                return True
+
+        if not ships_from_cf:
+            return False
+
+        fulfiller_section_ids = [
+            'fulfillerInfoFeature_feature_div',
+            'usedOnlyLayoutFulfillerInfoFeature_feature_div',
+        ]
+        for section_id in fulfiller_section_ids:
+            text = self._get_offer_section_text(section_id)
+            if text and ships_from_cf in text:
+                return True
+
+        return False
 
     def _clear_seller_only_ship_from(self, result):
         ships_from = (result.get('ships_from') or '').strip()
@@ -1701,7 +1705,7 @@ class AmazonDEV3Scraper(AmazonDEScraper):
         if ships_from.lower() != sold_by.lower():
             return
 
-        if self._has_explicit_ship_from_source():
+        if self._has_explicit_ship_from_source(ships_from):
             return
 
         logger.info(

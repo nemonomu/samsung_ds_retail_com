@@ -25,54 +25,26 @@ OFFER_SOURCE_SECTION_IDS = [
 ]
 
 
-COMMON_SHIP_SOURCE_MARKERS = [
+COMMON_COMBINED_LABEL_MARKERS = [
     'shipper / seller',
     'shipper/seller',
-    'ships from',
-    'shipped from',
-    'dispatches from',
-    'dispatched from',
-    'fulfilled by',
 ]
 
 
-COUNTRY_SHIP_SOURCE_MARKERS = {
-    'gb': [
-        'dispatches from',
-        'dispatched from',
-    ],
-    'usa': [
-        'ships from',
-        'shipped from',
-    ],
-    'it': [
-        'spedito da',
-        'venduto e spedito da',
-        'mittente',
-    ],
-    'es': [
-        'enviado por',
-        'enviado desde',
-        'remitente',
-    ],
-    'fr': [
-        'exp\u00e9di\u00e9 par',
-        'expedie par',
-        'exp\u00e9diteur',
-        'expediteur',
-        'vendu et exp\u00e9di\u00e9 par',
-        'vendu et expedie par',
-    ],
-    'in': [
-        'ships from',
-        'dispatched from',
-        'fulfilled by',
-    ],
-    'jp': [
-        '\u51fa\u8377\u5143',
-        '\u767a\u9001\u5143',
-    ],
-}
+MERCHANT_COMBINED_SECTION_IDS = [
+    'merchantInfoFeature_feature_div',
+    'usedOnlyLayoutMerchantInfoFeature_feature_div',
+    'shipsFromSoldBy_feature_div',
+    'shipFromSoldByAbbreviated_feature_div',
+    'shipsFromSoldByAbbreviatedPSUFeature_feature_div',
+    'sfsbFallbackExpanded_feature_div',
+]
+
+
+FULFILLER_SECTION_IDS = [
+    'fulfillerInfoFeature_feature_div',
+    'usedOnlyLayoutFulfillerInfoFeature_feature_div',
+]
 
 
 COMMON_PRICE_SELECTORS = [
@@ -325,7 +297,10 @@ def apply_selector_overrides(scraper, cfg, country_code):
     bucket = selector_bucket(scraper, cfg, country_code)
     for element_type, candidates in cfg['selectors'].items():
         existing = bucket.setdefault(element_type, [])
-        bucket[element_type] = candidates + [s for s in existing if s not in candidates]
+        if element_type == 'ships_from':
+            bucket[element_type] = candidates
+        else:
+            bucket[element_type] = candidates + [s for s in existing if s not in candidates]
 
 
 def make_test_data(country_code, cfg):
@@ -369,13 +344,14 @@ def save_debug_html(scraper, output_dir, country_code, url, row_data, reason):
         f.write(page_source)
 
 
-def collect_offer_source_text(scraper):
-    texts = []
+def get_offer_section_texts(scraper):
+    section_texts = {}
     driver = getattr(scraper, 'driver', None)
     if driver is None:
-        return ''
+        return section_texts
 
     for section_id in OFFER_SOURCE_SECTION_IDS:
+        texts = []
         try:
             elements = driver.find_elements(By.ID, section_id)
             for element in elements:
@@ -383,18 +359,50 @@ def collect_offer_source_text(scraper):
                 if text:
                     texts.append(text)
         except Exception:
-            continue
+            pass
+        section_texts[section_id] = ' '.join(texts).casefold()
 
-    return ' '.join(texts).casefold()
+    return section_texts
 
 
-def has_explicit_ship_from_source(scraper, country_code):
-    text = collect_offer_source_text(scraper)
+def has_combined_shipper_seller_label(text, country_code):
     if not text:
         return False
 
-    markers = COMMON_SHIP_SOURCE_MARKERS + COUNTRY_SHIP_SOURCE_MARKERS.get(country_code, [])
-    return any(marker.casefold() in text for marker in markers)
+    if any(marker in text for marker in COMMON_COMBINED_LABEL_MARKERS):
+        return True
+
+    if country_code == 'it':
+        return ('sped' in text or 'mittente' in text) and ('vend' in text or 'seller' in text)
+    if country_code == 'es':
+        return ('remitente' in text or 'enviado' in text or 'shipper' in text) and (
+            'vendedor' in text or 'vendido' in text or 'seller' in text
+        )
+    if country_code == 'fr':
+        return ('exp' in text or 'shipper' in text) and ('vend' in text or 'seller' in text)
+    if country_code == 'jp':
+        return (('\u51fa\u8377\u5143' in text or '\u767a\u9001\u5143' in text) and '\u8ca9\u58f2\u5143' in text)
+
+    return False
+
+
+def has_explicit_ship_from_source(scraper, country_code, ships_from=None):
+    section_texts = get_offer_section_texts(scraper)
+    ships_from_cf = (ships_from or '').strip().casefold()
+
+    for section_id in MERCHANT_COMBINED_SECTION_IDS:
+        if has_combined_shipper_seller_label(section_texts.get(section_id, ''), country_code):
+            return True
+
+    if not ships_from_cf:
+        return False
+
+    for section_id in FULFILLER_SECTION_IDS:
+        text = section_texts.get(section_id, '')
+        if text and ships_from_cf in text:
+            return True
+
+    return False
 
 
 def clear_seller_only_ship_from(scraper, result, country_code, module):
@@ -407,7 +415,7 @@ def clear_seller_only_ship_from(scraper, result, country_code, module):
     if ships_from.casefold() != sold_by.casefold():
         return
 
-    if has_explicit_ship_from_source(scraper, country_code):
+    if has_explicit_ship_from_source(scraper, country_code, ships_from):
         return
 
     result['ships_from'] = None
