@@ -1646,9 +1646,13 @@ class AmazonDEV3Scraper(AmazonDEScraper):
 
     def disable_result_db_writes(self):
         """Keep selector reads available, then prevent scrape_urls interim/remainder DB writes."""
-        if os.getenv('DE_V3_ALLOW_DB_WRITE', 'false').lower() != 'true':
-            self.db_engine = None
-            logger.info("DE V3 result DB writes disabled")
+        self.db_engine = None
+        logger.info("DE V3 result DB writes disabled")
+
+    def save_to_db(self, df):
+        """Never write crawl results to DB from v3."""
+        logger.info("DE V3 save_to_db skipped")
+        return False
 
 
 def create_de_v3_output_dir():
@@ -1712,69 +1716,72 @@ def copy_de_v3_latest_log(output_dir):
 def main_v3():
     from log_utils import setup_log, save_log
     setup_log('de_amazon_v3')
+    output_dir = None
 
-    test_mode = os.getenv('TEST_MODE', 'false').lower() == 'true'
-    max_items = int(os.getenv('MAX_ITEMS', '0')) or None
+    try:
+        test_mode = os.getenv('TEST_MODE', 'false').lower() == 'true'
+        max_items = int(os.getenv('MAX_ITEMS', '0')) or None
 
-    print("=" * 60)
-    print("Amazon DE scraper v3.0 - runtime selector verification")
-    print("=" * 60)
-    print("DB selector read: ON")
-    print("DB target read: ON")
-    print("DB result write: OFF")
-    print("File/S3 upload: OFF")
-    if max_items:
-        print(f"Max items: {max_items}")
-    print("=" * 60)
+        print("=" * 60)
+        print("Amazon DE scraper v3.0 - runtime selector verification")
+        print("=" * 60)
+        print("DB selector read: ON")
+        print("DB target read: ON")
+        print("DB result write: OFF")
+        print("File/S3 upload: OFF")
+        if max_items:
+            print(f"Max items: {max_items}")
+        print("=" * 60)
 
-    disable_de_v3_external_uploads()
-    output_dir = create_de_v3_output_dir()
-    scraper = AmazonDEV3Scraper(output_dir=output_dir)
+        disable_de_v3_external_uploads()
+        output_dir = create_de_v3_output_dir()
+        scraper = AmazonDEV3Scraper(output_dir=output_dir)
 
-    if test_mode:
-        test_urls = [
-            'https://www.amazon.de/dp/B0CTRVZKG7?th=1',
-            'https://www.amazon.de/dp/B0CX5C3LBQ?th=1',
-        ]
-        urls_data = [
-            {
-                'url': url,
-                'brand': '',
-                'item': f'DE V3 Test {i + 1}',
-                'retailerid': f'DE_V3_{i + 1:03d}',
-                'retailersku': f'DE_V3_{i + 1:03d}',
-                'channel': 'Online',
-                'seg_lv1': '',
-                'seg_lv2': '',
-                'seg_lv3': '',
-                'capacity': '',
-                'form_factor': '',
-                'vat': 'o',
-            }
-            for i, url in enumerate(test_urls)
-        ]
-    else:
-        urls_data = scraper.get_crawl_targets(limit=max_items)
+        if test_mode:
+            test_urls = [
+                'https://www.amazon.de/dp/B0CTRVZKG7?th=1',
+                'https://www.amazon.de/dp/B0CX5C3LBQ?th=1',
+            ]
+            urls_data = [
+                {
+                    'url': url,
+                    'brand': '',
+                    'item': f'DE V3 Test {i + 1}',
+                    'retailerid': f'DE_V3_{i + 1:03d}',
+                    'retailersku': f'DE_V3_{i + 1:03d}',
+                    'channel': 'Online',
+                    'seg_lv1': '',
+                    'seg_lv2': '',
+                    'seg_lv3': '',
+                    'capacity': '',
+                    'form_factor': '',
+                    'vat': 'o',
+                }
+                for i, url in enumerate(test_urls)
+            ]
+        else:
+            urls_data = scraper.get_crawl_targets(limit=max_items)
 
-    if not urls_data:
-        logger.warning("DE V3 has no crawl targets")
-        return
+        if not urls_data:
+            logger.warning("DE V3 has no crawl targets")
+            return
 
-    scraper.disable_result_db_writes()
-    results_df, blocked_failures = scraper.scrape_urls(urls_data, max_items)
+        scraper.disable_result_db_writes()
+        results_df, blocked_failures = scraper.scrape_urls(urls_data, max_items)
 
-    if results_df is None or results_df.empty:
-        logger.error("DE V3 produced no results")
-        return
+        if results_df is None or results_df.empty:
+            logger.error("DE V3 produced no results")
+            return
 
-    scraper.analyze_results(results_df)
-    save_de_v3_local_results(results_df, output_dir)
+        scraper.analyze_results(results_df)
+        save_de_v3_local_results(results_df, output_dir)
 
-    if blocked_failures:
-        logger.warning(f"DE V3 blocked/final failures: {len(blocked_failures)}")
-
-    save_log('de_amazon_v3')
-    copy_de_v3_latest_log(output_dir)
+        if blocked_failures:
+            logger.warning(f"DE V3 blocked/final failures: {len(blocked_failures)}")
+    finally:
+        save_log('de_amazon_v3')
+        if output_dir:
+            copy_de_v3_latest_log(output_dir)
 
 if __name__ == "__main__":
     print("필요 패키지:")
