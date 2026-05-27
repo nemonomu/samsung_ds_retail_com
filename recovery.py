@@ -89,8 +89,8 @@ TARGET_CONFIG = {
         'country_code': 'de',
         'file_prefix': 'de_amazon',
         'local_tz': 'Europe/Berlin',
-        'scraper_module': 'de_v2',
-        'scraper_class': 'AmazonDEScraper',
+        'scraper_module': 'de_v3',
+        'scraper_class': 'AmazonDEV3Scraper',
         'tracking_country': 'de',
         'tracking_mall_name': 'amazon',
         'alert_code': 'de'

@@ -959,8 +959,10 @@ class AmazonDEScraper:
                 "//*[@id='merchantInfoFeature_feature_div']//span[contains(@class, 'a-color-tertiary')]"
             ]
             combined_patterns = [
-                'versender / verkäufer',
-                'versender/verkäufer',
+                'versender / verk\u00e4ufer',
+                'versender/verk\u00e4ufer',
+                'versender / verkaufer',
+                'versender/verkaufer',
                 'shipper / seller',
                 'shipper/seller'
             ]
@@ -1499,7 +1501,7 @@ def main():
 
 
 class AmazonDEV3Scraper(AmazonDEScraper):
-    """DE test scraper with runtime-only selector candidates and no result DB writes."""
+    """DE production scraper with v3 runtime selector candidates."""
 
     def __init__(self, output_dir=None):
         self.de_v3_output_dir = output_dir
@@ -1507,7 +1509,7 @@ class AmazonDEV3Scraper(AmazonDEScraper):
         self.apply_de_v3_selector_overrides()
 
     def apply_de_v3_selector_overrides(self):
-        """Prepend candidate selectors for verification without persisting them to DB."""
+        """Prepend verified v3 selectors while keeping DB-loaded selectors available."""
         overrides = {
             'ships_from': [
                 "(//div[@id='merchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][contains(normalize-space(.),'Versender') and contains(normalize-space(.),'Verk')]]//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
@@ -1534,7 +1536,7 @@ class AmazonDEV3Scraper(AmazonDEScraper):
         )
 
     def handle_captcha_or_block_page(self, original_url=None):
-        """Handle Amazon DE continue page more broadly for v3 verification."""
+        """Handle Amazon DE continue page more broadly for v3."""
         try:
             page_source = (self.driver.page_source or "").lower()
             continue_patterns = [
@@ -1636,23 +1638,87 @@ class AmazonDEV3Scraper(AmazonDEScraper):
         except Exception as e:
             logger.debug(f"DE V3 debug HTML save failed: {e}")
 
+    def _collect_offer_source_text(self):
+        """Collect text from source/seller offer sections for ambiguity checks."""
+        section_ids = [
+            'merchantInfoFeature_feature_div',
+            'fulfillerInfoFeature_feature_div',
+            'usedOnlyLayoutMerchantInfoFeature_feature_div',
+            'usedOnlyLayoutFulfillerInfoFeature_feature_div',
+            'shipsFromSoldBy_feature_div',
+            'shipFromSoldByAbbreviated_feature_div',
+            'shipsFromSoldByAbbreviatedPSUFeature_feature_div',
+            'sfsbFallbackExpanded_feature_div',
+        ]
+        texts = []
+
+        for section_id in section_ids:
+            try:
+                elements = self.driver.find_elements(By.ID, section_id)
+                for element in elements:
+                    text = (element.text or element.get_attribute('textContent') or '').strip()
+                    if text:
+                        texts.append(text)
+            except Exception:
+                continue
+
+        return ' '.join(texts).lower()
+
+    def _has_explicit_ship_from_source(self):
+        """Return True only when the offer section explicitly exposes a shipper/source label."""
+        text = self._collect_offer_source_text()
+        if not text:
+            return False
+
+        source_markers = [
+            'versender / verk\u00e4ufer',
+            'versender/verk\u00e4ufer',
+            'versender / verkaufer',
+            'versender/verkaufer',
+            'shipper / seller',
+            'shipper/seller',
+            'versender',
+            'versand durch',
+            'versendet durch',
+            'versendet von',
+            'versandt durch',
+            'versandt von',
+            'verkauf und versand durch',
+            'ships from',
+            'shipped from',
+            'shipper',
+        ]
+
+        return any(marker in text for marker in source_markers)
+
+    def _clear_seller_only_ship_from(self, result):
+        ships_from = (result.get('ships_from') or '').strip()
+        sold_by = (result.get('sold_by') or '').strip()
+
+        if not ships_from or not sold_by:
+            return
+
+        if ships_from.lower() != sold_by.lower():
+            return
+
+        if self._has_explicit_ship_from_source():
+            return
+
+        logger.info(
+            "DE V3 ships_from cleared because page exposes seller only: "
+            f"ships_from={ships_from}, sold_by={sold_by}"
+        )
+        result['ships_from'] = None
+
     def extract_product_info(self, url, row_data, retry_count=0, max_retries=2):
         result = super().extract_product_info(url, row_data, retry_count, max_retries)
+        self._clear_seller_only_ship_from(result)
 
-        if not result.get('title') or (not result.get('ships_from') and not result.get('sold_by')):
+        save_debug = os.getenv('DE_V3_SAVE_DEBUG_HTML', 'false').lower() == 'true'
+        if save_debug and (not result.get('title') or (not result.get('ships_from') and not result.get('sold_by'))):
             self.save_debug_html(url, row_data, 'null_fields')
 
         return result
-
-    def disable_result_db_writes(self):
-        """Keep selector reads available, then prevent scrape_urls interim/remainder DB writes."""
-        self.db_engine = None
-        logger.info("DE V3 result DB writes disabled")
-
-    def save_to_db(self, df):
-        """Never write crawl results to DB from v3."""
-        logger.info("DE V3 save_to_db skipped")
-        return False
 
 
 def create_de_v3_output_dir():
@@ -1674,67 +1740,28 @@ def create_de_v3_output_dir():
     return output_dir
 
 
-def save_de_v3_local_results(df, output_dir):
-    os.makedirs(output_dir, exist_ok=True)
-    timestamp = datetime.now(pytz.timezone('Asia/Seoul')).strftime('%Y%m%d%H%M%S')
-    output_path = os.path.join(output_dir, f'de_v3_results_{timestamp}.csv')
-    df.to_csv(output_path, index=False, encoding='utf-8-sig', lineterminator='\r\n')
-    logger.info(f"DE V3 local result CSV saved: {output_path}")
-    print(f"DE_V3_RESULT_CSV={output_path}")
-    return output_path
-
-
-def disable_de_v3_external_uploads():
-    """Disable null screenshot/S3 uploads in v3 unless explicitly enabled."""
-    global capture_and_upload
-
-    if os.getenv('DE_V3_ALLOW_UPLOAD', 'false').lower() == 'true':
-        return
-
-    def noop_capture_and_upload(*args, **kwargs):
-        logger.info("DE V3 external upload skipped")
-        return None
-
-    capture_and_upload = noop_capture_and_upload
-    logger.info("DE V3 external uploads disabled")
-
-
-def copy_de_v3_latest_log(output_dir):
-    log_path = os.path.join(os.path.dirname(__file__), 'logs', 'de_amazon_v3_latest.log')
-    if not os.path.exists(log_path):
-        return
-
-    try:
-        os.makedirs(output_dir, exist_ok=True)
-        copied_path = os.path.join(output_dir, 'de_amazon_v3_latest.log')
-        shutil.copy2(log_path, copied_path)
-        print(f"DE_V3_LOG_COPY={copied_path}")
-    except Exception as e:
-        logger.debug(f"DE V3 log copy failed: {e}")
-
 
 def main_v3():
     from log_utils import setup_log, save_log
     setup_log('de_amazon_v3')
-    output_dir = None
 
     try:
         test_mode = os.getenv('TEST_MODE', 'false').lower() == 'true'
         max_items = int(os.getenv('MAX_ITEMS', '0')) or None
 
         print("=" * 60)
-        print("Amazon DE scraper v3.0 - runtime selector verification")
+        print("Amazon DE scraper v3.0 - production")
         print("=" * 60)
         print("DB selector read: ON")
         print("DB target read: ON")
-        print("DB result write: OFF")
-        print("File/S3 upload: OFF")
+        print("DB result write: ON")
+        print("Null screenshot/S3 upload: ON")
+        print("Auto recovery/mail: ON")
         if max_items:
             print(f"Max items: {max_items}")
         print("=" * 60)
 
-        disable_de_v3_external_uploads()
-        output_dir = create_de_v3_output_dir()
+        output_dir = create_de_v3_output_dir() if os.getenv('DE_V3_SAVE_DEBUG_HTML', 'false').lower() == 'true' else None
         scraper = AmazonDEV3Scraper(output_dir=output_dir)
 
         if test_mode:
@@ -1759,29 +1786,52 @@ def main_v3():
                 }
                 for i, url in enumerate(test_urls)
             ]
+            results_df, blocked_failures = scraper.scrape_urls(urls_data)
+            if results_df is not None and not results_df.empty:
+                scraper.analyze_results(results_df)
+                scraper.save_results(results_df, save_db=False, upload_server=True)
+                if blocked_failures:
+                    logger.warning(f"DE V3 test mode blocked/final failures: {len(blocked_failures)}")
+            return
         else:
+            if scraper.db_engine is None:
+                logger.error("DE V3 DB connection failed")
+                monitor_and_alert('de', 0, None, error_message="DE V3 DB connection failed")
+                return
+
             urls_data = scraper.get_crawl_targets(limit=max_items)
 
         if not urls_data:
             logger.warning("DE V3 has no crawl targets")
+            monitor_and_alert('de', 0, None, error_message="DE V3 has no crawl targets")
             return
 
-        scraper.disable_result_db_writes()
         results_df, blocked_failures = scraper.scrape_urls(urls_data, max_items)
 
         if results_df is None or results_df.empty:
             logger.error("DE V3 produced no results")
+            monitor_and_alert('de', len(urls_data), None, error_message="DE V3 produced no results")
             return
 
         scraper.analyze_results(results_df)
-        save_de_v3_local_results(results_df, output_dir)
+        save_results = scraper.save_results(results_df, save_db=False, upload_server=False)
+
+        logger.info("DE V3 save results:")
+        logger.info("Final DB save: skipped; scrape_urls already wrote interim/remainder records")
+        logger.info("DE V3 crawl completed")
+
+        from auto_recovery import auto_recovery_run
+        auto_recovery_run(
+            target_key='de',
+            results_df=results_df,
+            target_count=len(urls_data),
+            error_logs=None
+        )
 
         if blocked_failures:
             logger.warning(f"DE V3 blocked/final failures: {len(blocked_failures)}")
     finally:
         save_log('de_amazon_v3')
-        if output_dir:
-            copy_de_v3_latest_log(output_dir)
 
 if __name__ == "__main__":
     print("필요 패키지:")
