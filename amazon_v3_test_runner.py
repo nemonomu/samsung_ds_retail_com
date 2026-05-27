@@ -7,9 +7,72 @@ from datetime import datetime
 
 import pandas as pd
 import pytz
+from selenium.webdriver.common.by import By
 
 
 SEOUL_TZ = pytz.timezone('Asia/Seoul')
+
+
+OFFER_SOURCE_SECTION_IDS = [
+    'merchantInfoFeature_feature_div',
+    'fulfillerInfoFeature_feature_div',
+    'usedOnlyLayoutMerchantInfoFeature_feature_div',
+    'usedOnlyLayoutFulfillerInfoFeature_feature_div',
+    'shipsFromSoldBy_feature_div',
+    'shipFromSoldByAbbreviated_feature_div',
+    'shipsFromSoldByAbbreviatedPSUFeature_feature_div',
+    'sfsbFallbackExpanded_feature_div',
+]
+
+
+COMMON_SHIP_SOURCE_MARKERS = [
+    'shipper / seller',
+    'shipper/seller',
+    'ships from',
+    'shipped from',
+    'dispatches from',
+    'dispatched from',
+    'fulfilled by',
+]
+
+
+COUNTRY_SHIP_SOURCE_MARKERS = {
+    'gb': [
+        'dispatches from',
+        'dispatched from',
+    ],
+    'usa': [
+        'ships from',
+        'shipped from',
+    ],
+    'it': [
+        'spedito da',
+        'venduto e spedito da',
+        'mittente',
+    ],
+    'es': [
+        'enviado por',
+        'enviado desde',
+        'remitente',
+    ],
+    'fr': [
+        'exp\u00e9di\u00e9 par',
+        'expedie par',
+        'exp\u00e9diteur',
+        'expediteur',
+        'vendu et exp\u00e9di\u00e9 par',
+        'vendu et expedie par',
+    ],
+    'in': [
+        'ships from',
+        'dispatched from',
+        'fulfilled by',
+    ],
+    'jp': [
+        '\u51fa\u8377\u5143',
+        '\u767a\u9001\u5143',
+    ],
+}
 
 
 COMMON_PRICE_SELECTORS = [
@@ -306,7 +369,57 @@ def save_debug_html(scraper, output_dir, country_code, url, row_data, reason):
         f.write(page_source)
 
 
+def collect_offer_source_text(scraper):
+    texts = []
+    driver = getattr(scraper, 'driver', None)
+    if driver is None:
+        return ''
+
+    for section_id in OFFER_SOURCE_SECTION_IDS:
+        try:
+            elements = driver.find_elements(By.ID, section_id)
+            for element in elements:
+                text = (element.text or element.get_attribute('textContent') or '').strip()
+                if text:
+                    texts.append(text)
+        except Exception:
+            continue
+
+    return ' '.join(texts).casefold()
+
+
+def has_explicit_ship_from_source(scraper, country_code):
+    text = collect_offer_source_text(scraper)
+    if not text:
+        return False
+
+    markers = COMMON_SHIP_SOURCE_MARKERS + COUNTRY_SHIP_SOURCE_MARKERS.get(country_code, [])
+    return any(marker.casefold() in text for marker in markers)
+
+
+def clear_seller_only_ship_from(scraper, result, country_code, module):
+    ships_from = (result.get('ships_from') or '').strip()
+    sold_by = (result.get('sold_by') or '').strip()
+
+    if not ships_from or not sold_by:
+        return
+
+    if ships_from.casefold() != sold_by.casefold():
+        return
+
+    if has_explicit_ship_from_source(scraper, country_code):
+        return
+
+    result['ships_from'] = None
+    module.logger.info(
+        f"{country_code.upper()} V3 ships_from cleared because page exposes seller only: "
+        f"ships_from={ships_from}, sold_by={sold_by}"
+    )
+
+
 def wrap_extract_for_debug(scraper, output_dir, country_code):
+    cfg = COUNTRY_CONFIGS[country_code]
+    module = importlib.import_module(cfg['module'])
     original_extract = scraper.extract_product_info
 
     def wrapped_extract(url, row_data, *args, **kwargs):
@@ -314,6 +427,8 @@ def wrap_extract_for_debug(scraper, output_dir, country_code):
         if not result:
             save_debug_html(scraper, output_dir, country_code, url, row_data, 'empty_result')
             return result
+
+        clear_seller_only_ship_from(scraper, result, country_code, module)
 
         if not result.get('title') or (not result.get('ships_from') and not result.get('sold_by')):
             save_debug_html(scraper, output_dir, country_code, url, row_data, 'null_fields')
