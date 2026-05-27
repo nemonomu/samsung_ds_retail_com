@@ -18,6 +18,7 @@ import paramiko
 import time
 import random
 import re
+import shutil
 from datetime import datetime
 import pytz
 import logging
@@ -1500,7 +1501,8 @@ def main():
 class AmazonDEV3Scraper(AmazonDEScraper):
     """DE test scraper with runtime-only selector candidates and no result DB writes."""
 
-    def __init__(self):
+    def __init__(self, output_dir=None):
+        self.de_v3_output_dir = output_dir
         super().__init__()
         self.apply_de_v3_selector_overrides()
 
@@ -1612,10 +1614,10 @@ class AmazonDEV3Scraper(AmazonDEScraper):
             return False
 
     def save_debug_html(self, url, row_data, reason):
-        output_dir = os.getenv(
-            'DE_V3_DEBUG_DIR',
-            os.path.join(os.path.dirname(__file__), 'references', 'verifying')
-        )
+        output_dir = os.getenv('DE_V3_DEBUG_DIR') or self.de_v3_output_dir
+        if not output_dir:
+            output_dir = create_de_v3_output_dir()
+            self.de_v3_output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
 
         sku = row_data.get('retailersku') or row_data.get('retailerid') or ''
@@ -1649,11 +1651,26 @@ class AmazonDEV3Scraper(AmazonDEScraper):
             logger.info("DE V3 result DB writes disabled")
 
 
-def save_de_v3_local_results(df):
-    output_dir = os.getenv(
-        'DE_V3_OUTPUT_DIR',
-        os.path.join(os.path.dirname(__file__), 'references', 'verifying')
-    )
+def create_de_v3_output_dir():
+    explicit_dir = os.getenv('DE_V3_RUN_DIR') or os.getenv('DE_V3_OUTPUT_DIR')
+    if explicit_dir:
+        output_dir = explicit_dir
+    else:
+        timestamp = datetime.now(pytz.timezone('Asia/Seoul')).strftime('%Y%m%d%H%M%S')
+        output_dir = os.path.join(
+            os.path.dirname(__file__),
+            'references',
+            'verifying',
+            f'de_v3_run_{timestamp}'
+        )
+
+    os.makedirs(output_dir, exist_ok=True)
+    logger.info(f"DE V3 output folder: {output_dir}")
+    print(f"DE_V3_OUTPUT_DIR={output_dir}")
+    return output_dir
+
+
+def save_de_v3_local_results(df, output_dir):
     os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now(pytz.timezone('Asia/Seoul')).strftime('%Y%m%d%H%M%S')
     output_path = os.path.join(output_dir, f'de_v3_results_{timestamp}.csv')
@@ -1678,6 +1695,20 @@ def disable_de_v3_external_uploads():
     logger.info("DE V3 external uploads disabled")
 
 
+def copy_de_v3_latest_log(output_dir):
+    log_path = os.path.join(os.path.dirname(__file__), 'logs', 'de_amazon_v3_latest.log')
+    if not os.path.exists(log_path):
+        return
+
+    try:
+        os.makedirs(output_dir, exist_ok=True)
+        copied_path = os.path.join(output_dir, 'de_amazon_v3_latest.log')
+        shutil.copy2(log_path, copied_path)
+        print(f"DE_V3_LOG_COPY={copied_path}")
+    except Exception as e:
+        logger.debug(f"DE V3 log copy failed: {e}")
+
+
 def main_v3():
     from log_utils import setup_log, save_log
     setup_log('de_amazon_v3')
@@ -1697,7 +1728,8 @@ def main_v3():
     print("=" * 60)
 
     disable_de_v3_external_uploads()
-    scraper = AmazonDEV3Scraper()
+    output_dir = create_de_v3_output_dir()
+    scraper = AmazonDEV3Scraper(output_dir=output_dir)
 
     if test_mode:
         test_urls = [
@@ -1736,12 +1768,13 @@ def main_v3():
         return
 
     scraper.analyze_results(results_df)
-    save_de_v3_local_results(results_df)
+    save_de_v3_local_results(results_df, output_dir)
 
     if blocked_failures:
         logger.warning(f"DE V3 blocked/final failures: {len(blocked_failures)}")
 
     save_log('de_amazon_v3')
+    copy_de_v3_latest_log(output_dir)
 
 if __name__ == "__main__":
     print("필요 패키지:")
