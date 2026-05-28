@@ -123,6 +123,9 @@ COUNTRY_CONFIGS = {
         'selector_mode': 'nested',
         'target_method': 'get_crawl_targets',
         'log_name': 'es_amazon_v3',
+        'production_default': True,
+        'save_top_screenshot_default': True,
+        'save_html_default': False,
         'init_country_code': True,
         'test_urls': [
             'https://www.amazon.es/dp/B0CTRVZKG7?th=1',
@@ -150,6 +153,9 @@ COUNTRY_CONFIGS = {
         'selector_mode': 'nested',
         'target_method': 'get_crawl_targets',
         'log_name': 'jp_amazon_v3',
+        'production_default': True,
+        'save_top_screenshot_default': True,
+        'save_html_default': False,
         'init_country_code': True,
         'test_urls': [
             'https://www.amazon.co.jp/dp/B07KCKG77L?th=1',
@@ -300,9 +306,86 @@ def selector_bucket(scraper, cfg, country_code):
     return scraper.selectors
 
 
+def env_flag(*names, default='false'):
+    for name in names:
+        value = os.getenv(name)
+        if value is not None:
+            return value.strip().lower() in {'1', 'true', 'yes', 'y', 'on'}
+    return default.strip().lower() in {'1', 'true', 'yes', 'y', 'on'}
+
+
+def code_selector_overrides_enabled(country_code):
+    prefix = country_code.upper()
+    return env_flag(
+        f'{prefix}_V3_USE_CODE_SELECTORS',
+        'AMAZON_V3_USE_CODE_SELECTORS',
+        default='false',
+    )
+
+
+def verification_mode_enabled(country_code):
+    prefix = country_code.upper()
+    return env_flag(
+        f'{prefix}_V3_VERIFY_MODE',
+        'AMAZON_V3_VERIFY_MODE',
+        default='false',
+    )
+
+
+def production_mode_enabled(country_code, cfg):
+    prefix = country_code.upper()
+    return env_flag(
+        f'{prefix}_V3_PRODUCTION_MODE',
+        'AMAZON_V3_PRODUCTION_MODE',
+        default='true' if cfg.get('production_default') else 'false',
+    )
+
+
+def db_writes_enabled(country_code, safe_mode):
+    prefix = country_code.upper()
+    return env_flag(
+        f'{prefix}_V3_ALLOW_DB_WRITE',
+        'AMAZON_V3_ALLOW_DB_WRITE',
+        default='false' if safe_mode else 'true',
+    )
+
+
+def external_uploads_enabled(country_code, safe_mode):
+    prefix = country_code.upper()
+    return env_flag(
+        f'{prefix}_V3_ALLOW_UPLOAD',
+        'AMAZON_V3_ALLOW_UPLOAD',
+        default='false' if safe_mode else 'true',
+    )
+
+
+def auto_recovery_enabled(country_code, safe_mode):
+    prefix = country_code.upper()
+    return env_flag(
+        f'{prefix}_V3_ALLOW_AUTO_RECOVERY',
+        'AMAZON_V3_ALLOW_AUTO_RECOVERY',
+        default='false' if safe_mode else 'true',
+    )
+
+
+def local_results_enabled(country_code, safe_mode):
+    prefix = country_code.upper()
+    return env_flag(
+        f'{prefix}_V3_SAVE_LOCAL_RESULTS',
+        'AMAZON_V3_SAVE_LOCAL_RESULTS',
+        default='true' if safe_mode else 'false',
+    )
+
+
 def apply_selector_overrides(scraper, cfg, country_code):
+    if not code_selector_overrides_enabled(country_code):
+        logging.getLogger(__name__).info(
+            f'{country_code.upper()} V3 code selector overrides disabled; using DB-loaded selectors'
+        )
+        return
+
     bucket = selector_bucket(scraper, cfg, country_code)
-    for element_type, candidates in cfg['selectors'].items():
+    for element_type, candidates in cfg.get('selectors', {}).items():
         existing = bucket.setdefault(element_type, [])
         if element_type == 'ships_from':
             bucket[element_type] = candidates
@@ -332,6 +415,9 @@ def make_test_data(country_code, cfg):
 
 
 def save_debug_html(scraper, output_dir, country_code, url, row_data, reason):
+    if not output_dir:
+        return
+
     try:
         page_source = scraper.driver.page_source if scraper.driver else ''
     except Exception:
@@ -353,6 +439,9 @@ def save_debug_html(scraper, output_dir, country_code, url, row_data, reason):
 
 
 def save_debug_screenshot(scraper, output_dir, country_code, url, row_data, reason):
+    if not output_dir:
+        return
+
     driver = getattr(scraper, 'driver', None)
     if driver is None:
         return
@@ -459,7 +548,8 @@ def wrap_extract_for_debug(scraper, output_dir, country_code, save_top_screensho
     def wrapped_extract(url, row_data, *args, **kwargs):
         result = original_extract(url, row_data, *args, **kwargs)
         if not result:
-            save_debug_html(scraper, output_dir, country_code, url, row_data, 'empty_result')
+            if save_html:
+                save_debug_html(scraper, output_dir, country_code, url, row_data, 'empty_result')
             return result
 
         clear_seller_only_ship_from(scraper, result, country_code, module)
@@ -470,12 +560,45 @@ def wrap_extract_for_debug(scraper, output_dir, country_code, save_top_screensho
         if save_top_screenshot:
             save_debug_screenshot(scraper, output_dir, country_code, url, row_data, 'top_page')
 
-        if not save_html and (not result.get('title') or (not result.get('ships_from') and not result.get('sold_by'))):
-            save_debug_html(scraper, output_dir, country_code, url, row_data, 'null_fields')
-
         return result
 
     scraper.extract_product_info = wrapped_extract
+
+
+def run_auto_recovery(country_code, cfg, results_df, target_count, module, blocked_failures=None):
+    target_key = cfg.get('target_key', country_code)
+    try:
+        from auto_recovery import auto_recovery_run
+
+        auto_recovery_run(
+            target_key=target_key,
+            results_df=results_df,
+            target_count=target_count,
+            error_logs=blocked_failures or None,
+        )
+    except Exception as exc:
+        module.logger.error(f'{country_code.upper()} V3 auto_recovery failed: {exc}')
+        try:
+            from alert_monitor import monitor_and_alert
+
+            monitor_and_alert(
+                country_code,
+                target_count,
+                results_df,
+                error_message=f'V3 auto_recovery failed: {exc}',
+                error_logs=blocked_failures,
+            )
+        except Exception as alert_exc:
+            module.logger.error(f'{country_code.upper()} V3 alert after auto_recovery failure failed: {alert_exc}')
+
+
+def send_failure_alert(country_code, target_count, error_message, module):
+    try:
+        from alert_monitor import monitor_and_alert
+
+        monitor_and_alert(country_code, target_count, None, error_message=error_message)
+    except Exception as exc:
+        module.logger.error(f'{country_code.upper()} V3 failure alert failed: {exc}')
 
 
 def disable_result_db_writes(scraper, module, country_code):
@@ -532,35 +655,51 @@ def run_country_v3(country_code):
         test_mode = os.getenv('TEST_MODE', 'false').lower() == 'true'
         max_items = int(os.getenv('MAX_ITEMS', '0')) or None
         prefix = country_code.upper()
-        top_screenshot_default = 'true'
+        verify_mode = verification_mode_enabled(country_code)
+        production_mode = production_mode_enabled(country_code, cfg)
+        safe_mode = test_mode or verify_mode or not production_mode
+        allow_db_write = db_writes_enabled(country_code, safe_mode)
+        allow_external_uploads = external_uploads_enabled(country_code, safe_mode)
+        allow_auto_recovery = auto_recovery_enabled(country_code, safe_mode) and allow_db_write
+        save_local_result = local_results_enabled(country_code, safe_mode)
+        top_screenshot_default = 'true' if cfg.get('save_top_screenshot_default', safe_mode) else 'false'
         save_top_screenshot = os.getenv(
             f'{prefix}_V3_SAVE_TOP_SCREENSHOT',
             os.getenv('AMAZON_V3_SAVE_TOP_SCREENSHOT', top_screenshot_default)
         ).lower() == 'true'
-        html_default = 'true'
+        html_default = 'true' if cfg.get('save_html_default', safe_mode) else 'false'
         save_html = os.getenv(
             f'{prefix}_V3_SAVE_HTML',
             os.getenv('AMAZON_V3_SAVE_HTML', html_default)
         ).lower() == 'true'
+        needs_output_dir = save_top_screenshot or save_html or save_local_result
 
         print('=' * 60)
-        print(f"Amazon {cfg['display']} scraper v3.0 - runtime selector verification")
+        mode_label = 'verification' if safe_mode else 'production'
+        print(f"Amazon {cfg['display']} scraper v3.0 - {mode_label}")
         print('=' * 60)
         print('DB selector read: ON')
+        print(f"Code selector override: {'ON' if code_selector_overrides_enabled(country_code) else 'OFF'}")
         print('DB target read: ON')
-        print('DB result write: OFF')
-        print('File/S3 upload: OFF')
+        print(f"DB result write: {'ON' if allow_db_write else 'OFF'}")
+        print(f"File/S3 upload: {'ON' if allow_external_uploads else 'OFF'}")
+        print(f"Auto recovery: {'ON' if allow_auto_recovery else 'OFF'}")
+        print(f"Local result CSV: {'ON' if save_local_result else 'OFF'}")
         print(f"Top screenshots: {'ON' if save_top_screenshot else 'OFF'}")
         print(f"HTML snapshots: {'ON' if save_html else 'OFF'}")
         if test_mode:
             print('Mode: TEST URLs')
+        elif verify_mode:
+            print('Mode: VERIFY')
         if max_items:
             print(f'Max items: {max_items}')
         print('=' * 60)
 
         module = importlib.import_module(cfg['module'])
-        disable_external_uploads(module, country_code)
-        output_dir = create_output_dir(country_code)
+        if not allow_external_uploads:
+            disable_external_uploads(module, country_code)
+        if needs_output_dir:
+            output_dir = create_output_dir(country_code)
 
         scraper_class = getattr(module, cfg['class'])
         if cfg.get('init_country_code'):
@@ -582,27 +721,37 @@ def run_country_v3(country_code):
         else:
             if scraper.db_engine is None:
                 module.logger.error(f'{country_code.upper()} V3 DB connection failed')
+                if not safe_mode:
+                    send_failure_alert(country_code, 0, 'V3 DB connection failed', module)
                 return
             target_method = getattr(scraper, cfg['target_method'])
             urls_data = target_method(limit=max_items)
 
         if not urls_data:
             module.logger.warning(f'{country_code.upper()} V3 has no crawl targets')
+            if not safe_mode:
+                send_failure_alert(country_code, 0, 'V3 has no crawl targets', module)
             return
 
-        disable_result_db_writes(scraper, module, country_code)
+        if not allow_db_write:
+            disable_result_db_writes(scraper, module, country_code)
         scrape_result = scraper.scrape_urls(urls_data, max_items)
         results_df, blocked_failures = normalize_scrape_result(scrape_result)
 
         if results_df is None or results_df.empty:
             module.logger.error(f'{country_code.upper()} V3 produced no results')
+            if not safe_mode:
+                send_failure_alert(country_code, len(urls_data), 'V3 produced no results', module)
             return
 
         scraper.analyze_results(results_df)
-        save_local_results(results_df, output_dir, country_code)
+        if save_local_result:
+            save_local_results(results_df, output_dir, country_code)
 
         if blocked_failures:
             module.logger.warning(f"{country_code.upper()} V3 blocked/final failures: {len(blocked_failures)}")
+        if allow_auto_recovery:
+            run_auto_recovery(country_code, cfg, results_df, len(urls_data), module, blocked_failures)
     finally:
         save_log(cfg['log_name'])
         if output_dir:
