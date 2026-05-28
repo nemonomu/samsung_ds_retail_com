@@ -377,6 +377,22 @@ def local_results_enabled(country_code, safe_mode):
     )
 
 
+def ensure_console_logging():
+    root_logger = logging.getLogger()
+    has_console_handler = any(
+        isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler)
+        for handler in root_logger.handlers
+    )
+
+    if not has_console_handler:
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        root_logger.addHandler(console_handler)
+
+    root_logger.setLevel(logging.INFO)
+
+
 def apply_selector_overrides(scraper, cfg, country_code):
     if not code_selector_overrides_enabled(country_code):
         logging.getLogger(__name__).info(
@@ -648,7 +664,7 @@ def run_country_v3(country_code):
     from log_utils import setup_log, save_log
 
     setup_log(cfg['log_name'])
-    logging.getLogger().setLevel(logging.INFO)
+    ensure_console_logging()
     output_dir = None
 
     try:
