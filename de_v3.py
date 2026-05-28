@@ -35,6 +35,45 @@ ssl._create_default_https_context = ssl._create_unverified_context
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+DE_V3_VERIFICATION_TARGETS = [
+    {
+        'asin': 'B0CTRVZKG7',
+        'url': 'https://www.amazon.de/dp/B0CTRVZKG7?th=1',
+        'item': 'DE V3 combined merchant label',
+    },
+    {
+        'asin': 'B0CX5C3LBQ',
+        'url': 'https://www.amazon.de/dp/B0CX5C3LBQ?th=1',
+        'item': 'DE V3 used combined merchant label',
+    },
+    {
+        'asin': 'B08PC5ZYB1',
+        'url': 'https://www.amazon.de/dp/B08PC5ZYB1?th=1',
+        'item': 'DE V3 seller-only used buybox',
+    },
+]
+
+
+def build_de_v3_test_data():
+    return [
+        {
+            'url': target['url'],
+            'brand': '',
+            'item': target['item'],
+            'retailerid': f"DE_V3_{target['asin']}",
+            'retailersku': target['asin'],
+            'channel': 'Online',
+            'seg_lv1': '',
+            'seg_lv2': '',
+            'seg_lv3': '',
+            'capacity': '',
+            'form_factor': '',
+            'vat': 'o',
+        }
+        for target in DE_V3_VERIFICATION_TARGETS
+    ]
+
+
 # Import database configuration V2
 from config import DB_CONFIG_V2 as DB_CONFIG
 from config import FILE_SERVER_CONFIG
@@ -1454,6 +1493,7 @@ def main():
                 'form_factor': 'External'
             })
         
+        test_data = build_de_v3_test_data()
         results_df, blocked_failures = scraper.scrape_urls(test_data)
         if results_df is not None and not results_df.empty:
             scraper.analyze_results(results_df)
@@ -1811,6 +1851,9 @@ def main_v3():
         print("DB result write: OFF")
         print("File/S3 upload: OFF")
         print("Auto recovery/mail: OFF")
+        if test_mode:
+            targets = ", ".join(target['asin'] for target in DE_V3_VERIFICATION_TARGETS)
+            print(f"Test targets: {targets}")
         if max_items:
             print(f"Max items: {max_items}")
         print("=" * 60)
@@ -1820,27 +1863,7 @@ def main_v3():
         scraper = AmazonDEV3Scraper(output_dir=output_dir)
 
         if test_mode:
-            test_urls = [
-                'https://www.amazon.de/dp/B0CTRVZKG7?th=1',
-                'https://www.amazon.de/dp/B0CX5C3LBQ?th=1',
-            ]
-            urls_data = [
-                {
-                    'url': url,
-                    'brand': '',
-                    'item': f'DE V3 Test {i + 1}',
-                    'retailerid': f'DE_V3_{i + 1:03d}',
-                    'retailersku': f'DE_V3_{i + 1:03d}',
-                    'channel': 'Online',
-                    'seg_lv1': '',
-                    'seg_lv2': '',
-                    'seg_lv3': '',
-                    'capacity': '',
-                    'form_factor': '',
-                    'vat': 'o',
-                }
-                for i, url in enumerate(test_urls)
-            ]
+            urls_data = build_de_v3_test_data()
         else:
             if scraper.db_engine is None:
                 logger.error("DE V3 DB connection failed")
