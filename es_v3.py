@@ -15,7 +15,7 @@ def configure_production_run():
         'ES_V3_ALLOW_AUTO_RECOVERY': 'true',
         'ES_V3_SAVE_TOP_SCREENSHOT': 'true',
         'ES_V3_SAVE_HTML': 'false',
-        'ES_V3_SAVE_LOCAL_RESULTS': 'false',
+        'ES_V3_SAVE_LOCAL_RESULTS': 'true',
         'ES_V3_USE_CODE_SELECTORS': 'false',
     })
 

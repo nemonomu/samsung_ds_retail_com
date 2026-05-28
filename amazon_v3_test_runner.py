@@ -373,7 +373,7 @@ def local_results_enabled(country_code, safe_mode):
     return env_flag(
         f'{prefix}_V3_SAVE_LOCAL_RESULTS',
         'AMAZON_V3_SAVE_LOCAL_RESULTS',
-        default='true' if safe_mode else 'false',
+        default='true',
     )
 
 
