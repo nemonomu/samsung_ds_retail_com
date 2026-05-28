@@ -3,6 +3,7 @@ import os
 import re
 import shutil
 import sys
+import time
 from datetime import datetime
 
 import pandas as pd
@@ -45,6 +46,11 @@ FULFILLER_SECTION_IDS = [
     'fulfillerInfoFeature_feature_div',
     'usedOnlyLayoutFulfillerInfoFeature_feature_div',
 ]
+
+
+def extract_asin(url):
+    match = re.search(r'/dp/([A-Z0-9]{10})', url or '', re.IGNORECASE)
+    return match.group(1).upper() if match else ''
 
 
 COMMON_PRICE_SELECTORS = [
@@ -304,13 +310,15 @@ def apply_selector_overrides(scraper, cfg, country_code):
 
 
 def make_test_data(country_code, cfg):
-    return [
-        {
+    test_data = []
+    for idx, url in enumerate(cfg['test_urls']):
+        asin = extract_asin(url) or f"{country_code.upper()}_V3_{idx + 1:03d}"
+        test_data.append({
             'url': url,
             'brand': '',
             'item': f"{cfg['display']} V3 Test {idx + 1}",
-            'retailerid': f"{country_code.upper()}_V3_{idx + 1:03d}",
-            'retailersku': f"{country_code.upper()}_V3_{idx + 1:03d}",
+            'retailerid': f"{country_code.upper()}_V3_{asin}",
+            'retailersku': asin,
             'channel': 'Online',
             'seg_lv1': '',
             'seg_lv2': '',
@@ -318,9 +326,8 @@ def make_test_data(country_code, cfg):
             'capacity': '',
             'form_factor': '',
             'vat': 'o',
-        }
-        for idx, url in enumerate(cfg['test_urls'])
-    ]
+        })
+    return test_data
 
 
 def save_debug_html(scraper, output_dir, country_code, url, row_data, reason):
@@ -342,6 +349,24 @@ def save_debug_html(scraper, output_dir, country_code, url, row_data, reason):
     html_path = os.path.join(output_dir, f'{country_code}_v3_{sku}_{safe_reason}_{timestamp}.html')
     with open(html_path, 'w', encoding='utf-8') as f:
         f.write(page_source)
+
+
+def save_debug_screenshot(scraper, output_dir, country_code, url, row_data, reason):
+    driver = getattr(scraper, 'driver', None)
+    if driver is None:
+        return
+
+    sku = row_data.get('retailersku') or row_data.get('retailerid') or extract_asin(url) or 'unknown'
+    timestamp = datetime.now(SEOUL_TZ).strftime('%Y%m%d%H%M%S')
+    safe_reason = re.sub(r'[^A-Za-z0-9_-]+', '_', reason).strip('_') or 'debug'
+    png_path = os.path.join(output_dir, f'{country_code}_v3_{sku}_{safe_reason}_{timestamp}.png')
+
+    try:
+        driver.execute_script("window.scrollTo(0, 0);")
+        time.sleep(0.5)
+        driver.save_screenshot(png_path)
+    except Exception:
+        return
 
 
 def get_offer_section_texts(scraper):
@@ -425,7 +450,7 @@ def clear_seller_only_ship_from(scraper, result, country_code, module):
     )
 
 
-def wrap_extract_for_debug(scraper, output_dir, country_code):
+def wrap_extract_for_debug(scraper, output_dir, country_code, save_top_screenshot=False):
     cfg = COUNTRY_CONFIGS[country_code]
     module = importlib.import_module(cfg['module'])
     original_extract = scraper.extract_product_info
@@ -437,6 +462,9 @@ def wrap_extract_for_debug(scraper, output_dir, country_code):
             return result
 
         clear_seller_only_ship_from(scraper, result, country_code, module)
+
+        if save_top_screenshot:
+            save_debug_screenshot(scraper, output_dir, country_code, url, row_data, 'top_page')
 
         if not result.get('title') or (not result.get('ships_from') and not result.get('sold_by')):
             save_debug_html(scraper, output_dir, country_code, url, row_data, 'null_fields')
@@ -498,6 +526,12 @@ def run_country_v3(country_code):
     try:
         test_mode = os.getenv('TEST_MODE', 'false').lower() == 'true'
         max_items = int(os.getenv('MAX_ITEMS', '0')) or None
+        prefix = country_code.upper()
+        top_screenshot_default = 'true' if test_mode else 'false'
+        save_top_screenshot = os.getenv(
+            f'{prefix}_V3_SAVE_TOP_SCREENSHOT',
+            os.getenv('AMAZON_V3_SAVE_TOP_SCREENSHOT', top_screenshot_default)
+        ).lower() == 'true'
 
         print('=' * 60)
         print(f"Amazon {cfg['display']} scraper v3.0 - runtime selector verification")
@@ -506,6 +540,7 @@ def run_country_v3(country_code):
         print('DB target read: ON')
         print('DB result write: OFF')
         print('File/S3 upload: OFF')
+        print(f"Top screenshots: {'ON' if save_top_screenshot else 'OFF'}")
         if test_mode:
             print('Mode: TEST URLs')
         if max_items:
@@ -523,7 +558,7 @@ def run_country_v3(country_code):
             scraper = scraper_class()
 
         apply_selector_overrides(scraper, cfg, country_code)
-        wrap_extract_for_debug(scraper, output_dir, country_code)
+        wrap_extract_for_debug(scraper, output_dir, country_code, save_top_screenshot=save_top_screenshot)
 
         if test_mode:
             urls_data = make_test_data(country_code, cfg)
