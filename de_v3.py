@@ -992,61 +992,18 @@ class AmazonDEScraper:
             # 재고 확인
             has_stock = self.check_stock_availability()
 
-            # 통합 라벨 확인 (Versender / Verkäufer) - 먼저 확인
-            combined_label_selectors = [
-                "//*[@id='merchantInfoFeature_feature_div']/div[1]/div/span",
-                "//*[@id='merchantInfoFeature_feature_div']//span[contains(@class, 'a-color-tertiary')]"
-            ]
-            combined_patterns = [
-                'versender / verk\u00e4ufer',
-                'versender/verk\u00e4ufer',
-                'versender / verkaufer',
-                'versender/verkaufer',
-                'shipper / seller',
-                'shipper/seller'
-            ]
-
-            is_combined_label = False
-            for selector in combined_label_selectors:
-                try:
-                    label_element = self.driver.find_element(By.XPATH, selector)
-                    label_text = label_element.text.strip().lower() if label_element else ""
-                    if not label_text:
-                        label_text = (label_element.get_attribute('textContent') or "").strip().lower()
-                    logger.info(f"라벨 텍스트: '{label_text}'")
-
-                    if any(pattern in label_text for pattern in combined_patterns):
-                        is_combined_label = True
-                        logger.info(f"통합 라벨 감지됨: {label_text}")
-                        break
-                except:
-                    continue
-
-            if is_combined_label:
-                # 통합 라벨인 경우: 값 위치(div[2])에서 추출해서 둘 다 할당
-                # 라벨이 아닌 실제 값을 추출하는 xpath
-                value_selectors = [
-                    "//*[@id='merchantInfoFeature_feature_div']/div[2]/span/a/span",
-                    "//*[@id='merchantInfoFeature_feature_div']/div[2]/span/a",
-                    "//*[@id='merchantInfoFeature_feature_div']/div[2]/span/span",
-                    "//*[@id='merchantInfoFeature_feature_div']/div[2]/span",
-                    "//a[@id='sellerProfileTriggerId']"
-                ]
-                combined_value = self.extract_element_text(value_selectors, "통합 판매자/배송자")
-                result['ships_from'] = combined_value
-                result['sold_by'] = combined_value
-                logger.info(f"통합 라벨 값 추출: ships_from={result['ships_from']}, sold_by={result['sold_by']}")
-            else:
-                # 통합 라벨이 아닌 경우: 각각 별도로 추출
-                result['ships_from'] = self.extract_element_text(
-                    self.selectors.get('ships_from', []),
-                    "Ships From"
-                )
-                result['sold_by'] = self.extract_element_text(
-                    self.selectors.get('sold_by', []),
-                    "Sold By"
-                )
-                logger.info(f"개별 추출: ships_from={result['ships_from']}, sold_by={result['sold_by']}")
+            # Offer source extraction
+            # ships_from/sold_by are controlled by amazon_selectors.
+            # Combined Shipper/Seller labels must be represented as DB selectors.
+            result['ships_from'] = self.extract_element_text(
+                self.selectors.get('ships_from', []),
+                "Ships From"
+            )
+            result['sold_by'] = self.extract_element_text(
+                self.selectors.get('sold_by', []),
+                "Sold By"
+            )
+            logger.info(f"DB selector extraction: ships_from={result['ships_from']}, sold_by={result['sold_by']}")
 
             # Ships From과 Sold By가 모두 없으면 가격도 빈 값으로 처리
             if not result['ships_from'] and not result['sold_by']:
@@ -1331,7 +1288,7 @@ class AmazonDEScraper:
                 # 10개마다 중간 저장
                 if (idx + 1) % 10 == 0:
                     interim_df = pd.DataFrame(results[-10:])
-                    if self.db_engine:
+                    if self.db_engine and not getattr(self, 'de_v3_disable_result_writes', False):
                         try:
                             table_name = 'amazon_price_crawl_tbl_de_v2'
                             interim_df.to_sql(table_name, self.db_engine, if_exists='append', index=False)
@@ -1349,7 +1306,7 @@ class AmazonDEScraper:
 
             # 마지막으로 저장되지 않은 나머지 데이터 저장 (10의 배수가 아닌 경우)
             remainder = len(results) % 10
-            if remainder > 0 and self.db_engine:
+            if remainder > 0 and self.db_engine and not getattr(self, 'de_v3_disable_result_writes', False):
                 try:
                     remainder_df = pd.DataFrame(results[-remainder:])
                     table_name = 'amazon_price_crawl_tbl_de_v2'
@@ -1541,45 +1498,14 @@ def main():
 
 
 class AmazonDEV3Scraper(AmazonDEScraper):
-    """DE test scraper with v3 runtime selector candidates and no external writes."""
+    """DE v3 scraper using DB-loaded Amazon selectors."""
 
     def __init__(self, output_dir=None):
         self.de_v3_output_dir = output_dir
+        self.de_v3_disable_result_writes = False
+        self.de_v3_verification_mode = False
         super().__init__()
-        self.apply_de_v3_selector_overrides()
-
-    def apply_de_v3_selector_overrides(self):
-        """Prepend verified v3 selectors while keeping DB-loaded selectors available."""
-        overrides = {
-            'ships_from': [
-                "(//div[@id='fulfillerInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!=''])[1]",
-                "(//div[@id='usedOnlyLayoutFulfillerInfoFeature_feature_div']//span[contains(@class,'offer-display-feature-text-message') and normalize-space(.)!=''])[1]",
-                "(//div[@id='merchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][(contains(normalize-space(.),'Versender') and contains(normalize-space(.),'Verk')) or (contains(normalize-space(.),'Shipper') and contains(normalize-space(.),'Seller'))]]//div[contains(@class,'offer-display-feature-text')]//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
-                "(//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div'][.//div[contains(@class,'offer-display-feature-label')][(contains(normalize-space(.),'Versender') and contains(normalize-space(.),'Verk')) or (contains(normalize-space(.),'Shipper') and contains(normalize-space(.),'Seller'))]]//div[contains(@class,'offer-display-feature-text')]//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
-                "(//div[@id='shipFromSoldByAbbreviated_feature_div']//span[contains(normalize-space(.),'Versand durch')]/following-sibling::span[normalize-space(.)!=''][1])[1]",
-            ],
-            'sold_by': [
-                "(//div[@id='used_buybox_desktop']//div[contains(@class,'a-row')][contains(normalize-space(.),'Verkauft von')]//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
-                "(//div[@id='merchantInfoFeature_feature_div']//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
-                "(//div[@id='usedOnlyLayoutMerchantInfoFeature_feature_div']//a[@id='sellerProfileTriggerId' and normalize-space(.)!=''])[1]",
-            ],
-            'price': [
-                "(//*[@id='centerCol']//*[@id='corePriceDisplay_desktop_feature_div']//span[contains(@class,'a-price') and not(contains(@class,'a-text-price'))][1])[1]",
-                "(//*[@id='centerCol']//*[@id='corePrice_feature_div']//span[contains(@class,'a-price') and not(contains(@class,'a-text-price'))][1])[1]",
-            ],
-        }
-
-        for element_type, candidates in overrides.items():
-            existing = self.selectors.setdefault(element_type, [])
-            if element_type == 'ships_from':
-                self.selectors[element_type] = candidates
-            else:
-                self.selectors[element_type] = candidates + [s for s in existing if s not in candidates]
-
-        logger.info(
-            "DE V3 runtime selector overrides applied: "
-            + ", ".join(f"{k}={len(v)}" for k, v in overrides.items())
-        )
+        logger.info("DE V3 selector source: amazon_selectors DB")
 
     def handle_captcha_or_block_page(self, original_url=None):
         """Handle Amazon DE continue page more broadly for v3."""
@@ -1782,7 +1708,8 @@ class AmazonDEV3Scraper(AmazonDEScraper):
         result = super().extract_product_info(url, row_data, retry_count, max_retries)
         self._clear_seller_only_ship_from(result)
 
-        save_debug = os.getenv('DE_V3_SAVE_DEBUG_HTML', 'true').lower() == 'true'
+        debug_default = 'true' if getattr(self, 'de_v3_verification_mode', False) else 'false'
+        save_debug = os.getenv('DE_V3_SAVE_DEBUG_HTML', debug_default).lower() == 'true'
         save_all_html = (
             getattr(self, 'de_v3_save_all_html', False)
             or os.getenv('DE_V3_SAVE_ALL_HTML', 'false').lower() == 'true'
@@ -1798,13 +1725,15 @@ class AmazonDEV3Scraper(AmazonDEScraper):
 
     def disable_result_db_writes(self):
         """Keep selector reads available, then prevent scrape_urls interim/remainder DB writes."""
-        self.db_engine = None
+        self.de_v3_disable_result_writes = True
         logger.info("DE V3 result DB writes disabled")
 
     def save_to_db(self, df):
-        """Never write crawl results to DB from v3 test runs."""
-        logger.info("DE V3 save_to_db skipped")
-        return False
+        if getattr(self, 'de_v3_disable_result_writes', False):
+            logger.info("DE V3 save_to_db skipped")
+            return False
+
+        return super().save_to_db(df)
 
 
 def create_de_v3_output_dir():
@@ -1874,15 +1803,17 @@ def main_v3():
     try:
         test_mode = os.getenv('TEST_MODE', 'false').lower() == 'true'
         max_items = int(os.getenv('MAX_ITEMS', '0')) or None
+        local_output_requested = bool(os.getenv('DE_V3_RUN_DIR') or os.getenv('DE_V3_OUTPUT_DIR'))
+        production_mode = not test_mode
 
         print("=" * 60)
-        print("Amazon DE scraper v3.0 - safe verification mode")
+        print(f"Amazon DE scraper v3.0 - {'verification mode' if test_mode else 'production mode'}")
         print("=" * 60)
-        print("DB selector read: ON")
+        print("DB selector read: ON (amazon_selectors)")
         print("DB target read: ON")
-        print("DB result write: OFF")
-        print("File/S3 upload: OFF")
-        print("Auto recovery/mail: OFF")
+        print(f"DB result write: {'OFF' if test_mode else 'ON'}")
+        print(f"File/S3 upload: {'OFF' if test_mode else 'ON'}")
+        print(f"Auto recovery/mail: {'OFF' if test_mode else 'ON'}")
         if test_mode:
             targets = ", ".join(target['asin'] for target in DE_V3_VERIFICATION_TARGETS)
             print(f"Test targets: {targets}")
@@ -1890,33 +1821,59 @@ def main_v3():
             print(f"Max items: {max_items}")
         print("=" * 60)
 
-        disable_de_v3_external_uploads()
-        output_dir = create_de_v3_output_dir()
+        if test_mode:
+            disable_de_v3_external_uploads()
+
+        if test_mode or local_output_requested:
+            output_dir = create_de_v3_output_dir()
+
         scraper = AmazonDEV3Scraper(output_dir=output_dir)
         scraper.de_v3_save_all_html = test_mode
+        scraper.de_v3_verification_mode = test_mode
 
         if test_mode:
             urls_data = build_de_v3_test_data()
+            scraper.disable_result_db_writes()
         else:
             if scraper.db_engine is None:
                 logger.error("DE V3 DB connection failed")
+                monitor_and_alert('de', 0, None, error_message="DE V3 DB connection failed")
                 return
 
             urls_data = scraper.get_crawl_targets(limit=max_items)
 
         if not urls_data:
             logger.warning("DE V3 has no crawl targets")
+            if production_mode:
+                monitor_and_alert('de', 0, None, error_message="DE V3 has no crawl targets")
             return
 
-        scraper.disable_result_db_writes()
         results_df, blocked_failures = scraper.scrape_urls(urls_data, max_items)
 
         if results_df is None or results_df.empty:
             logger.error("DE V3 produced no results")
+            if production_mode:
+                monitor_and_alert('de', len(urls_data), None, error_message="DE V3 produced no results")
             return
 
         scraper.analyze_results(results_df)
-        save_de_v3_local_results(results_df, output_dir)
+
+        if output_dir:
+            save_de_v3_local_results(results_df, output_dir)
+
+        if production_mode:
+            save_results = scraper.save_results(results_df, save_db=False, upload_server=False)
+            logger.info("DE V3 save result:")
+            logger.info(f"DB interim/remainder writes: ON")
+            logger.info(f"Direct file server upload: {'success' if save_results['server_uploaded'] else 'skipped'}")
+
+            from auto_recovery import auto_recovery_run
+            auto_recovery_run(
+                target_key='de',
+                results_df=results_df,
+                target_count=len(urls_data),
+                error_logs=None
+            )
 
         if blocked_failures:
             logger.warning(f"DE V3 blocked/final failures: {len(blocked_failures)}")
