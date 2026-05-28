@@ -532,12 +532,12 @@ def run_country_v3(country_code):
         test_mode = os.getenv('TEST_MODE', 'false').lower() == 'true'
         max_items = int(os.getenv('MAX_ITEMS', '0')) or None
         prefix = country_code.upper()
-        top_screenshot_default = 'true' if test_mode else 'false'
+        top_screenshot_default = 'true'
         save_top_screenshot = os.getenv(
             f'{prefix}_V3_SAVE_TOP_SCREENSHOT',
             os.getenv('AMAZON_V3_SAVE_TOP_SCREENSHOT', top_screenshot_default)
         ).lower() == 'true'
-        html_default = 'true' if test_mode else 'false'
+        html_default = 'true'
         save_html = os.getenv(
             f'{prefix}_V3_SAVE_HTML',
             os.getenv('AMAZON_V3_SAVE_HTML', html_default)
