@@ -1,4 +1,5 @@
 import importlib
+import logging
 import os
 import re
 import shutil
@@ -524,6 +525,7 @@ def run_country_v3(country_code):
     from log_utils import setup_log, save_log
 
     setup_log(cfg['log_name'])
+    logging.getLogger().setLevel(logging.INFO)
     output_dir = None
 
     try:
