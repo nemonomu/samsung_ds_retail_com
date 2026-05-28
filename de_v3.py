@@ -915,16 +915,6 @@ class AmazonDEScraper:
                 else:
                     raise Exception("차단 페이지 복구 실패")
             
-            # 일반적인 차단 페이지 확인
-            page_source_lower = self.driver.page_source.lower()
-            continue_patterns = ['weiter shoppen', 'weiter einkaufen', 'fortfahren']
-            
-            if any(pattern in page_source_lower for pattern in continue_patterns):
-                logger.info("일반 차단 페이지 감지 - Continue 버튼 시도")
-                self.handle_captcha_or_block_page(original_url=url)
-                time.sleep(3)
-                self.wait_for_page_load()
-            
             # 복구 후 현재 URL 확인
             current_url = self.driver.current_url.lower()
             logger.info(f"현재 페이지 URL: {current_url}")
@@ -1533,15 +1523,31 @@ class AmazonDEV3Scraper(AmazonDEScraper):
         """Handle Amazon DE continue page more broadly for v3."""
         try:
             page_source = (self.driver.page_source or "").lower()
-            continue_patterns = [
-                'weiter shoppen',
-                'weiter einkaufen',
-                'fortfahren',
-                'einkauf fortzufahren',
-                'validatecaptcha',
-            ]
+            current_url = (self.driver.current_url or "").lower()
+            has_validate_form = bool(self.driver.find_elements(
+                By.XPATH,
+                "//form[contains(translate(@action,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'validatecaptcha')]"
+            ))
+            has_continue_button = bool(self.driver.find_elements(
+                By.XPATH,
+                "//button[contains(normalize-space(.),'Weiter shoppen')]"
+                " | //button[contains(normalize-space(.),'Weiter einkaufen')]"
+                " | //button[contains(normalize-space(.),'Fortfahren')]"
+                " | //input[@type='submit' and contains(@value,'Weiter')]"
+            ))
+            is_continue_page = (
+                has_validate_form
+                or 'validatecaptcha' in current_url
+                or (
+                    has_continue_button
+                    and (
+                        'einkauf fortzufahren' in page_source
+                        or 'amazon-startseite' in page_source
+                    )
+                )
+            )
 
-            if not any(pattern in page_source for pattern in continue_patterns):
+            if not is_continue_page:
                 return super().handle_captcha_or_block_page(original_url=original_url)
 
             logger.info("DE V3 continue page detected")
@@ -1550,6 +1556,8 @@ class AmazonDEV3Scraper(AmazonDEScraper):
                 "//form[contains(@action,'validateCaptcha')]//button[@type='submit']",
                 "//form[contains(@action,'validateCaptcha')]//button[contains(normalize-space(.),'Weiter shoppen')]",
                 "//button[contains(normalize-space(.),'Weiter shoppen')]",
+                "//button[contains(normalize-space(.),'Weiter einkaufen')]",
+                "//button[contains(normalize-space(.),'Fortfahren')]",
                 "//button[@alt='Weiter shoppen']",
                 "//input[@type='submit' and contains(@value,'Weiter')]",
                 "//span[contains(@class,'a-button')]//button",
