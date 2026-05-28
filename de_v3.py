@@ -1701,6 +1701,8 @@ class AmazonDEV3Scraper(AmazonDEScraper):
         png_path = os.path.join(output_dir, f'de_v3_{sku}_{safe_reason}_{timestamp}.png')
 
         try:
+            self.driver.execute_script("window.scrollTo(0, 0);")
+            time.sleep(0.5)
             self.driver.save_screenshot(png_path)
             logger.info(f"DE V3 debug screenshot saved: {png_path}")
         except Exception as e:
