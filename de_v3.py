@@ -1714,7 +1714,7 @@ class AmazonDEV3Scraper(AmazonDEScraper):
             getattr(self, 'de_v3_save_all_html', False)
             or os.getenv('DE_V3_SAVE_ALL_HTML', 'false').lower() == 'true'
         )
-        save_top_screenshot = os.getenv('DE_V3_SAVE_TOP_SCREENSHOT', 'false').lower() == 'true'
+        save_top_screenshot = os.getenv('DE_V3_SAVE_TOP_SCREENSHOT', 'true').lower() == 'true'
 
         if save_top_screenshot:
             self.save_debug_screenshot(url, row_data, 'top_page')
@@ -1808,7 +1808,7 @@ def main_v3():
     try:
         test_mode = os.getenv('TEST_MODE', 'false').lower() == 'true'
         max_items = int(os.getenv('MAX_ITEMS', '0')) or None
-        top_screenshot_requested = os.getenv('DE_V3_SAVE_TOP_SCREENSHOT', 'false').lower() == 'true'
+        top_screenshot_requested = os.getenv('DE_V3_SAVE_TOP_SCREENSHOT', 'true').lower() == 'true'
         local_output_requested = bool(os.getenv('DE_V3_RUN_DIR') or os.getenv('DE_V3_OUTPUT_DIR')) or top_screenshot_requested
         production_mode = not test_mode
 
