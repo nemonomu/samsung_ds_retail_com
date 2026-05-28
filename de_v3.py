@@ -600,8 +600,26 @@ class AmazonDEScraper:
         """Ships From / Sold By 텍스트 정리"""
         try:
             label_patterns = {
-                'Ships From': ['ships from', 'fulfilled by', 'versand durch'],
-                'Sold By': ['sold by', 'verkauft von', 'vendu par']
+                'Ships From': [
+                    'ships from',
+                    'fulfilled by',
+                    'versand durch',
+                    'versender',
+                    'versender / verkäufer',
+                    'versender/verkäufer',
+                    'shipper / seller',
+                    'shipper/seller',
+                ],
+                'Sold By': [
+                    'sold by',
+                    'verkauft von',
+                    'vendu par',
+                    'verkäufer',
+                    'versender / verkäufer',
+                    'versender/verkäufer',
+                    'shipper / seller',
+                    'shipper/seller',
+                ]
             }
             
             text_lower = text.lower().strip()
@@ -640,9 +658,13 @@ class AmazonDEScraper:
                 logger.info(f"발견된 요소: {len(elements)}개")
                 
                 if elements:
+                    allow_hidden_text = (
+                        element_name in ["Ships From", "Sold By"]
+                        and "offer-display-feature-text-message" in selector
+                    )
                     for element in elements:
                         try:
-                            if element.is_displayed():
+                            if allow_hidden_text or element.is_displayed():
                                 if element_name == "가격" and self.is_excluded_price_element(element):
                                     continue
                                 
