@@ -1714,15 +1714,20 @@ class AmazonDEV3Scraper(AmazonDEScraper):
             getattr(self, 'de_v3_save_all_html', False)
             or os.getenv('DE_V3_SAVE_ALL_HTML', 'false').lower() == 'true'
         )
+        save_html = os.getenv('DE_V3_SAVE_HTML', 'true').lower() == 'true'
         save_top_screenshot = os.getenv('DE_V3_SAVE_TOP_SCREENSHOT', 'true').lower() == 'true'
+
+        if save_html:
+            self.save_debug_html(url, row_data, 'test_page')
 
         if save_top_screenshot:
             self.save_debug_screenshot(url, row_data, 'top_page')
 
         if save_debug and save_all_html:
-            self.save_debug_html(url, row_data, 'test_page')
+            if not save_html:
+                self.save_debug_html(url, row_data, 'test_page')
             self.save_debug_screenshot(url, row_data, 'test_page')
-        elif save_debug and (not result.get('title') or (not result.get('ships_from') and not result.get('sold_by'))):
+        elif not save_html and save_debug and (not result.get('title') or (not result.get('ships_from') and not result.get('sold_by'))):
             self.save_debug_html(url, row_data, 'null_fields')
             self.save_debug_screenshot(url, row_data, 'null_fields')
 
@@ -1809,7 +1814,12 @@ def main_v3():
         test_mode = os.getenv('TEST_MODE', 'false').lower() == 'true'
         max_items = int(os.getenv('MAX_ITEMS', '0')) or None
         top_screenshot_requested = os.getenv('DE_V3_SAVE_TOP_SCREENSHOT', 'true').lower() == 'true'
-        local_output_requested = bool(os.getenv('DE_V3_RUN_DIR') or os.getenv('DE_V3_OUTPUT_DIR')) or top_screenshot_requested
+        html_requested = os.getenv('DE_V3_SAVE_HTML', 'true').lower() == 'true'
+        local_output_requested = (
+            bool(os.getenv('DE_V3_RUN_DIR') or os.getenv('DE_V3_OUTPUT_DIR'))
+            or top_screenshot_requested
+            or html_requested
+        )
         production_mode = not test_mode
 
         print("=" * 60)
@@ -1821,6 +1831,7 @@ def main_v3():
         print(f"File/S3 upload: {'OFF' if test_mode else 'ON'}")
         print(f"Auto recovery/mail: {'OFF' if test_mode else 'ON'}")
         print(f"Top screenshots: {'ON' if top_screenshot_requested else 'OFF'}")
+        print(f"HTML snapshots: {'ON' if html_requested else 'OFF'}")
         if test_mode:
             targets = ", ".join(target['asin'] for target in DE_V3_VERIFICATION_TARGETS)
             print(f"Test targets: {targets}")

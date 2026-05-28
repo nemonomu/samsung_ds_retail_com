@@ -450,7 +450,7 @@ def clear_seller_only_ship_from(scraper, result, country_code, module):
     )
 
 
-def wrap_extract_for_debug(scraper, output_dir, country_code, save_top_screenshot=False):
+def wrap_extract_for_debug(scraper, output_dir, country_code, save_top_screenshot=False, save_html=False):
     cfg = COUNTRY_CONFIGS[country_code]
     module = importlib.import_module(cfg['module'])
     original_extract = scraper.extract_product_info
@@ -463,10 +463,13 @@ def wrap_extract_for_debug(scraper, output_dir, country_code, save_top_screensho
 
         clear_seller_only_ship_from(scraper, result, country_code, module)
 
+        if save_html:
+            save_debug_html(scraper, output_dir, country_code, url, row_data, 'test_page')
+
         if save_top_screenshot:
             save_debug_screenshot(scraper, output_dir, country_code, url, row_data, 'top_page')
 
-        if not result.get('title') or (not result.get('ships_from') and not result.get('sold_by')):
+        if not save_html and (not result.get('title') or (not result.get('ships_from') and not result.get('sold_by'))):
             save_debug_html(scraper, output_dir, country_code, url, row_data, 'null_fields')
 
         return result
@@ -532,6 +535,11 @@ def run_country_v3(country_code):
             f'{prefix}_V3_SAVE_TOP_SCREENSHOT',
             os.getenv('AMAZON_V3_SAVE_TOP_SCREENSHOT', top_screenshot_default)
         ).lower() == 'true'
+        html_default = 'true' if test_mode else 'false'
+        save_html = os.getenv(
+            f'{prefix}_V3_SAVE_HTML',
+            os.getenv('AMAZON_V3_SAVE_HTML', html_default)
+        ).lower() == 'true'
 
         print('=' * 60)
         print(f"Amazon {cfg['display']} scraper v3.0 - runtime selector verification")
@@ -541,6 +549,7 @@ def run_country_v3(country_code):
         print('DB result write: OFF')
         print('File/S3 upload: OFF')
         print(f"Top screenshots: {'ON' if save_top_screenshot else 'OFF'}")
+        print(f"HTML snapshots: {'ON' if save_html else 'OFF'}")
         if test_mode:
             print('Mode: TEST URLs')
         if max_items:
@@ -558,7 +567,13 @@ def run_country_v3(country_code):
             scraper = scraper_class()
 
         apply_selector_overrides(scraper, cfg, country_code)
-        wrap_extract_for_debug(scraper, output_dir, country_code, save_top_screenshot=save_top_screenshot)
+        wrap_extract_for_debug(
+            scraper,
+            output_dir,
+            country_code,
+            save_top_screenshot=save_top_screenshot,
+            save_html=save_html,
+        )
 
         if test_mode:
             urls_data = make_test_data(country_code, cfg)
