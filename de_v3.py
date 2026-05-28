@@ -1684,6 +1684,28 @@ class AmazonDEV3Scraper(AmazonDEScraper):
         except Exception as e:
             logger.debug(f"DE V3 debug HTML save failed: {e}")
 
+    def save_debug_screenshot(self, url, row_data, reason):
+        output_dir = os.getenv('DE_V3_DEBUG_DIR') or self.de_v3_output_dir
+        if not output_dir:
+            output_dir = create_de_v3_output_dir()
+            self.de_v3_output_dir = output_dir
+        os.makedirs(output_dir, exist_ok=True)
+
+        sku = row_data.get('retailersku') or row_data.get('retailerid') or ''
+        if not sku:
+            match = re.search(r'/dp/([A-Z0-9]{10})', url or '', re.IGNORECASE)
+            sku = match.group(1).upper() if match else 'unknown'
+
+        timestamp = datetime.now(pytz.timezone('Asia/Seoul')).strftime('%Y%m%d%H%M%S')
+        safe_reason = re.sub(r'[^A-Za-z0-9_-]+', '_', reason).strip('_') or 'debug'
+        png_path = os.path.join(output_dir, f'de_v3_{sku}_{safe_reason}_{timestamp}.png')
+
+        try:
+            self.driver.save_screenshot(png_path)
+            logger.info(f"DE V3 debug screenshot saved: {png_path}")
+        except Exception as e:
+            logger.debug(f"DE V3 debug screenshot save failed: {e}")
+
     def _get_offer_section_text(self, section_id):
         texts = []
         try:
@@ -1759,8 +1781,16 @@ class AmazonDEV3Scraper(AmazonDEScraper):
         self._clear_seller_only_ship_from(result)
 
         save_debug = os.getenv('DE_V3_SAVE_DEBUG_HTML', 'true').lower() == 'true'
-        if save_debug and (not result.get('title') or (not result.get('ships_from') and not result.get('sold_by'))):
+        save_all_html = (
+            getattr(self, 'de_v3_save_all_html', False)
+            or os.getenv('DE_V3_SAVE_ALL_HTML', 'false').lower() == 'true'
+        )
+        if save_debug and save_all_html:
+            self.save_debug_html(url, row_data, 'test_page')
+            self.save_debug_screenshot(url, row_data, 'test_page')
+        elif save_debug and (not result.get('title') or (not result.get('ships_from') and not result.get('sold_by'))):
             self.save_debug_html(url, row_data, 'null_fields')
+            self.save_debug_screenshot(url, row_data, 'null_fields')
 
         return result
 
@@ -1861,6 +1891,7 @@ def main_v3():
         disable_de_v3_external_uploads()
         output_dir = create_de_v3_output_dir()
         scraper = AmazonDEV3Scraper(output_dir=output_dir)
+        scraper.de_v3_save_all_html = test_mode
 
         if test_mode:
             urls_data = build_de_v3_test_data()
