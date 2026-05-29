@@ -5,6 +5,7 @@
 """
 
 import logging
+import os
 import sys
 import time
 import pandas as pd
@@ -38,7 +39,16 @@ def _load_title_null_thresholds(db_engine):
         return {}
 
 
-def auto_recovery_run(target_key, results_df, target_count, error_logs=None, out_of_stock_urls=None):
+def auto_recovery_run(
+    target_key,
+    results_df,
+    target_count,
+    error_logs=None,
+    out_of_stock_urls=None,
+    scraper_factory=None,
+    local_output_dir=None,
+    local_file_prefix=None,
+):
     """
     스크래퍼 크롤링 완료 후 자동 복구 + 파일 업로드 + 메일 알림
 
@@ -117,7 +127,9 @@ def auto_recovery_run(target_key, results_df, target_count, error_logs=None, out
         logger.info("1차 수집 성공 → 파일서버 업로드")
         _upload_and_alert(manager, config, target_key, results_df, target_count,
                          session_start, error_logs=error_logs,
-                         out_of_stock_urls=out_of_stock_urls)
+                         out_of_stock_urls=out_of_stock_urls,
+                         local_output_dir=local_output_dir,
+                         local_file_prefix=local_file_prefix)
         return
 
     # === 2-B. 실패 시: 자동 recovery ===
@@ -142,17 +154,29 @@ def auto_recovery_run(target_key, results_df, target_count, error_logs=None, out
         logger.info("복구 대상 없음 (DB 기준) → 1차 결과 그대로 업로드")
         _upload_and_alert(manager, config, target_key, results_df, target_count,
                          session_start, error_logs=error_logs,
-                         out_of_stock_urls=out_of_stock_urls)
+                         out_of_stock_urls=out_of_stock_urls,
+                         local_output_dir=local_output_dir,
+                         local_file_prefix=local_file_prefix)
         return
 
     # 스크래퍼 로드
-    scraper = manager.load_scraper(target_key)
+    if scraper_factory is not None:
+        try:
+            logger.info("V3 recovery scraper factory 사용")
+            scraper = scraper_factory()
+        except Exception as e:
+            logger.error(f"V3 recovery scraper factory 실패: {e}")
+            scraper = None
+    else:
+        scraper = manager.load_scraper(target_key)
     if scraper is None:
         logger.error("스크래퍼 로드 실패 → 1차 결과 그대로 업로드")
         _upload_and_alert(manager, config, target_key, results_df, target_count,
                          session_start, error_logs=error_logs,
                          recovery_prefix='[RE] ', recovery_suffix='scraper load failed',
-                         out_of_stock_urls=out_of_stock_urls)
+                         out_of_stock_urls=out_of_stock_urls,
+                         local_output_dir=local_output_dir,
+                         local_file_prefix=local_file_prefix)
         return
 
     # recovery 크롤링 (메모리에만 보관, DB 미반영)
@@ -276,7 +300,9 @@ def auto_recovery_run(target_key, results_df, target_count, error_logs=None, out
                          session_start, error_logs=error_logs,
                          recovery_prefix='[RE] ', recovery_suffix='same data',
                          skip_price_anomaly=skip_price_anomaly,
-                         out_of_stock_urls=out_of_stock_urls)
+                         out_of_stock_urls=out_of_stock_urls,
+                         local_output_dir=local_output_dir,
+                         local_file_prefix=local_file_prefix)
     else:
         # === 3-B. update complete: DB 반영 + 복구 데이터로 업로드 ===
         logger.info("복구 전후 다름 → DB 반영 + 복구 데이터 업로드")
@@ -297,7 +323,9 @@ def auto_recovery_run(target_key, results_df, target_count, error_logs=None, out
                          session_start, error_logs=error_logs,
                          recovery_prefix='[RE] ', recovery_suffix='update complete',
                          skip_price_anomaly=skip_price_anomaly,
-                         out_of_stock_urls=out_of_stock_urls)
+                         out_of_stock_urls=out_of_stock_urls,
+                         local_output_dir=local_output_dir,
+                         local_file_prefix=local_file_prefix)
 
     logger.info(f"\n{'='*60}")
     logger.info(f"자동 복구 완료: {config['name']}")
@@ -433,10 +461,24 @@ def _merge_recovery_results(first_crawl_df, recovered_results, missing_results):
     return merged
 
 
+def _save_local_final_results(results_df, output_dir, file_prefix):
+    if not output_dir:
+        return None
+
+    os.makedirs(output_dir, exist_ok=True)
+    timestamp = datetime.now(pytz.timezone('Asia/Seoul')).strftime('%Y%m%d%H%M%S')
+    safe_prefix = file_prefix or 'recovery'
+    output_path = os.path.join(output_dir, f'{safe_prefix}_final_results_{timestamp}.csv')
+    results_df.to_csv(output_path, index=False, encoding='utf-8-sig', lineterminator='\r\n')
+    logger.info(f"LOCAL_FINAL_RESULT_CSV={output_path}")
+    return output_path
+
+
 def _upload_and_alert(manager, config, target_key, results_df, target_count,
                       session_start, error_logs=None,
                       recovery_prefix='', recovery_suffix='',
-                      skip_price_anomaly=False, out_of_stock_urls=None):
+                      skip_price_anomaly=False, out_of_stock_urls=None,
+                      local_output_dir=None, local_file_prefix=None):
     """파일서버 업로드 + 메일 알림"""
     alert_code = config.get('alert_code', target_key)
 
@@ -451,6 +493,8 @@ def _upload_and_alert(manager, config, target_key, results_df, target_count,
 
     # 현지시간 기준 session_start (generate_and_upload_file이 폴더 날짜로 사용)
     local_session_start = session_dt_local.strftime('%Y-%m-%d %H:%M:%S')
+
+    _save_local_final_results(results_df, local_output_dir, local_file_prefix or custom_filename)
 
     # 파일서버 업로드
     logger.info(f"파일서버 업로드 대상: {len(results_df)}개 레코드")

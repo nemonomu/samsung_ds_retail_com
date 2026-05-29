@@ -556,7 +556,16 @@ def clear_seller_only_ship_from(scraper, result, country_code, module):
     )
 
 
-def wrap_extract_for_debug(scraper, output_dir, country_code, save_top_screenshot=False, save_html=False):
+def wrap_extract_for_debug(
+    scraper,
+    output_dir,
+    country_code,
+    save_top_screenshot=False,
+    save_html=False,
+    screenshot_reason='top_page',
+    html_reason='test_page',
+    empty_reason='empty_result',
+):
     cfg = COUNTRY_CONFIGS[country_code]
     module = importlib.import_module(cfg['module'])
     original_extract = scraper.extract_product_info
@@ -565,23 +574,74 @@ def wrap_extract_for_debug(scraper, output_dir, country_code, save_top_screensho
         result = original_extract(url, row_data, *args, **kwargs)
         if not result:
             if save_html:
-                save_debug_html(scraper, output_dir, country_code, url, row_data, 'empty_result')
+                save_debug_html(scraper, output_dir, country_code, url, row_data, empty_reason)
+            if save_top_screenshot:
+                save_debug_screenshot(scraper, output_dir, country_code, url, row_data, screenshot_reason)
             return result
 
         clear_seller_only_ship_from(scraper, result, country_code, module)
 
         if save_html:
-            save_debug_html(scraper, output_dir, country_code, url, row_data, 'test_page')
+            save_debug_html(scraper, output_dir, country_code, url, row_data, html_reason)
 
         if save_top_screenshot:
-            save_debug_screenshot(scraper, output_dir, country_code, url, row_data, 'top_page')
+            save_debug_screenshot(scraper, output_dir, country_code, url, row_data, screenshot_reason)
 
         return result
 
     scraper.extract_product_info = wrapped_extract
 
 
-def run_auto_recovery(country_code, cfg, results_df, target_count, module, blocked_failures=None):
+def make_recovery_scraper_factory(country_code, cfg, output_dir, save_top_screenshot=False, save_html=False):
+    def create_recovery_scraper():
+        module = importlib.import_module(cfg['module'])
+        scraper_class = getattr(module, cfg['class'])
+        if cfg.get('init_country_code'):
+            scraper = scraper_class(country_code)
+        else:
+            scraper = scraper_class()
+
+        apply_selector_overrides(scraper, cfg, country_code)
+        wrap_extract_for_debug(
+            scraper,
+            output_dir,
+            country_code,
+            save_top_screenshot=save_top_screenshot,
+            save_html=save_html,
+            screenshot_reason='recovery_top_page',
+            html_reason='recovery_page',
+            empty_reason='recovery_empty_result',
+        )
+
+        module.logger.info(f'{country_code.upper()} V3 recovery scraper configured')
+
+        if hasattr(scraper, 'setup_driver'):
+            setup_result = scraper.setup_driver()
+        elif hasattr(scraper, 'setup_browser'):
+            setup_result = scraper.setup_browser()
+        else:
+            raise AttributeError(f"{cfg['class']} has no setup_driver/setup_browser method")
+
+        if setup_result is False:
+            module.logger.error(f'{country_code.upper()} V3 recovery browser setup failed')
+            return None
+
+        return scraper
+
+    return create_recovery_scraper
+
+
+def run_auto_recovery(
+    country_code,
+    cfg,
+    results_df,
+    target_count,
+    module,
+    blocked_failures=None,
+    output_dir=None,
+    save_top_screenshot=False,
+    save_html=False,
+):
     target_key = cfg.get('target_key', country_code)
     try:
         from auto_recovery import auto_recovery_run
@@ -591,6 +651,15 @@ def run_auto_recovery(country_code, cfg, results_df, target_count, module, block
             results_df=results_df,
             target_count=target_count,
             error_logs=blocked_failures or None,
+            scraper_factory=make_recovery_scraper_factory(
+                country_code,
+                cfg,
+                output_dir,
+                save_top_screenshot=save_top_screenshot,
+                save_html=save_html,
+            ),
+            local_output_dir=output_dir,
+            local_file_prefix=f'{country_code}_v3',
         )
     except Exception as exc:
         module.logger.error(f'{country_code.upper()} V3 auto_recovery failed: {exc}')
@@ -767,7 +836,17 @@ def run_country_v3(country_code):
         if blocked_failures:
             module.logger.warning(f"{country_code.upper()} V3 blocked/final failures: {len(blocked_failures)}")
         if allow_auto_recovery:
-            run_auto_recovery(country_code, cfg, results_df, len(urls_data), module, blocked_failures)
+            run_auto_recovery(
+                country_code,
+                cfg,
+                results_df,
+                len(urls_data),
+                module,
+                blocked_failures,
+                output_dir=output_dir,
+                save_top_screenshot=save_top_screenshot,
+                save_html=save_html,
+            )
     finally:
         save_log(cfg['log_name'])
         if output_dir:
