@@ -12,6 +12,7 @@ import sys
 import logging
 import hashlib
 import zipfile
+import shutil
 from datetime import datetime
 import pytz
 import pandas as pd
@@ -580,9 +581,10 @@ class RecoveryManager:
             logger.error(f"파일서버 업로드 실패: {e}")
             return False
 
-    def generate_and_upload_file(self, target, df, session_start, custom_filename=None):
+    def generate_and_upload_file(self, target, df, session_start, custom_filename=None, local_copy_dir=None):
         """CSV/ZIP/MD5 생성 및 파일서버 업로드"""
         config = TARGET_CONFIG[target]
+        self.last_generated_files = {}
 
         # 원본 세션 날짜 (폴더용) - session_start에서 추출 (리스트면 가장 이른 날짜 사용)
         if isinstance(session_start, list):
@@ -653,6 +655,18 @@ class RecoveryManager:
             logger.info(f"MD5 생성: {md5_filename}")
 
             # 5. 파일서버 업로드
+            if local_copy_dir:
+                os.makedirs(local_copy_dir, exist_ok=True)
+                local_copies = {}
+                for key, temp_file in [('csv', csv_filename), ('zip', zip_filename), ('md5', md5_filename)]:
+                    local_path = os.path.join(local_copy_dir, os.path.basename(temp_file))
+                    shutil.copy2(temp_file, local_path)
+                    local_copies[key] = local_path
+                self.last_generated_files = local_copies
+                logger.info(f"LOCAL_FILESERVER_CSV={local_copies.get('csv')}")
+                logger.info(f"LOCAL_FILESERVER_ZIP={local_copies.get('zip')}")
+                logger.info(f"LOCAL_FILESERVER_MD5={local_copies.get('md5')}")
+
             upload_success = True
             if not self.upload_to_file_server(zip_filename, config['country_code'], date_str):
                 upload_success = False

@@ -48,6 +48,7 @@ def auto_recovery_run(
     scraper_factory=None,
     local_output_dir=None,
     local_file_prefix=None,
+    audit_context=None,
 ):
     """
     스크래퍼 크롤링 완료 후 자동 복구 + 파일 업로드 + 메일 알림
@@ -129,7 +130,8 @@ def auto_recovery_run(
                          session_start, error_logs=error_logs,
                          out_of_stock_urls=out_of_stock_urls,
                          local_output_dir=local_output_dir,
-                         local_file_prefix=local_file_prefix)
+                         local_file_prefix=local_file_prefix,
+                         audit_context=audit_context)
         return
 
     # === 2-B. 실패 시: 자동 recovery ===
@@ -156,7 +158,8 @@ def auto_recovery_run(
                          session_start, error_logs=error_logs,
                          out_of_stock_urls=out_of_stock_urls,
                          local_output_dir=local_output_dir,
-                         local_file_prefix=local_file_prefix)
+                         local_file_prefix=local_file_prefix,
+                         audit_context=audit_context)
         return
 
     # 스크래퍼 로드
@@ -176,7 +179,8 @@ def auto_recovery_run(
                          recovery_prefix='[RE] ', recovery_suffix='scraper load failed',
                          out_of_stock_urls=out_of_stock_urls,
                          local_output_dir=local_output_dir,
-                         local_file_prefix=local_file_prefix)
+                         local_file_prefix=local_file_prefix,
+                         audit_context=audit_context)
         return
 
     # recovery 크롤링 (메모리에만 보관, DB 미반영)
@@ -302,7 +306,8 @@ def auto_recovery_run(
                          skip_price_anomaly=skip_price_anomaly,
                          out_of_stock_urls=out_of_stock_urls,
                          local_output_dir=local_output_dir,
-                         local_file_prefix=local_file_prefix)
+                         local_file_prefix=local_file_prefix,
+                         audit_context=audit_context)
     else:
         # === 3-B. update complete: DB 반영 + 복구 데이터로 업로드 ===
         logger.info("복구 전후 다름 → DB 반영 + 복구 데이터 업로드")
@@ -325,7 +330,8 @@ def auto_recovery_run(
                          skip_price_anomaly=skip_price_anomaly,
                          out_of_stock_urls=out_of_stock_urls,
                          local_output_dir=local_output_dir,
-                         local_file_prefix=local_file_prefix)
+                         local_file_prefix=local_file_prefix,
+                         audit_context=audit_context)
 
     logger.info(f"\n{'='*60}")
     logger.info(f"자동 복구 완료: {config['name']}")
@@ -478,7 +484,8 @@ def _upload_and_alert(manager, config, target_key, results_df, target_count,
                       session_start, error_logs=None,
                       recovery_prefix='', recovery_suffix='',
                       skip_price_anomaly=False, out_of_stock_urls=None,
-                      local_output_dir=None, local_file_prefix=None):
+                      local_output_dir=None, local_file_prefix=None,
+                      audit_context=None):
     """파일서버 업로드 + 메일 알림"""
     alert_code = config.get('alert_code', target_key)
 
@@ -494,12 +501,13 @@ def _upload_and_alert(manager, config, target_key, results_df, target_count,
     # 현지시간 기준 session_start (generate_and_upload_file이 폴더 날짜로 사용)
     local_session_start = session_dt_local.strftime('%Y-%m-%d %H:%M:%S')
 
-    _save_local_final_results(results_df, local_output_dir, local_file_prefix or custom_filename)
+    local_final_csv_path = _save_local_final_results(results_df, local_output_dir, local_file_prefix or custom_filename)
 
     # 파일서버 업로드
     logger.info(f"파일서버 업로드 대상: {len(results_df)}개 레코드")
     upload_success = manager.generate_and_upload_file(
-        target_key, results_df, local_session_start, custom_filename
+        target_key, results_df, local_session_start, custom_filename,
+        local_copy_dir=local_output_dir
     )
     if upload_success:
         logger.info("파일서버 업로드 완료")
@@ -507,13 +515,60 @@ def _upload_and_alert(manager, config, target_key, results_df, target_count,
         logger.error("파일서버 업로드 실패")
 
     # 메일 알림 (skip_price_anomaly=True이면 가격 이상 감지 건너뜀)
+    audit_errors = []
+    if audit_context and audit_context.get('enabled', True):
+        try:
+            from v3_audit import run_artifact_audit
+
+            generated_files = getattr(manager, 'last_generated_files', {}) or {}
+            audit_summary = run_artifact_audit(
+                target_key=target_key,
+                country_code=audit_context.get('country_code', alert_code),
+                results_df=results_df,
+                output_dir=audit_context.get('output_dir') or local_output_dir,
+                db_engine=manager.db_engine,
+                table_name=audit_context.get('table_name') or config.get('table'),
+                local_result_csv_path=local_final_csv_path,
+                file_server_csv_path=generated_files.get('csv'),
+                log_path=audit_context.get('log_path'),
+                artifact_prefix=audit_context.get('artifact_prefix') or local_file_prefix or target_key,
+                compare_db=audit_context.get('compare_db', True),
+                compare_log=audit_context.get('compare_log', True),
+                compare_html=audit_context.get('compare_html', True),
+                cleanup_matched=audit_context.get('cleanup_matched', True),
+            )
+            audit_errors = audit_summary.get('errors', [])
+        except Exception as e:
+            logger.error(f"V3 artifact audit failed to run: {e}")
+            audit_errors = [{
+                'sku': '__audit__',
+                'source': 'audit',
+                'field': '__run__',
+                'expected': 'completed',
+                'actual': str(e),
+            }]
+        if not upload_success:
+            audit_errors.append({
+                'sku': '__upload__',
+                'source': 'fileserver',
+                'field': '__upload__',
+                'expected': 'success',
+                'actual': 'failed',
+            })
+
+    audit_error_message = None
+    if audit_errors:
+        audit_error_message = f"AUDIT_ERROR {len(audit_errors)} mismatch(es). See local error folder."
+
     monitor_and_alert(
         alert_code, target_count, results_df,
+        error_message=audit_error_message,
         error_logs=error_logs,
         fs_country_code=None if skip_price_anomaly else config['country_code'],
         file_prefix=None if skip_price_anomaly else config['file_prefix'],
         skip_date=date_str,
         recovery_prefix=recovery_prefix,
         recovery_suffix=recovery_suffix,
-        out_of_stock_urls=out_of_stock_urls
+        out_of_stock_urls=out_of_stock_urls,
+        audit_errors=audit_errors
     )

@@ -456,7 +456,7 @@ def analyze_crawl_results(country_code, target_count, results_df, error_logs=Non
     return analysis
 
 
-def send_alert_email(analysis, error_message=None):
+def send_alert_email(analysis, error_message=None, audit_errors=None):
     """
     분석 결과를 이메일로 발송
 
@@ -515,7 +515,8 @@ def send_alert_email(analysis, error_message=None):
 
         # 제목 생성 (간결하게: [DS] + [RE] + Failed X sku + 사이트명 + suffix)
         short_name = COUNTRY_SHORT_NAMES.get(analysis['country_code'], analysis['country_code'])
-        subject = f"[DS] {recovery_prefix}{failed_prefix}{price_error_prefix}{price_anomaly_prefix}{short_name}{recovery_suffix_str}"
+        audit_error_prefix = "ERROR " if audit_errors else ""
+        subject = f"[DS] {audit_error_prefix}{recovery_prefix}{failed_prefix}{price_error_prefix}{price_anomaly_prefix}{short_name}{recovery_suffix_str}"
 
         # 이메일 본문 생성 (HTML)
         html_content = f"""
@@ -583,6 +584,32 @@ def send_alert_email(analysis, error_message=None):
 
         # 필드별 통계 섹션 (가격, 제목만 표시)
         field_empty_changes = analysis.get('field_empty_changes', {})
+        if audit_errors:
+            html_content += f"""
+            <div class="section">
+                <h3 class="critical">Artifact audit errors ({len(audit_errors)})</h3>
+                <table>
+                    <tr><th>SKU</th><th>Source</th><th>Field</th><th>Expected</th><th>Actual</th></tr>
+            """
+            for item in audit_errors[:50]:
+                html_content += f"""
+                    <tr>
+                        <td>{item.get('sku', '')}</td>
+                        <td>{item.get('source', '')}</td>
+                        <td>{item.get('field', '')}</td>
+                        <td>{item.get('expected', '')}</td>
+                        <td>{item.get('actual', '')}</td>
+                    </tr>
+                """
+            if len(audit_errors) > 50:
+                html_content += f"""
+                    <tr><td colspan="5">... {len(audit_errors) - 50} more error(s)</td></tr>
+                """
+            html_content += """
+                </table>
+            </div>
+            """
+
         if analysis['field_stats']:
             html_content += """
             <div class="section">
@@ -798,7 +825,7 @@ def send_alert_email(analysis, error_message=None):
         return False
 
 
-def monitor_and_alert(country_code, target_count, results_df, error_message=None, error_logs=None, blocked_page_failures=0, all_null_failures=0, title_null_failures=0, fs_country_code=None, file_prefix=None, skip_date=None, recovery_prefix='', recovery_suffix='', out_of_stock_urls=None):
+def monitor_and_alert(country_code, target_count, results_df, error_message=None, error_logs=None, blocked_page_failures=0, all_null_failures=0, title_null_failures=0, fs_country_code=None, file_prefix=None, skip_date=None, recovery_prefix='', recovery_suffix='', out_of_stock_urls=None, audit_errors=None):
     """
     크롤링 결과 모니터링 및 알림 (메인 함수)
 
@@ -850,7 +877,7 @@ def monitor_and_alert(country_code, target_count, results_df, error_message=None
         analysis['out_of_stock_urls'] = out_of_stock_urls or []
 
         # 항상 이메일 발송 (일일 리포트)
-        return send_alert_email(analysis, error_message)
+        return send_alert_email(analysis, error_message, audit_errors=audit_errors)
 
     except Exception as e:
         logger.error(f"모니터링 중 오류: {e}")

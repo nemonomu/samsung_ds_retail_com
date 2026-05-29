@@ -1859,14 +1859,16 @@ def main_v3():
     try:
         test_mode = os.getenv('TEST_MODE', 'false').lower() == 'true'
         max_items = int(os.getenv('MAX_ITEMS', '0')) or None
+        production_mode = not test_mode
+        audit_requested = production_mode and os.getenv('DE_V3_AUDIT_ENABLED', 'true').lower() == 'true'
         top_screenshot_requested = os.getenv('DE_V3_SAVE_TOP_SCREENSHOT', 'true').lower() == 'true'
         html_requested = os.getenv('DE_V3_SAVE_HTML', 'true').lower() == 'true'
         local_output_requested = (
             bool(os.getenv('DE_V3_RUN_DIR') or os.getenv('DE_V3_OUTPUT_DIR'))
             or top_screenshot_requested
             or html_requested
+            or audit_requested
         )
-        production_mode = not test_mode
 
         print("=" * 60)
         print(f"Amazon DE scraper v3.0 - {'verification mode' if test_mode else 'production mode'}")
@@ -1876,6 +1878,7 @@ def main_v3():
         print(f"DB result write: {'OFF' if test_mode else 'ON'}")
         print(f"File/S3 upload: {'OFF' if test_mode else 'ON'}")
         print(f"Auto recovery/mail: {'OFF' if test_mode else 'ON'}")
+        print(f"Artifact audit: {'ON' if audit_requested else 'OFF'}")
         print(f"Top screenshots: {'ON' if top_screenshot_requested else 'OFF'}")
         print(f"HTML snapshots: {'ON' if html_requested else 'OFF'}")
         if test_mode:
@@ -1939,7 +1942,19 @@ def main_v3():
                 error_logs=blocked_failures or None,
                 scraper_factory=create_de_v3_recovery_scraper_factory(output_dir),
                 local_output_dir=output_dir,
-                local_file_prefix='de_v3'
+                local_file_prefix='de_v3',
+                audit_context={
+                    'enabled': audit_requested,
+                    'country_code': 'de',
+                    'table_name': 'amazon_price_crawl_tbl_de_v2',
+                    'output_dir': output_dir,
+                    'log_path': os.path.join(os.path.dirname(__file__), 'logs', 'de_amazon_v3_latest.log'),
+                    'artifact_prefix': 'de_v3',
+                    'compare_db': True,
+                    'compare_log': True,
+                    'compare_html': True,
+                    'cleanup_matched': os.getenv('DE_V3_AUDIT_CLEANUP', 'true').lower() == 'true',
+                }
             )
 
         if blocked_failures:
