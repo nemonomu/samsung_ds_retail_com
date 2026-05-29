@@ -117,8 +117,8 @@ COUNTRY_CONFIGS = {
         },
     },
     'es': {
-        'module': 'es_v2',
-        'class': 'AmazonScraper',
+        'module': 'es_v3_scraper',
+        'class': 'AmazonESV3Scraper',
         'display': 'ES',
         'selector_mode': 'nested',
         'target_method': 'get_crawl_targets',
