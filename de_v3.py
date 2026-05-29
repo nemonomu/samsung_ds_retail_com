@@ -1834,6 +1834,22 @@ def copy_de_v3_latest_log(output_dir):
         logger.debug(f"DE V3 log copy failed: {e}")
 
 
+def create_de_v3_recovery_scraper_factory(output_dir=None):
+    def create_recovery_scraper():
+        scraper = AmazonDEV3Scraper(output_dir=output_dir)
+        scraper.de_v3_verification_mode = False
+        scraper.de_v3_save_all_html = os.getenv('DE_V3_SAVE_HTML', 'false').lower() == 'true'
+        logger.info("DE V3 recovery scraper configured")
+
+        if not scraper.setup_driver():
+            logger.error("DE V3 recovery browser setup failed")
+            return None
+
+        return scraper
+
+    return create_recovery_scraper
+
+
 
 def main_v3():
     from log_utils import setup_log, save_log
@@ -1920,7 +1936,10 @@ def main_v3():
                 target_key='de',
                 results_df=results_df,
                 target_count=len(urls_data),
-                error_logs=None
+                error_logs=blocked_failures or None,
+                scraper_factory=create_de_v3_recovery_scraper_factory(output_dir),
+                local_output_dir=output_dir,
+                local_file_prefix='de_v3'
             )
 
         if blocked_failures:
