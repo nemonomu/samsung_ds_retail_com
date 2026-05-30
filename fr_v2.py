@@ -943,58 +943,16 @@ class AmazonFRScraper:
             # 재고 확인
             has_stock = self.check_stock_availability()
 
-            # 통합 라벨 확인 (Expéditeur / Vendeur) - 먼저 확인
-            combined_label_selectors = [
-                "//*[@id='merchantInfoFeature_feature_div']/div[1]/div/span",
-                "//*[@id='merchantInfoFeature_feature_div']//span[contains(@class, 'a-color-tertiary')]"
-            ]
-            combined_patterns = [
-                'expéditeur / vendeur',
-                'expéditeur/vendeur',
-                'shipper / seller',
-                'shipper/seller'
-            ]
-
-            is_combined_label = False
-            for selector in combined_label_selectors:
-                try:
-                    label_element = self.driver.find_element(By.XPATH, selector)
-                    label_text = label_element.text.strip().lower() if label_element else ""
-                    if not label_text:
-                        label_text = (label_element.get_attribute('textContent') or "").strip().lower()
-                    logger.info(f"라벨 텍스트: '{label_text}'")
-
-                    if any(pattern in label_text for pattern in combined_patterns):
-                        is_combined_label = True
-                        logger.info(f"통합 라벨 감지됨: {label_text}")
-                        break
-                except:
-                    continue
-
-            if is_combined_label:
-                # 통합 라벨인 경우: 값 위치(div[2])에서 추출해서 둘 다 할당
-                value_selectors = [
-                    "//*[@id='merchantInfoFeature_feature_div']/div[2]/span/a/span",
-                    "//*[@id='merchantInfoFeature_feature_div']/div[2]/span/a",
-                    "//*[@id='merchantInfoFeature_feature_div']/div[2]/span/span",
-                    "//*[@id='merchantInfoFeature_feature_div']/div[2]/span",
-                    "//a[@id='sellerProfileTriggerId']"
-                ]
-                combined_value = self.extract_element_text(value_selectors, "통합 판매자/배송자")
-                result['ships_from'] = combined_value
-                result['sold_by'] = combined_value
-                logger.info(f"통합 라벨 값 추출: ships_from={result['ships_from']}, sold_by={result['sold_by']}")
-            else:
-                # 통합 라벨이 아닌 경우: 각각 별도로 추출
-                result['ships_from'] = self.extract_element_text(
-                    self.selectors.get('ships_from', []),
-                    "Ships From"
-                )
-                result['sold_by'] = self.extract_element_text(
-                    self.selectors.get('sold_by', []),
-                    "Sold By"
-                )
-                logger.info(f"개별 추출: ships_from={result['ships_from']}, sold_by={result['sold_by']}")
+            # Ships From / Sold By: DB selector가 combined-label predicate를 포함하므로 자동 처리
+            result['ships_from'] = self.extract_element_text(
+                self.selectors.get('ships_from', []),
+                "Ships From"
+            )
+            result['sold_by'] = self.extract_element_text(
+                self.selectors.get('sold_by', []),
+                "Sold By"
+            )
+            logger.info(f"추출: ships_from={result['ships_from']}, sold_by={result['sold_by']}")
 
             # Ships From과 Sold By가 모두 없으면 가격도 빈 값으로 처리
             if not result['ships_from'] and not result['sold_by']:

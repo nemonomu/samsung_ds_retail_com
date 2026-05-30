@@ -551,28 +551,10 @@ class AmazonUKScraper:
             has_stock = self.check_stock_availability(url)
             
             # 판매자 정보 추출 (가격 재시도 판단을 위해 먼저 추출)
+            # extract_ships_from은 "Fulfilled by Amazon" → "Amazon" 정규화 포함
+            # DB selector가 combined-label predicate를 포함하므로 통합 라벨도 자동 처리
             result['ships_from'] = self.extract_ships_from(self.selectors.get('ships_from', []))
             result['sold_by'] = self.extract_element_text(self.selectors.get('sold_by', []), "Sold By")
-
-            # ships_from이 None이고 sold_by가 있을 때, 통합 라벨 확인
-            if not result['ships_from'] and result['sold_by']:
-                try:
-                    combined_label_selectors = [
-                        "//span[contains(text(), 'Shipper / Seller')]",
-                        "//span[contains(text(), 'Shipper/Seller')]",
-                        "//*[@id='merchantInfoFeature_feature_div']//span[contains(@class, 'a-color-tertiary')][contains(text(), 'Shipper')]"
-                    ]
-                    for label_selector in combined_label_selectors:
-                        try:
-                            label_element = self.driver.find_element(By.XPATH, label_selector)
-                            if label_element and label_element.is_displayed():
-                                result['ships_from'] = result['sold_by']
-                                logger.info(f"Shipper / Seller 통합 라벨 발견 - ships_from에 sold_by 값 복사: {result['ships_from']}")
-                                break
-                        except:
-                            continue
-                except Exception as e:
-                    logger.debug(f"통합 라벨 확인 중 오류: {e}")
 
             has_seller = bool(result['ships_from'] or result['sold_by'])
 

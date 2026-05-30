@@ -692,91 +692,6 @@ class AmazonIndiaScraper:
             
         return None
     
-    def extract_ships_from_india(self):
-        """인도 전용 ships_from 추출"""
-
-        # 1. Shipper/Seller가 같이 있는 경우 확인
-        try:
-            shipper_seller_element = self.driver.find_element(
-                By.XPATH, "//*[@id='merchantInfoFeature_feature_div']/div[1]/div/span"
-            )
-            if shipper_seller_element and "Shipper" in shipper_seller_element.text:
-                logger.info("      Shipper/Seller 케이스 감지")
-                # sellerProfileTriggerId에서 값 가져오기
-                seller_element = self.driver.find_element(By.XPATH, "//*[@id='sellerProfileTriggerId']")
-                if seller_element and seller_element.is_displayed():
-                    text = seller_element.text.strip()
-                    if text:
-                        logger.info(f"      Ships From 추출 성공 (Shipper/Seller): '{text}'")
-                        return text
-        except:
-            pass
-
-        # 2. 기존 선택자로 시도
-        ships_from_selectors = self.selectors['in']['ships_from']
-
-        logger.info(f"\nShips From 추출 시작 - 선택자: {len(ships_from_selectors)}개")
-
-        for idx, selector in enumerate(ships_from_selectors, 1):
-            try:
-                logger.info(f"\n  [{idx}/{len(ships_from_selectors)}] Ships From 선택자 시도: {selector}")
-
-                if selector.startswith('//'):
-                    elements = self.driver.find_elements(By.XPATH, selector)
-                else:
-                    elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
-
-                logger.info(f"      발견된 요소: {len(elements)}개")
-
-                for i, element in enumerate(elements):
-                    try:
-                        if element.is_displayed():
-                            text = element.text.strip()
-                            if text:
-                                logger.info(f"      Ships From 추출 성공: '{text}'")
-                                return text
-                    except Exception as e:
-                        logger.error(f"      요소 처리 오류: {e}")
-
-            except Exception as e:
-                logger.error(f"      오류: {str(e)}")
-
-        logger.error("\nShips From 추출 실패")
-        return None
-    
-    def extract_sold_by_india(self):
-        """인도 전용 sold_by 추출"""
-        sold_by_selectors = self.selectors['in']['sold_by']
-        
-        logger.info(f"\nSold By 추출 시작 - 선택자: {len(sold_by_selectors)}개")
-        
-        for idx, selector in enumerate(sold_by_selectors, 1):
-            try:
-                logger.info(f"\n  [{idx}/{len(sold_by_selectors)}] Sold By 선택자 시도: {selector}")
-                
-                if selector.startswith('//'):
-                    elements = self.driver.find_elements(By.XPATH, selector)
-                else:
-                    elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                
-                logger.info(f"      발견된 요소: {len(elements)}개")
-                
-                for i, element in enumerate(elements):
-                    try:
-                        if element.is_displayed():
-                            text = element.text.strip()
-                            if text:
-                                logger.info(f"      Sold By 추출 성공: '{text}'")
-                                return text
-                    except Exception as e:
-                        logger.error(f"      요소 처리 오류: {e}")
-                
-            except Exception as e:
-                logger.error(f"      오류: {str(e)}")
-        
-        logger.error("\nSold By 추출 실패")
-        return None
-    
     def extract_element_text(self, selectors, element_name="요소"):
         """선택자 목록에서 텍스트 추출"""
         logger.info(f"\n{element_name} 추출 시작 - 총 {len(selectors)}개 선택자")
@@ -979,11 +894,15 @@ class AmazonIndiaScraper:
                 # 루피 가격 추출 (강화된 필터링)
                 result['retailprice'] = self.extract_price_india()
 
-                # Ships From 추출 (인도 전용 함수 사용)
-                result['ships_from'] = self.extract_ships_from_india()
-
-                # 판매자 정보 추출 (인도 전용 함수 사용)
-                result['sold_by'] = self.extract_sold_by_india()
+                # Ships From / Sold By: DB selector가 combined-label predicate를 포함하므로 자동 처리
+                result['ships_from'] = self.extract_element_text(
+                    self.selectors['in']['ships_from'],
+                    "Ships From"
+                )
+                result['sold_by'] = self.extract_element_text(
+                    self.selectors['in']['sold_by'],
+                    "Sold By"
+                )
 
                 # ships_from과 sold_by가 모두 없을 경우 가격을 0으로 설정
                 result['retailprice'] = self.apply_price_zero_rule(
