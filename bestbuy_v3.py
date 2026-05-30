@@ -635,7 +635,12 @@ class BestBuyGraphQLScraper:
                 existing_cols = [c for c in column_order if c in df_csv.columns]
                 df_csv = df_csv[existing_cols]
                 df_csv.columns = df_csv.columns.str.upper()
-                df_csv.to_csv(csv_filename, index=False, encoding='utf-8', lineterminator='\r\n')
+                # float_format='%g': 정수형 가격(879.0)을 "879"로, 소수(184.59)는 그대로.
+                # v2 출력 형식과 일치시키기 위함.
+                df_csv.to_csv(
+                    csv_filename, index=False, encoding='utf-8',
+                    lineterminator='\r\n', float_format='%g',
+                )
 
                 zip_filename = f'{base_filename}.zip'
                 with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
