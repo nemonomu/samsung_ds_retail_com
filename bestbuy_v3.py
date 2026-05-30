@@ -714,18 +714,37 @@ def main():
     except ImportError:
         log_enabled = False
 
+    # alert_monitor 있으면 사용, dry-run 또는 모듈 없을 때는 no-op
+    def _alert(target_count, results_df, error_message=None, error_logs=None):
+        if args.dry_run:
+            return
+        try:
+            from alert_monitor import monitor_and_alert
+            monitor_and_alert(
+                'usa_bestbuy_v3', target_count, results_df,
+                error_message=error_message, error_logs=error_logs,
+            )
+        except ImportError:
+            logger.warning("alert_monitor 모듈 없음 — 알림 건너뜀")
+        except Exception as e:
+            logger.warning(f"알림 전송 실패: {e}")
+
     print("\n🚀 BestBuy 가격 추출 시스템 - GraphQL+ZenRows 버전 (v3)")
     print("=" * 60)
 
     scraper = BestBuyGraphQLScraper()
     if scraper.db_engine is None:
         logger.error("DB 연결 실패로 종료합니다.")
+        _alert(0, None, error_message="DB 연결 실패")
         return
 
+    urls_data = []
+    results_df = None
     try:
         urls_data = scraper.get_crawl_targets(limit=args.limit)
         if not urls_data:
             logger.warning("크롤링 대상이 없습니다.")
+            _alert(0, None, error_message="크롤링 대상 URL이 없습니다")
             return
         logger.info(f"✅ 크롤링 대상: {len(urls_data)}개")
 
@@ -735,6 +754,7 @@ def main():
         )
         if not results:
             logger.error("결과가 없습니다.")
+            _alert(len(urls_data), None, error_message="크롤링 결과가 없습니다")
             return
 
         results_df = pd.DataFrame(results)
@@ -742,18 +762,23 @@ def main():
 
         if args.dry_run:
             logger.info("\n🟡 --dry-run: DB/SFTP 저장 건너뜀")
-            # 상위 5개만 콘솔에 출력
             preview_cols = ['retailersku', 'title', 'retailprice', 'imageurl']
             preview_cols = [c for c in preview_cols if c in results_df.columns]
             print(results_df[preview_cols].head(10).to_string(index=False))
         else:
             scraper.save_results(results_df, save_db=True, upload_server=True)
+            # 정상 종료 알림 (실패 SKU 있더라도 process가 끝까지 갔으면 성공으로 봄 — v2와 동일)
+            _alert(len(urls_data), results_df)
 
         logger.info("BestBuy v3 크롤링 완료!")
     except Exception as e:
         logger.error(f"크롤링 중 예외: {e}")
         import traceback
-        logger.error(traceback.format_exc())
+        error_detail = traceback.format_exc()
+        logger.error(error_detail)
+        scraper.error_logs.append(f"[치명적 오류] {str(e)}\n{error_detail}")
+        _alert(len(urls_data), results_df,
+               error_message=str(e), error_logs=scraper.error_logs)
     finally:
         if log_enabled:
             try:
