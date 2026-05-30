@@ -222,7 +222,7 @@ def main():
             print(f'  {d["asin"]} [{d["case"]:<20}] expected_ships={exp!r:<27} actual_ships={act_s!r:<27} actual_sold={act_b!r:<27} actual_price={act_p!r}')
 
     print('\n' + '=' * 110)
-    print('Done. ships_from NULL이 줄고 canary PASS율이 높으면 Phase A 적용 성공.')
+    print('Done. Phase A is working if ships_from NULL count dropped and canary PASS rate increased.')
 
     conn.close()
 
