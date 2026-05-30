@@ -1,0 +1,4412 @@
+{
+  "de": [
+    {
+      "country": "de",
+      "asin": "B087DFFJRD",
+      "expected_ships_from": "Hype Network",
+      "expected_sold_by": "Hype Network",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B087DFLF9S",
+      "expected_ships_from": "Hype Network",
+      "expected_sold_by": "Hype Network",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B08GTYFC37",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B08GV4YYV7",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B08GV9M64L",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B08HN37XC1",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B08RX3343D",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B08RX4QKXS",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0B7CKVCCV",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0B7CKZGN6",
+      "expected_ships_from": "kewecom",
+      "expected_sold_by": "kewecom",
+      "label_merchant": "",
+      "label_used_merchant": "Versender / Verkäufer",
+      "case": "used_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0B7CMZ3QH",
+      "expected_ships_from": "Morelenet",
+      "expected_sold_by": "Morelenet",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0B7CPSN2K",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0B7CQ2CHH",
+      "expected_ships_from": "MS Warenhandel Shop",
+      "expected_sold_by": "MS Warenhandel Shop",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0B9C3ZVHR",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0B9C4DKKG",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0BM42X58C",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0C47ZX1WB",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0C48B3RGL",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0C48HN4Z9",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0CBYZ6DD1",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0CDJ61VJW",
+      "expected_ships_from": "Eternity Plugs & More",
+      "expected_sold_by": "Eternity Plugs & More",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0CGQ43PMG",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0CGQ466W8",
+      "expected_ships_from": "AS-Discount",
+      "expected_sold_by": "AS-Discount",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0CGQ4FJSV",
+      "expected_ships_from": "Azerty NL",
+      "expected_sold_by": "Azerty NL",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0CTRRFXC5",
+      "expected_ships_from": "tekaro",
+      "expected_sold_by": "tekaro",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0CTRVZKG7",
+      "expected_ships_from": "Onlinehandel Kabus",
+      "expected_sold_by": "Onlinehandel Kabus",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0CTS93WML",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon Retourenkauf",
+      "label_merchant": "",
+      "label_used_merchant": "Verkäufer",
+      "case": "used_separate"
+    },
+    {
+      "country": "de",
+      "asin": "B0CTSSMTZK",
+      "expected_ships_from": "MBU Deals",
+      "expected_sold_by": "MBU Deals",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0D9WTKV1B",
+      "expected_ships_from": "Don Sol",
+      "expected_sold_by": "Don Sol",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0DC8RVRBZ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0DC8VPSHV",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0DGH2FH7T",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0DGH3HBHJ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0DGHB9V34",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0DN6ZQ3PD",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0DN7CYYSD",
+      "expected_ships_from": "DBHub",
+      "expected_sold_by": "DBHub",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0DWFLPMM5",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0DWFMD4FQ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0DWFMD52T",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0DWT52KHY",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0DWT6PN9N",
+      "expected_ships_from": "Hype Network",
+      "expected_sold_by": "Hype Network",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0F3BMBQ75",
+      "expected_ships_from": "Hype Network",
+      "expected_sold_by": "Hype Network",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0F9XN4DCC",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0F3BD1W6R",
+      "expected_ships_from": "DBHub",
+      "expected_sold_by": "DBHub",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0F9XMYR15",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0F3H14JQG",
+      "expected_ships_from": "AS-Discount",
+      "expected_sold_by": "AS-Discount",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0F3B6MZM9",
+      "expected_ships_from": "Limited&RareGoods",
+      "expected_sold_by": "Limited&RareGoods",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0F9XP15XL",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0F3H2TLX1",
+      "expected_ships_from": "Amazon US",
+      "expected_sold_by": "Amazon US",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0CK39YR9V",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0DQ9K7S1Q",
+      "expected_ships_from": "Cybertec24",
+      "expected_sold_by": "Cybertec24",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0CK2RKPBL",
+      "expected_ships_from": "gblmarket",
+      "expected_sold_by": "gblmarket",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0DQBQZ9LX",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0DBBG7CG7",
+      "expected_ships_from": "Internethandel Veith",
+      "expected_sold_by": "Internethandel Veith",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0DBBJSGFQ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0F3WLFCPL",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0F3WKYQPS",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B08PC5DKZQ",
+      "expected_ships_from": "Tec & More",
+      "expected_sold_by": "Tec & More",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B08PC5ZYB1",
+      "expected_ships_from": "EinfachOrangensaftShop",
+      "expected_sold_by": "EinfachOrangensaftShop",
+      "label_merchant": "",
+      "label_used_merchant": "Versender / Verkäufer",
+      "case": "used_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0CCN9QWKT",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B08PC5ZC73",
+      "expected_ships_from": "Modern Essentials GmbH",
+      "expected_sold_by": "Modern Essentials GmbH",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0CY37V52M",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0F9XNN7XF",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0F9XN6MZW",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0F9XN5CB5",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Versender / Verkäufer",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0GHYGLNTT",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0GHYRZ1JW",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0GHY9WB4F",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0GHZ44FMD",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0GHYN28WB",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0GHYL64YZ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0GHYDN7LT",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0GHYFY89M",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0D9WT512W",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "de",
+      "asin": "B0D9WTM2TH",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    }
+  ],
+  "es": [
+    {
+      "country": "es",
+      "asin": "B0CX5C3LBQ",
+      "expected_ships_from": "BEATRIX20 S.R.L.",
+      "expected_sold_by": "BEATRIX20 S.R.L.",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B087DFFJRD",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0B7CKVCCV",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0B7CKZGN6",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Vendido por | Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0B7CMZ3QH",
+      "expected_ships_from": "Morelenet",
+      "expected_sold_by": "Morelenet",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0B7CPSN2K",
+      "expected_ships_from": "Morelenet",
+      "expected_sold_by": "Morelenet",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0B9C4DKKG",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0CTRRFXC5",
+      "expected_ships_from": "BEATRIX20 S.R.L.",
+      "expected_sold_by": "BEATRIX20 S.R.L.",
+      "label_merchant": "Remitente / Vendedor | Vendido por",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0CTRV9CVP",
+      "expected_ships_from": "You Get - Innovation & Technology",
+      "expected_sold_by": "You Get - Innovation & Technology",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0CTRVZKG7",
+      "expected_ships_from": "GER-POL",
+      "expected_sold_by": "GER-POL",
+      "label_merchant": "",
+      "label_used_merchant": "Remitente / Vendedor",
+      "case": "used_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0CTRXBKHP",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0CTSSMTZK",
+      "expected_ships_from": "Amazon UK",
+      "expected_sold_by": "Amazon UK",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0D9WTKV1B",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Vendido por | Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0DGH2FH7T",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0DGH3HBHJ",
+      "expected_ships_from": "BEATRIX20 S.R.L.",
+      "expected_sold_by": "BEATRIX20 S.R.L.",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0DGHB9V34",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0DWFLPMM5",
+      "expected_ships_from": "FERRARI COMPUTERS",
+      "expected_sold_by": "FERRARI COMPUTERS",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0DWFMD4FQ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0DWFMD52T",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0BM42X58C",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0CBYZ6DD1",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0DWT6PN9N",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0DWT6JGQH",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0DWT52KHY",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0B9C3ZVHR",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0F3BMBQ75",
+      "expected_ships_from": "Tek4life",
+      "expected_sold_by": "Tek4life",
+      "label_merchant": "Remitente / Vendedor | Vendido por",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0F9XN4DCC",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0F3BD1W6R",
+      "expected_ships_from": "ReToys",
+      "expected_sold_by": "ReToys",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0F9XMYR15",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0F3H14JQG",
+      "expected_ships_from": "Amazon US",
+      "expected_sold_by": "Amazon US",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0F9XP15XL",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0F3H2TLX1",
+      "expected_ships_from": "Amazon US",
+      "expected_sold_by": "Amazon US",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0CK39YR9V",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0DC8VPSHV",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0DQ9K7S1Q",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0CK2TC9XQ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon Segunda mano",
+      "label_merchant": "",
+      "label_used_merchant": "Vendido por",
+      "case": "used_separate"
+    },
+    {
+      "country": "es",
+      "asin": "B0C47ZX1WB",
+      "expected_ships_from": "Amazon US",
+      "expected_sold_by": "Amazon US",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0CK2RKPBL",
+      "expected_ships_from": "BEATRIX20 S.R.L.",
+      "expected_sold_by": "BEATRIX20 S.R.L.",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0DC8RVRBZ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0DN6ZQ3PD",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0DQBQZ9LX",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0DBBG7CG7",
+      "expected_ships_from": "FirenzePC srl",
+      "expected_sold_by": "FirenzePC srl",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0C48HN4Z9",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0DBBJSGFQ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0F3WLFCPL",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0DZK9C789",
+      "expected_ships_from": "Steinhoff Trading",
+      "expected_sold_by": "Steinhoff Trading",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0F3WKYQPS",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B08PC5DKZQ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Vendido por | Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0CCN9NHTC",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0CCN9QWKT",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B08PC5ZC73",
+      "expected_ships_from": "Mattrade",
+      "expected_sold_by": "Mattrade",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0CY37V52M",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B08GTYFC37",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B08HN37XC1",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B08RX4QKXS",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B08GV9M64L",
+      "expected_ships_from": "GALADOR",
+      "expected_sold_by": "GALADOR",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B08GV4YYV7",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Vendido por | Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B08RX3343D",
+      "expected_ships_from": "Next Spa",
+      "expected_sold_by": "Next Spa",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0DN7CYYSD",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0F9XNN7XF",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0F9XN6MZW",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0F9XN5CB5",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0GHYGLNTT",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0GHYRZ1JW",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0GHY9WB4F",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0GHZ44FMD",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0GHYN28WB",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0GHYL64YZ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0GHYDN7LT",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0GHYFY89M",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0GJDCLR6R",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0GJDLQV1N",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0GJD8BTS3",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0GJF1GQFX",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0GJDNBMLX",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0GJDN5Z3T",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0GJDWDV6Z",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0GJF1KVLY",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0GK1FMZWB",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0GK1M1N4V",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0GK1CM995",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0FGPSR9VZ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0FGPVM9GP",
+      "expected_ships_from": "CanalPC Informática",
+      "expected_sold_by": "CanalPC Informática",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0FTMB3X3J",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0FTMG6Y6X",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Remitente / Vendedor",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "es",
+      "asin": "B0D9WTM2TH",
+      "expected_ships_from": "E/CNS",
+      "expected_sold_by": "E/CNS",
+      "label_merchant": "Remitente / Vendedor | Vendido por",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    }
+  ],
+  "fr": [
+    {
+      "country": "fr",
+      "asin": "B087DFLF9S",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0B7CKVCCV",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon Seconde main",
+      "label_merchant": "",
+      "label_used_merchant": "Sold by",
+      "case": "used_separate"
+    },
+    {
+      "country": "fr",
+      "asin": "B0B9C3ZVHR",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0BM459NHM",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0CTRXBKHP",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0DGH2FH7T",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0DGHB9V34",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0DWFLPMM5",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0DWFMD52T",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0DWT52KHY",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0DWT6JGQH",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0F3BMBQ75",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Quality Value Supplies",
+      "label_merchant": "",
+      "label_used_merchant": "Sold by",
+      "case": "used_separate"
+    },
+    {
+      "country": "fr",
+      "asin": "B0F9XN4DCC",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0F9XMYR15",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0F3H14JQG",
+      "expected_ships_from": "M & L France",
+      "expected_sold_by": "M & L France",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0F9XP15XL",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0F3H2TLX1",
+      "expected_ships_from": "Amazon US",
+      "expected_sold_by": "Amazon US",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0CK39YR9V",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0DC8VPSHV",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0DN7CYYSD",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Sold by | Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0DQ9K7S1Q",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0DC8RVRBZ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0DQBQZ9LX",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0DBBJSGFQ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0F3WLFCPL",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0F3WKYQPS",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B08PC5DKZQ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0CCN9NHTC",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0CCN9QWKT",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B08PC5ZC73",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0CY37V52M",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B08RX3343D",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon Seconde main",
+      "label_merchant": "",
+      "label_used_merchant": "Sold by",
+      "case": "used_separate"
+    },
+    {
+      "country": "fr",
+      "asin": "B0F9XNN7XF",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0F9XN6MZW",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0GHYGLNTT",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0GHYRZ1JW",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0GHY9WB4F",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0GHZ44FMD",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0GHYN28WB",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0GHYL64YZ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0GHYDN7LT",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0GHYFY89M",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0FTMB3X3J",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0FTMG6Y6X",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "fr",
+      "asin": "B0D9WTM2TH",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    }
+  ],
+  "gb": [
+    {
+      "country": "gb",
+      "asin": "B0CK2TC9XQ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0CK39YR9V",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0DBBG7CG7",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0DBBJSGFQ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0DC8VPSHV",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0DQ9K7S1Q",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0CTRV9CVP",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0CTRXBKHP",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0B9C3ZVHR",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0B9C4DKKG",
+      "expected_ships_from": "Texeno",
+      "expected_sold_by": "Texeno",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0BM42X58C",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0BM459NHM",
+      "expected_ships_from": "Texeno",
+      "expected_sold_by": "Texeno",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0CBYZ6DD1",
+      "expected_ships_from": "Texeno",
+      "expected_sold_by": "Texeno",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0CDJ61VJW",
+      "expected_ships_from": "CreativeMind Products",
+      "expected_sold_by": "CreativeMind Products",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0DWT52KHY",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0DWT6JGQH",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0DWT6PN9N",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0DGHB9V34",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0CGQ43PMG",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0CGQ466W8",
+      "expected_ships_from": "Texeno",
+      "expected_sold_by": "Texeno",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0CGQ4FJSV",
+      "expected_ships_from": "JV SALES",
+      "expected_sold_by": "JV SALES",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B087DFFJRD",
+      "expected_ships_from": "LegacyRetailerUK",
+      "expected_sold_by": "LegacyRetailerUK",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B087DFLF9S",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0CX5C3LBQ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B08GV9M64L",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B08RX3343D",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B08RX4QKXS",
+      "expected_ships_from": "LegacyRetailerUK",
+      "expected_sold_by": "LegacyRetailerUK",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0C48HN4Z9",
+      "expected_ships_from": "shop-weinheim",
+      "expected_sold_by": "shop-weinheim",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0B7CKVCCV",
+      "expected_ships_from": "Ecrn55",
+      "expected_sold_by": "Ecrn55",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0B7CMZ3QH",
+      "expected_ships_from": "KitUP Limited",
+      "expected_sold_by": "KitUP Limited",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0B7CQ2CHH",
+      "expected_ships_from": "Ecrn55",
+      "expected_sold_by": "Ecrn55",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0D9WTKV1B",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0F9XN4DCC",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0F3GGX4SK",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0F9XMYR15",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0F3H14JQG",
+      "expected_ships_from": "M and L UK",
+      "expected_sold_by": "M and L UK",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0F9XP15XL",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0F3WKYQPS",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B08PC5DKZQ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0CCN9NHTC",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0CCN9QWKT",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B08PC5ZC73",
+      "expected_ships_from": "Amazon EU",
+      "expected_sold_by": "Amazon EU",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0CY37V52M",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0F9XNN7XF",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0F9XN6MZW",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B09QV692XY",
+      "expected_ships_from": "Amazon EU",
+      "expected_sold_by": "Amazon EU",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B09QV5KJHV",
+      "expected_ships_from": "NXTech",
+      "expected_sold_by": "NXTech",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B003J5JB12",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Epicloud Retail",
+      "label_merchant": "",
+      "label_used_merchant": "Sold by",
+      "case": "used_separate"
+    },
+    {
+      "country": "gb",
+      "asin": "B0GHYGLNTT",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0GHYRZ1JW",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0GHY9WB4F",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0GHZ44FMD",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0GHYN28WB",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0GHYL64YZ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0GHYDN7LT",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0GHYFY89M",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0FGPSR9VZ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0FTMB3X3J",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "gb",
+      "asin": "B0FTMG6Y6X",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    }
+  ],
+  "in": [
+    {
+      "country": "in",
+      "asin": "B0CBYZ6DD1",
+      "expected_ships_from": "Kochar Computers",
+      "expected_sold_by": "Kochar Computers",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "in",
+      "asin": "B0C48HN4Z9",
+      "expected_ships_from": "STS Shop",
+      "expected_sold_by": "STS Shop",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    }
+  ],
+  "it": [
+    {
+      "country": "it",
+      "asin": "B087DFLF9S",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0B7CKVCCV",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0B9C3ZVHR",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0CTRXBKHP",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0CX5C3LBQ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0DWFLPMM5",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Speditore / Venditore",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0DWFMD52T",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon Seconda mano",
+      "label_merchant": "",
+      "label_used_merchant": "Sold by",
+      "case": "used_separate"
+    },
+    {
+      "country": "it",
+      "asin": "B0DWT52KHY",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0DGH3HBHJ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0DWFMD4FQ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B08RX3343D",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon Seconda mano",
+      "label_merchant": "",
+      "label_used_merchant": "Sold by",
+      "case": "used_separate"
+    },
+    {
+      "country": "it",
+      "asin": "B0CBYZ6DD1",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0CGQ43PMG",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0CGQ466W8",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0F3BMBQ75",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Quality Value Supplies",
+      "label_merchant": "",
+      "label_used_merchant": "Sold by",
+      "case": "used_separate"
+    },
+    {
+      "country": "it",
+      "asin": "B0F9XN4DCC",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0F9XMYR15",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0F9XP15XL",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0F3H2TLX1",
+      "expected_ships_from": "Amazon US",
+      "expected_sold_by": "Amazon US",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0DN7CYYSD",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon Seconda mano",
+      "label_merchant": "",
+      "label_used_merchant": "Sold by",
+      "case": "used_separate"
+    },
+    {
+      "country": "it",
+      "asin": "B0DQ9K7S1Q",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0DC8RVRBZ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0DN6ZQ3PD",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0DQBQZ9LX",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0DBBG7CG7",
+      "expected_ships_from": "Amazon UK",
+      "expected_sold_by": "Amazon UK",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0DBBJSGFQ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0F3WLFCPL",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0CCN9QWKT",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B08PC5ZC73",
+      "expected_ships_from": "coseon-de",
+      "expected_sold_by": "coseon-de",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0CY37V52M",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0F9XNN7XF",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0F9XN6MZW",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0GHYGLNTT",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0GHYRZ1JW",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0GHY9WB4F",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0GHZ44FMD",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0GHYL64YZ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0FTMB3X3J",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "it",
+      "asin": "B0FTMG6Y6X",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    }
+  ],
+  "jp": [
+    {
+      "country": "jp",
+      "asin": "B0CW5WDQVP",
+      "expected_ships_from": "Amazon.co.jp",
+      "expected_sold_by": "Amazon.co.jp",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0CW656KT5",
+      "expected_ships_from": "Amazon.co.jp",
+      "expected_sold_by": "Amazon.co.jp",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0C6XP42SC",
+      "expected_ships_from": "Amazon.co.jp",
+      "expected_sold_by": "Amazon.co.jp",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0DM4JSB4J",
+      "expected_ships_from": "Amazon.co.jp",
+      "expected_sold_by": "Amazon.co.jp",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0DM3V95MV",
+      "expected_ships_from": "Amazon.co.jp",
+      "expected_sold_by": "Amazon.co.jp",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0DM47M71X",
+      "expected_ships_from": "D shopone",
+      "expected_sold_by": "D shopone",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0F2DMYG5R",
+      "expected_ships_from": "Amazon.co.jp",
+      "expected_sold_by": "Amazon.co.jp",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0F2DFCRVF",
+      "expected_ships_from": "Amazon.co.jp",
+      "expected_sold_by": "Amazon.co.jp",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0F2DCL8X4",
+      "expected_ships_from": "Amazon.co.jp",
+      "expected_sold_by": "Amazon.co.jp",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0BPXQ9BDV",
+      "expected_ships_from": "プライムストア！",
+      "expected_sold_by": "プライムストア！",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0BPXRY7N2",
+      "expected_ships_from": "super select 京都",
+      "expected_sold_by": "super select 京都",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0CHRSJ4LR",
+      "expected_ships_from": "Amazon.co.jp",
+      "expected_sold_by": "Amazon.co.jp",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0F127JTDX",
+      "expected_ships_from": "Amazon.co.jp",
+      "expected_sold_by": "Amazon.co.jp",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0F12375P9",
+      "expected_ships_from": "Amazon.co.jp",
+      "expected_sold_by": "Amazon.co.jp",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0BBLXYPLT",
+      "expected_ships_from": "イーアキバ",
+      "expected_sold_by": "イーアキバ",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0BBL2N1QS",
+      "expected_ships_from": "リスコ",
+      "expected_sold_by": "リスコ",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0BBLF7RTS",
+      "expected_ships_from": "クラストストア【適格請求書発行事業者】",
+      "expected_sold_by": "クラストストア【適格請求書発行事業者】",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0DFG4DL36",
+      "expected_ships_from": "プライムストア！",
+      "expected_sold_by": "プライムストア！",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0C6XMLXNG",
+      "expected_ships_from": "Amazon.co.jp",
+      "expected_sold_by": "Amazon.co.jp",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0CHRV11VG",
+      "expected_ships_from": "Amazon.co.jp",
+      "expected_sold_by": "Amazon.co.jp",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0F3BD1W6R",
+      "expected_ships_from": "APOLO1969",
+      "expected_sold_by": "APOLO1969",
+      "label_merchant": "Shipper / Seller | Sold by",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0F3B6MZM9",
+      "expected_ships_from": "APOLO1969",
+      "expected_sold_by": "APOLO1969",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0FGD8CRDQ",
+      "expected_ships_from": "YSJPN",
+      "expected_sold_by": "YSJPN",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0DGKMQPYC",
+      "expected_ships_from": "ri-store",
+      "expected_sold_by": "ri-store",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0DGKTMN6L",
+      "expected_ships_from": "雑貨通販クレア",
+      "expected_sold_by": "雑貨通販クレア",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0DCHFKL1W",
+      "expected_ships_from": "Eliz Trade",
+      "expected_sold_by": "Eliz Trade",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0DN7CYYSD",
+      "expected_ships_from": "パソコン工房",
+      "expected_sold_by": "パソコン工房",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0DZK9C789",
+      "expected_ships_from": "イーアキバ",
+      "expected_sold_by": "イーアキバ",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B08SVPWHZH",
+      "expected_ships_from": "Amazon.co.jp",
+      "expected_sold_by": "Amazon.co.jp",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B07KCKG77L",
+      "expected_ships_from": "ショップ佐藤【ご購入前に必ずコンディション欄をご確認ください】",
+      "expected_sold_by": "ショップ佐藤【ご購入前に必ずコンディション欄をご確認ください】",
+      "label_merchant": "",
+      "label_used_merchant": "出荷元 / 販売元",
+      "case": "used_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B081F9KVBG",
+      "expected_ships_from": "Amazon.co.jp",
+      "expected_sold_by": "Amazon.co.jp",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B08SW72NBQ",
+      "expected_ships_from": "Amazon.co.jp",
+      "expected_sold_by": "Amazon.co.jp",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B081F8TZVQ",
+      "expected_ships_from": "Amazon.co.jp",
+      "expected_sold_by": "Amazon.co.jp",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0D4Y77N5H",
+      "expected_ships_from": "Amazon.co.jp",
+      "expected_sold_by": "Amazon.co.jp",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0DM23XSH6",
+      "expected_ships_from": "Amazon.co.jp",
+      "expected_sold_by": "Amazon.co.jp",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B08P4CN4YC",
+      "expected_ships_from": "Amazon.co.jp",
+      "expected_sold_by": "Amazon.co.jp",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0DM22R8RG",
+      "expected_ships_from": "Amazon.co.jp",
+      "expected_sold_by": "Amazon.co.jp",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B08P45YTTL",
+      "expected_ships_from": "Amazon.co.jp",
+      "expected_sold_by": "Amazon.co.jp",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0DM252JN1",
+      "expected_ships_from": "Amazon.co.jp",
+      "expected_sold_by": "Amazon.co.jp",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B091KL9NJX",
+      "expected_ships_from": "Amazon.co.jp",
+      "expected_sold_by": "Amazon.co.jp",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B08M6C9ZQN",
+      "expected_ships_from": "Amazon.co.jp",
+      "expected_sold_by": "Amazon.co.jp",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B08M61HGX8",
+      "expected_ships_from": "Amazon.co.jp",
+      "expected_sold_by": "Amazon.co.jp",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0CK898LV7",
+      "expected_ships_from": "Amazon.co.jp",
+      "expected_sold_by": "Amazon.co.jp",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B091KNN72M",
+      "expected_ships_from": "Amazon.co.jp",
+      "expected_sold_by": "Amazon.co.jp",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0FGPSR9VZ",
+      "expected_ships_from": "trippodoshop",
+      "expected_sold_by": "trippodoshop",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0FTMB3X3J",
+      "expected_ships_from": "APOLO1969",
+      "expected_sold_by": "APOLO1969",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0D9WT512W",
+      "expected_ships_from": "パソコン工房",
+      "expected_sold_by": "パソコン工房",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "jp",
+      "asin": "B0D9WTM2TH",
+      "expected_ships_from": "Amazon US",
+      "expected_sold_by": "Amazon US",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    }
+  ],
+  "nl": [
+    {
+      "country": "nl",
+      "asin": "B087DFFJRD",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B087DFLF9S",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0B7CKVCCV",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0B7CKZGN6",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0B7CMZ3QH",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0B7CPSN2K",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0B9C3ZVHR",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0B9C4DKKG",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0BM42X58C",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0BYWB6237",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon RetourDeals",
+      "label_merchant": "",
+      "label_used_merchant": "Sold by",
+      "case": "used_separate"
+    },
+    {
+      "country": "nl",
+      "asin": "B0CBYZ6DD1",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0CDJ61VJW",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0CGQ43PMG",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0CGQ466W8",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0CTRVZKG7",
+      "expected_ships_from": "GER-POL",
+      "expected_sold_by": "GER-POL",
+      "label_merchant": "",
+      "label_used_merchant": "Verzender / Verkoper",
+      "case": "used_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0CTRXBKHP",
+      "expected_ships_from": "Morelenet",
+      "expected_sold_by": "Morelenet",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0CX5C3LBQ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon RetourDeals",
+      "label_merchant": "",
+      "label_used_merchant": "Verkocht door",
+      "case": "used_separate"
+    },
+    {
+      "country": "nl",
+      "asin": "B0DGH2FH7T",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0DGH3HBHJ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0DGHB9V34",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0DWFLPMM5",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0DWFMD4FQ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0DWFMD52T",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0DWT52KHY",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0DWT6PN9N",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B08GTYFC37",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B08GV4YYV7",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B08GV9M64L",
+      "expected_ships_from": "GALADOR",
+      "expected_sold_by": "GALADOR",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B08HN37XC1",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B08RX4QKXS",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0F3BMBQ75",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Quality Value Supplies",
+      "label_merchant": "",
+      "label_used_merchant": "Sold by",
+      "case": "used_separate"
+    },
+    {
+      "country": "nl",
+      "asin": "B0F9XN4DCC",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0F3BD1W6R",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon RetourDeals",
+      "label_merchant": "",
+      "label_used_merchant": "Verkocht door",
+      "case": "used_separate"
+    },
+    {
+      "country": "nl",
+      "asin": "B0F9XMYR15",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0F9XP15XL",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0CK39YR9V",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0CK2S298S",
+      "expected_ships_from": "GER-POL",
+      "expected_sold_by": "GER-POL",
+      "label_merchant": "",
+      "label_used_merchant": "Shipper / Seller",
+      "case": "used_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0DC8VPSHV",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0DN7CYYSD",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0DQ9K7S1Q",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0CK2TC9XQ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0CK2RKPBL",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0DC8RVRBZ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0DN6ZQ3PD",
+      "expected_ships_from": "Morelenet",
+      "expected_sold_by": "Morelenet",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0DQBQZ9LX",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0DBBG7CG7",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0C48HN4Z9",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller | Sold by",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0DBBJSGFQ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0F3WLFCPL",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0DZK9C789",
+      "expected_ships_from": "Azerty NL",
+      "expected_sold_by": "Azerty NL",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0F3WKYQPS",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B08PC5DKZQ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0CCN9NHTC",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0CCN9QWKT",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B08PC5ZC73",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0CY37V52M",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B08RX3343D",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0F9XNN7XF",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0F9XN6MZW",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0F9XN5CB5",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B09QV5KJHV",
+      "expected_ships_from": "Anubis_Bricks",
+      "expected_sold_by": "Anubis_Bricks",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B003J5JB12",
+      "expected_ships_from": "SELECT ELITE",
+      "expected_sold_by": "SELECT ELITE",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B09FRRWVWX",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon RetourDeals",
+      "label_merchant": "",
+      "label_used_merchant": "Verkocht door",
+      "case": "used_separate"
+    },
+    {
+      "country": "nl",
+      "asin": "B0GHYGLNTT",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0GHYRZ1JW",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0GHY9WB4F",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0GHZ44FMD",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0GHYN28WB",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0GHYL64YZ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0GHYDN7LT",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0GHYFY89M",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0GJDCLR6R",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0GJDLQV1N",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0GJD8BTS3",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0GJF1GQFX",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0GJDNBMLX",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0GJDN5Z3T",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0GJDWDV6Z",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0GJF1KVLY",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0GK1FMZWB",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0GK1M1N4V",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0GK166P88",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0GK1CM995",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0FGPSR9VZ",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "nl",
+      "asin": "B0FTMB3X3J",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon RetourDeals",
+      "label_merchant": "",
+      "label_used_merchant": "Sold by",
+      "case": "used_separate"
+    },
+    {
+      "country": "nl",
+      "asin": "B0D9WT512W",
+      "expected_ships_from": "Amazon",
+      "expected_sold_by": "Amazon",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    }
+  ],
+  "usa": [
+    {
+      "country": "usa",
+      "asin": "B0F9XMYR15",
+      "expected_ships_from": "Amazon Germany",
+      "expected_sold_by": "Amazon Germany",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0DX2FN49V",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0F3B6MZM9",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0F9XP15XL",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0DX2FK3HX",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0BHJF2VRN",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0B7CKVCCV",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0BHJGV9WR",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0B7CPSN2K",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0C48B3RGL",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0DHLFWBQ1",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0DN7CYYSD",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0DQ9K7S1Q",
+      "expected_ships_from": "Prime Service For Less",
+      "expected_sold_by": "Prime Service For Less",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0BHJJ9Y77",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0CK2RKPBL",
+      "expected_ships_from": "Triplenet Pricing INC",
+      "expected_sold_by": "Triplenet Pricing INC",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0DHLCRF91",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Sold by | Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0CHGT1KFJ",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Sold by | Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0B7CQ2CHH",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0D9WTKV1B",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0C48HN4Z9",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0DBBJSGFQ",
+      "expected_ships_from": "Triplenet Pricing INC",
+      "expected_sold_by": "Triplenet Pricing INC",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0DZK9C789",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B08QBL36GF",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0874XN4D8",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0CHFSWM2P",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B08GV9M64L",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0CHFS9K14",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B08GV4YYV7",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0CHFSZX9W",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B08RX3343D",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0F3H14JQG",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0F3H2TLX1",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0GHYGLNTT",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0GHYRZ1JW",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0GHY9WB4F",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0GHYN28WB",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0GHYL64YZ",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0GHYDN7LT",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0GK1FMZWB",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0GK1M1N4V",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0GK166P88",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0GK1CM995",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0DY2TB1TD",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0DY2NWFJV",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0FTMB3X3J",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0FTMG6Y6X",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0D9WT512W",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    },
+    {
+      "country": "usa",
+      "asin": "B0D9WTM2TH",
+      "expected_ships_from": "Amazon.com",
+      "expected_sold_by": "Amazon.com",
+      "label_merchant": "Shipper / Seller",
+      "label_used_merchant": "",
+      "case": "regular_combined"
+    }
+  ]
+}
