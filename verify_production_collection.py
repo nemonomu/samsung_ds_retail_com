@@ -27,7 +27,7 @@ COUNTRY_TABLE = {
     'de': 'amazon_price_crawl_tbl_de_v2',
     'es': 'amazon_price_crawl_tbl_es_v2',
     'fr': 'amazon_price_crawl_tbl_fr_v2',
-    'gb': 'amazon_price_crawl_tbl_gb_v2',
+    'gb': 'amazon_price_crawl_tbl_uk_v2',  # uk_v2.py writes here; legacy _gb_v2 abandoned 2025-11
     'in': 'amazon_price_crawl_tbl_in_v2',
     'it': 'amazon_price_crawl_tbl_it_v2',
     'jp': 'amazon_price_crawl_tbl_jp_v2',
