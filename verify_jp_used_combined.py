@@ -15,7 +15,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from jp_v2 import AmazonScraper
 
 
-TEST_ASINS = ['B0DM47M71X']
+TEST_ASINS = [
+    'B0C6XP42SC',  # Samsung Heatsink Operation Verified
+    'B0DM4JSB4J',  # Samsung 5000MB Internal MZ-V9E4T0B-EC
+    'B0DM3V95MV',  # Samsung 5000MB Internal MZ-V9S1T0B-EC
+    'B0DM47M71X',  # Samsung 5000MB Internal MZ-V9S2T0B-EC
+    'B0F2DMYG5R',  # Samsung Heatsink Transfer MZ-VAP1T0C-EC
+]
 
 
 def main():
