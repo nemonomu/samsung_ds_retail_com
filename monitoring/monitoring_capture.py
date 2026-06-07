@@ -25,6 +25,8 @@ from PIL import Image, ImageDraw, ImageFont
 from config import AWS_CONFIG, DB_CONFIG
 from retailer_settings import RETAILERS
 
+NULL_SCREENSHOT_PREFIX = 'ds-null-screenshots'
+
 # 로깅 설정
 logging.basicConfig(
     level=logging.INFO,
@@ -124,6 +126,90 @@ class ScreenshotMonitor:
         except Exception as e:
             logger.error(f"❌ anomaly 레코드 업데이트 실패: {e}")
             return False
+
+    def link_existing_null_screenshot(self, identifier, anomaly_id):
+        """Reuse an existing NULL screenshot instead of capturing the same page again."""
+        if self.test_mode or not anomaly_id or not identifier or not self.s3_client:
+            return False
+
+        try:
+            crawl_dt = datetime.strptime(self.crawl_date, '%Y-%m-%d')
+            year = crawl_dt.strftime('%Y')
+            year_month = crawl_dt.strftime('%Y%m')
+            year_month_day = crawl_dt.strftime('%Y%m%d')
+
+            sku = str(identifier).strip()
+            file_path = f"{NULL_SCREENSHOT_PREFIX}/{year}/{year_month}/{year_month_day}/{self.retailer}/"
+            prefix = f"{file_path}{self.retailer}_{sku}_"
+
+            response = self.s3_client.list_objects_v2(
+                Bucket=AWS_CONFIG['bucket_name'],
+                Prefix=prefix
+            )
+            objects = response.get('Contents') or []
+            if not objects:
+                return False
+
+            latest = max(objects, key=lambda obj: obj.get('LastModified', datetime.min.replace(tzinfo=timezone.utc)))
+            s3_key = latest['Key']
+            file_name = s3_key.rsplit('/', 1)[-1]
+            file_size = latest.get('Size', 0)
+
+            file_id = self.insert_file_record(file_name, file_path, file_size, self.created_id)
+            if not file_id:
+                return False
+
+            if not self.update_anomaly_screenshot(anomaly_id, file_id):
+                return False
+
+            logger.info(f"✅ 기존 NULL 스크린샷 재사용: s3://{AWS_CONFIG['bucket_name']}/{s3_key}")
+            return True
+        except Exception as e:
+            logger.warning(f"⚠️ 기존 NULL 스크린샷 재사용 실패: {e}")
+            return False
+
+    def delete_existing_monitoring_screenshots(self, file_path, identifier):
+        """Delete same-day monitoring screenshots for the same retailer/SKU before upload."""
+        if self.test_mode or not identifier or not self.s3_client:
+            return 0
+
+        prefix = f"{file_path}{self.retailer}_{str(identifier).strip()}_"
+        deleted_count = 0
+
+        try:
+            paginator = self.s3_client.get_paginator('list_objects_v2')
+            objects_to_delete = []
+
+            for page in paginator.paginate(Bucket=AWS_CONFIG['bucket_name'], Prefix=prefix):
+                for obj in page.get('Contents') or []:
+                    objects_to_delete.append({'Key': obj['Key']})
+
+                    if len(objects_to_delete) == 1000:
+                        deleted_count += self._delete_s3_objects(objects_to_delete, prefix)
+                        objects_to_delete = []
+
+            if objects_to_delete:
+                deleted_count += self._delete_s3_objects(objects_to_delete, prefix)
+
+            if deleted_count:
+                logger.info(f"🧹 기존 monitoring 스크린샷 삭제 완료: {deleted_count}개 (prefix={prefix})")
+            return deleted_count
+        except Exception as e:
+            logger.warning(f"⚠️ 기존 monitoring 스크린샷 삭제 실패 (prefix={prefix}): {e}")
+            return 0
+
+    def _delete_s3_objects(self, objects, prefix):
+        """Delete S3 objects and report per-object delete errors."""
+        response = self.s3_client.delete_objects(
+            Bucket=AWS_CONFIG['bucket_name'],
+            Delete={'Objects': objects}
+        )
+
+        errors = response.get('Errors') or []
+        if errors:
+            logger.warning(f"⚠️ S3 삭제 일부 실패 (prefix={prefix}, errors={errors})")
+
+        return len(response.get('Deleted') or [])
 
     def setup_driver(self):
         """리테일러별 드라이버 설정"""
@@ -614,6 +700,12 @@ class ScreenshotMonitor:
         """단일 URL 처리: 캡쳐 -> S3 업로드 -> DB 저장 -> 메모리 해제"""
         screenshot_bytes = None
         try:
+            if self.link_existing_null_screenshot(identifier, anomaly_id):
+                return True
+
+            if self.driver is None and not self.setup_driver():
+                return False
+
             screenshot_bytes = self.capture_screenshot(url)
             if screenshot_bytes is None:
                 return False
@@ -645,6 +737,7 @@ class ScreenshotMonitor:
             file_path = f"{year}/{year_month}/{year_month_day}/{self.retailer}/"
             s3_key = f"{file_path}{file_name}"
 
+            self.delete_existing_monitoring_screenshots(file_path, identifier)
             upload_success = self.upload_to_s3(screenshot_bytes, s3_key)
 
             if upload_success and anomaly_id:
@@ -669,9 +762,6 @@ class ScreenshotMonitor:
             urls_data: list of dict [{'url': '...', 'identifier': '...'}, ...]
                        또는 list of str ['url1', 'url2', ...]
         """
-        if not self.setup_driver():
-            return []
-
         results = []
         try:
             for idx, item in enumerate(urls_data):

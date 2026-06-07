@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Centrecom Monitoring Screenshot Handover</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --text: #1f2937;
+      --muted: #5b6472;
+      --line: #d8dee8;
+      --bg: #ffffff;
+      --soft: #f5f7fa;
+      --accent: #155eef;
+      --ok: #067647;
+      --warn: #b54708;
+    }
+    body {
+      margin: 0;
+      font-family: Arial, "Malgun Gothic", sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.55;
+    }
+    main {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 32px 28px 56px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+      letter-spacing: 0;
+    }
+    h2 {
+      margin: 34px 0 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--line);
+      font-size: 20px;
+    }
+    h3 {
+      margin: 22px 0 8px;
+      font-size: 16px;
+    }
+    p {
+      margin: 8px 0;
+    }
+    code {
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: var(--soft);
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.95em;
+    }
+    pre {
+      overflow-x: auto;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--soft);
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 13px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0 18px;
+      font-size: 14px;
+    }
+    th, td {
+      vertical-align: top;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      text-align: left;
+    }
+    th {
+      background: var(--soft);
+    }
+    ul, ol {
+      padding-left: 22px;
+    }
+    li {
+      margin: 6px 0;
+    }
+    .meta {
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .badge {
+      display: inline-block;
+      margin-right: 6px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      background: #e8f1ff;
+      color: var(--accent);
+    }
+    .ok { color: var(--ok); font-weight: 700; }
+    .warn { color: var(--warn); font-weight: 700; }
+    .flow {
+      display: grid;
+      gap: 8px;
+      margin: 12px 0 18px;
+    }
+    .step {
+      padding: 11px 13px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+    .step strong {
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Centrecom Monitoring Screenshot Handover</h1>
+  <p class="meta">작성일: 2026-06-07 / 대상 저장소: <code>C:\samsung_ds_retail_com</code></p>
+  <p>
+    이 문서는 <code>centrecom.py</code>에 monitoring screenshot 후처리를 내장하고,
+    기존 NULL 증거 스크린샷을 재사용하도록 변경한 내용을 인수인계하기 위한 문서입니다.
+  </p>
+
+  <h2>1. 목적</h2>
+  <p>
+    Centrecom 크롤링 중 이미 NULL 증거 스크린샷이 S3에 저장된 경우,
+    <code>monitoring_capture.py</code>가 같은 페이지를 다시 열어 중복 캡처하지 않도록 했습니다.
+    대신 기존 S3 이미지를 <code>ds_monitoring_file</code>에 등록하고
+    <code>ds_monitoring_report_anomaly.screenshot_id</code>에 연결합니다.
+  </p>
+
+  <h2>2. 변경 파일</h2>
+  <table>
+    <tr>
+      <th>파일</th>
+      <th>변경 요약</th>
+    </tr>
+    <tr>
+      <td><code>centrecom.py</code></td>
+      <td>
+        Centrecom 전용 NULL 판정 필드 확장, 크롤링 완료 후 monitoring 캡처 자동 호출,
+        monitoring 조회 날짜를 Centrecom 현지 <code>crawl_datetime</code> 기준으로 설정.
+      </td>
+    </tr>
+    <tr>
+      <td><code>monitoring/monitoring_capture.py</code></td>
+      <td>
+        기존 NULL 스크린샷 S3 key를 먼저 조회하여 DB file record와 anomaly screenshot_id를 연결.
+        기존 이미지가 없을 때만 새 브라우저를 띄워 캡처.
+      </td>
+    </tr>
+  </table>
+
+  <h2>3. 전체 흐름</h2>
+  <div class="flow">
+    <div class="step"><strong>1.</strong> <code>centrecom.py</code>가 DB에서 Centrecom 대상 URL을 로드합니다.</div>
+    <div class="step"><strong>2.</strong> 각 URL을 크롤링하고 결과를 <code>centrecom_price_crawl_tbl_au</code>에 저장합니다.</div>
+    <div class="step"><strong>3.</strong> 결과에 NULL 증거 필드가 있으면 <code>null_screenshot.capture_and_upload()</code>가 S3에 증거 이미지를 저장합니다.</div>
+    <div class="step"><strong>4.</strong> <code>auto_recovery_run(target_key='au')</code>가 파일 업로드와 알림/모니터링 후처리를 수행합니다.</div>
+    <div class="step"><strong>5.</strong> Centrecom 드라이버를 종료한 뒤 <code>run_monitoring_capture_for_centrecom()</code>가 실행됩니다.</div>
+    <div class="step"><strong>6.</strong> monitoring anomaly 중 <code>screenshot_id IS NULL</code>인 URL을 조회합니다.</div>
+    <div class="step"><strong>7.</strong> 같은 날짜/리테일러/SKU의 기존 NULL 스크린샷이 있으면 재사용합니다.</div>
+    <div class="step"><strong>8.</strong> 기존 NULL 스크린샷이 없으면 같은 날짜/리테일러/SKU의 기존 monitoring 캡처를 삭제한 뒤 새로 캡처합니다.</div>
+  </div>
+
+  <h2>4. Centrecom NULL 증거 스크린샷</h2>
+  <p>
+    Centrecom에서는 아래 필드 중 하나라도 비어 있으면 증거 스크린샷 대상입니다.
+  </p>
+  <pre>title
+retailprice
+ships_from
+sold_by
+imageurl</pre>
+  <p>
+    구현 위치는 <code>centrecom.py</code>의
+    <code>CENTRECOM_NULL_SCREENSHOT_FIELDS</code>와
+    <code>should_capture_centrecom_null_screenshot()</code>입니다.
+    전역 <code>null_screenshot.is_null_result()</code>는 다른 리테일러 영향 방지를 위해 수정하지 않았습니다.
+  </p>
+
+  <h2>5. S3 경로</h2>
+  <table>
+    <tr>
+      <th>구분</th>
+      <th>S3 key 형식</th>
+      <th>역할</th>
+    </tr>
+    <tr>
+      <td>NULL 증거 스크린샷</td>
+      <td><code>ds-null-screenshots/YYYY/YYYYMM/YYYYMMDD/centrecom/centrecom_{sku}_{timestamp}.png</code></td>
+      <td>Centrecom 크롤링 중 NULL 발생 당시 페이지 증거</td>
+    </tr>
+    <tr>
+      <td>Monitoring 신규 캡처</td>
+      <td><code>YYYY/YYYYMM/YYYYMMDD/centrecom/centrecom_{sku}_{timestamp}.png</code></td>
+      <td>기존 NULL 증거가 없을 때 anomaly용으로 새 캡처</td>
+    </tr>
+  </table>
+
+  <h2>6. DB 로드 및 저장</h2>
+  <table>
+    <tr>
+      <th>단계</th>
+      <th>설정/테이블</th>
+      <th>설명</th>
+    </tr>
+    <tr>
+      <td>Centrecom 설정/대상 로드</td>
+      <td><code>DB_CONFIG_V2</code>, <code>mall_selectors</code>, <code>samsung_price_tracking_list</code></td>
+      <td>셀렉터와 크롤링 대상 URL을 로드합니다.</td>
+    </tr>
+    <tr>
+      <td>Centrecom 결과 저장</td>
+      <td><code>centrecom_price_crawl_tbl_au</code>, <code>centrecom_crawl_logs</code></td>
+      <td>크롤링 결과와 로그를 저장합니다.</td>
+    </tr>
+    <tr>
+      <td>Monitoring 대상 조회</td>
+      <td><code>DB_CONFIG</code>, <code>ds_monitoring_report_anomaly</code>, <code>ds_monitoring_targets</code></td>
+      <td>
+        <code>LOWER(t.retailer) = 'centrecom'</code>,
+        <code>a.crawl_date = crawl_date</code>,
+        <code>a.screenshot_id IS NULL</code>,
+        <code>a.is_del = 0</code> 조건으로 조회합니다.
+      </td>
+    </tr>
+    <tr>
+      <td>기존 NULL 스크린샷 연결</td>
+      <td><code>ds_monitoring_file</code>, <code>ds_monitoring_report_anomaly.screenshot_id</code></td>
+      <td>
+        기존 S3 object의 <code>file_name</code>, <code>file_path</code>, <code>Size</code>를 사용해
+        file record를 만들고 anomaly에 연결합니다.
+      </td>
+    </tr>
+  </table>
+
+  <h2>7. 핵심 함수 관계</h2>
+  <table>
+    <tr>
+      <th>함수</th>
+      <th>파일</th>
+      <th>역할</th>
+    </tr>
+    <tr>
+      <td><code>should_capture_centrecom_null_screenshot(result)</code></td>
+      <td><code>centrecom.py</code></td>
+      <td>Centrecom 결과에서 NULL 증거 스크린샷이 필요한지 판정합니다.</td>
+    </tr>
+    <tr>
+      <td><code>capture_and_upload(driver, 'centrecom', sku, url)</code></td>
+      <td><code>null_screenshot.py</code></td>
+      <td>현재 브라우저 화면을 캡처하고 NULL 전용 S3 경로에 업로드합니다.</td>
+    </tr>
+    <tr>
+      <td><code>run_monitoring_capture_for_centrecom(crawl_date)</code></td>
+      <td><code>centrecom.py</code></td>
+      <td>Centrecom 완료 후 monitoring anomaly 캡처/연결을 자동 실행합니다.</td>
+    </tr>
+    <tr>
+      <td><code>get_anomaly_urls('centrecom', crawl_date)</code></td>
+      <td><code>monitoring/monitoring_capture.py</code></td>
+      <td>아직 screenshot_id가 없는 monitoring anomaly URL을 조회합니다.</td>
+    </tr>
+    <tr>
+      <td><code>link_existing_null_screenshot(identifier, anomaly_id)</code></td>
+      <td><code>monitoring/monitoring_capture.py</code></td>
+      <td>기존 NULL S3 object를 찾아 DB file record와 anomaly screenshot_id를 연결합니다.</td>
+    </tr>
+    <tr>
+      <td><code>process_url(url, identifier, anomaly_id)</code></td>
+      <td><code>monitoring/monitoring_capture.py</code></td>
+      <td>먼저 기존 NULL 스크린샷 재사용을 시도하고, 실패 시 기존 monitoring 캡처를 정리한 뒤 새 캡처를 수행합니다.</td>
+    </tr>
+    <tr>
+      <td><code>delete_existing_monitoring_screenshots(file_path, identifier)</code></td>
+      <td><code>monitoring/monitoring_capture.py</code></td>
+      <td>
+        모든 리테일러에 공통 적용되는 정리 함수입니다.
+        같은 날짜/리테일러/SKU prefix의 기존 monitoring S3 object를 삭제합니다.
+      </td>
+    </tr>
+  </table>
+
+  <h2>8. 예외 및 fallback</h2>
+  <ul>
+    <li>기존 NULL 스크린샷이 없으면 기존 monitoring 방식대로 새 브라우저를 띄워 캡처합니다.</li>
+    <li>새 monitoring 캡처 업로드 전 같은 날짜/리테일러/SKU의 기존 monitoring S3 object를 삭제합니다.</li>
+    <li>S3 list 또는 DB 연결/저장 실패 시 재사용은 실패 처리되고 새 캡처 경로로 넘어갑니다.</li>
+    <li>Centrecom monitoring 자동 실행 실패는 로그만 남기고 Centrecom 전체 프로세스를 강제 실패시키지 않습니다.</li>
+    <li>전부 기존 NULL 스크린샷으로 연결 가능한 경우 monitoring용 새 Chrome은 뜨지 않습니다.</li>
+  </ul>
+
+  <h2>9. 검증 체크리스트</h2>
+  <table>
+    <tr>
+      <th>항목</th>
+      <th>결과</th>
+    </tr>
+    <tr>
+      <td>공백/패치 오류</td>
+      <td><span class="ok">통과</span> - <code>git diff --check -- centrecom.py monitoring\monitoring_capture.py</code></td>
+    </tr>
+    <tr>
+      <td>문법 검사</td>
+      <td>
+        현재 작업 세션에서는 <code>python</code>이 WindowsApps alias라 실행 불가.
+        RDP에서 아래 명령으로 확인 필요.
+      </td>
+    </tr>
+    <tr>
+      <td>DB 맥락</td>
+      <td>
+        Centrecom은 <code>DB_CONFIG_V2</code>, monitoring은 <code>DB_CONFIG</code> 사용.
+        두 설정이 서로 다른 DB를 가리키는 운영 구조라면 정상입니다.
+      </td>
+    </tr>
+    <tr>
+      <td>날짜 기준</td>
+      <td>
+        monitoring 조회 날짜는 KST 오늘이 아니라 Centrecom 결과의 <code>crawl_datetime</code>
+        현지 날짜를 우선 사용합니다.
+      </td>
+    </tr>
+  </table>
+
+  <h2>10. RDP 검증 명령</h2>
+  <pre>cd /d C:\samsung_ds_retail_com
+python -m py_compile centrecom.py monitoring\monitoring_capture.py
+python -X utf8 monitoring\monitoring_capture.py --help</pre>
+
+  <h3>운영 흐름 테스트</h3>
+  <pre>cd /d C:\samsung_ds_retail_com
+python -X utf8 centrecom.py</pre>
+  <p>
+    실행 후 로그에서 아래 메시지를 확인합니다.
+  </p>
+  <pre>Centrecom monitoring 캡처 대상 조회: YYYY-MM-DD
+기존 NULL 스크린샷 재사용: s3://...
+Centrecom monitoring 캡처 완료: N/M</pre>
+
+  <h2>11. 운영상 주의점</h2>
+  <ul>
+    <li>
+      <span class="warn">중요:</span>
+      <code>ds_monitoring_report_anomaly</code> row가 <code>auto_recovery_run()</code> 이후 즉시 생성되어 있어야
+      자동 연결이 됩니다. 외부 배치가 늦게 anomaly를 만드는 구조라면 첫 실행에서는 조회 대상이 0건일 수 있습니다.
+    </li>
+    <li>
+      <code>ds_monitoring_targets.retailer</code> 값은 <code>centrecom</code>이어야 합니다.
+      <code>au_centrecom</code>만 있으면 조회되지 않습니다.
+    </li>
+    <li>
+      동일 날짜/SKU에 NULL 스크린샷이 여러 개 있으면 S3 <code>LastModified</code>가 가장 최신인 object를 연결합니다.
+    </li>
+    <li>
+      기존 NULL 스크린샷을 연결할 때 새 S3 업로드는 하지 않지만,
+      모니터링 리포트 연결을 위해 <code>ds_monitoring_file</code> record는 새로 생성합니다.
+    </li>
+    <li>
+      기존 monitoring S3 object 삭제는 모든 리테일러에 공통 적용됩니다.
+      단, <code>identifier</code>가 없는 경우에는 너무 넓은 prefix 삭제를 막기 위해 삭제를 건너뜁니다.
+    </li>
+  </ul>
+</main>
+</body>
+</html>

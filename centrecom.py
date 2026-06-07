@@ -37,6 +37,71 @@ from alert_monitor import monitor_and_alert
 from null_screenshot import is_null_result, capture_and_upload
 from cookie_consent import accept_cookies
 
+
+CENTRECOM_NULL_SCREENSHOT_FIELDS = ('title', 'retailprice', 'ships_from', 'sold_by', 'imageurl')
+
+
+def should_capture_centrecom_null_screenshot(result):
+    """Return True when Centrecom result has fields that need evidence screenshots."""
+    if is_null_result(result):
+        return True
+
+    if not result:
+        return True
+
+    for field in CENTRECOM_NULL_SCREENSHOT_FIELDS:
+        value = result.get(field)
+        if value is None:
+            return True
+        if isinstance(value, str) and value.strip() == '':
+            return True
+        try:
+            if pd.isna(value):
+                return True
+        except (TypeError, ValueError):
+            pass
+
+    return False
+
+
+def run_monitoring_capture_for_centrecom(crawl_date):
+    """Run monitoring screenshot capture for Centrecom anomalies after crawling."""
+    try:
+        import sys
+        from pathlib import Path
+
+        monitoring_dir = Path(__file__).parent / 'monitoring'
+        if str(monitoring_dir) not in sys.path:
+            sys.path.insert(0, str(monitoring_dir))
+
+        from monitoring_capture import get_anomaly_urls, ScreenshotMonitor
+
+        retailer = 'centrecom'
+        logger.info(f"Centrecom monitoring 캡처 대상 조회: {crawl_date}")
+        urls_data = get_anomaly_urls(retailer, crawl_date)
+
+        if not urls_data:
+            logger.info("Centrecom monitoring 캡처 대상 anomaly URL 없음")
+            return
+
+        urls_to_capture = [
+            {
+                'id': row['id'],
+                'url': row['producturl'],
+                'identifier': row.get('retailersku')
+            }
+            for row in urls_data
+        ]
+
+        monitor = ScreenshotMonitor(retailer, crawl_date, created_id='centrecom_auto', test_mode=False)
+        results = monitor.process_urls(urls_to_capture)
+
+        success_count = sum(1 for result in results if result.get('success'))
+        logger.info(f"Centrecom monitoring 캡처 완료: {success_count}/{len(results)}")
+    except Exception as e:
+        logger.error(f"Centrecom monitoring 캡처 실행 실패: {e}")
+
+
 class CentrecomScraper:
     def __init__(self, country_code='au'):
         self.driver = None
@@ -422,7 +487,7 @@ class CentrecomScraper:
             logger.info(f"배송지: {result['ships_from']}")
 
             # NULL 필드 발견 시 스크린샷 + S3 업로드
-            if is_null_result(result):
+            if should_capture_centrecom_null_screenshot(result):
                 capture_and_upload(self.driver, 'centrecom', row_data.get('retailersku', ''), url)
 
             return result
@@ -482,7 +547,7 @@ class CentrecomScraper:
 
             # NULL 필드 발견 시 스크린샷 + S3 업로드 (best-effort)
             try:
-                if is_null_result(fail_result):
+                if should_capture_centrecom_null_screenshot(fail_result):
                     capture_and_upload(self.driver, 'centrecom', row_data.get('retailersku', ''), url)
             except Exception:
                 pass
@@ -844,6 +909,8 @@ def main():
     # 변수 초기화 (except 블록에서 사용하기 위해)
     urls_data = []
     results_df = None
+    run_monitoring_capture = False
+    monitoring_crawl_date = None
 
     try:
         urls_data = scraper.get_crawl_targets(limit=max_items)
@@ -881,6 +948,15 @@ def main():
             target_count=len(urls_data),
             error_logs=None
         )
+        if 'crawl_datetime' in results_df.columns:
+            crawl_datetimes = pd.to_datetime(results_df['crawl_datetime'], errors='coerce').dropna()
+        else:
+            crawl_datetimes = pd.Series(dtype='datetime64[ns]')
+        if not crawl_datetimes.empty:
+            monitoring_crawl_date = crawl_datetimes.iloc[0].strftime('%Y-%m-%d')
+        else:
+            monitoring_crawl_date = datetime.now(scraper.local_tz).strftime('%Y-%m-%d')
+        run_monitoring_capture = True
 
     except Exception as e:
         # 예외 발생 시 알림
@@ -896,6 +972,8 @@ def main():
         if scraper.driver:
             scraper.driver.quit()
             logger.info("🔧 드라이버 종료")
+        if run_monitoring_capture and monitoring_crawl_date:
+            run_monitoring_capture_for_centrecom(monitoring_crawl_date)
         save_log('au_centrecom')
 
 if __name__ == "__main__":
