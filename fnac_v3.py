@@ -284,9 +284,10 @@ def extract_title(page_html: str, digital_data: Dict[str, Any]) -> Optional[str]
 class ZenRowsScreenshotPage:
     """Small adapter accepted by null_screenshot.capture_and_upload."""
 
-    def __init__(self, url: str, timeout: int = 120):
+    def __init__(self, url: str, timeout: int = 30, wait: int = 150):
         self.url = url
         self.timeout = timeout
+        self.wait = wait
 
     def set_viewport_size(self, size: Dict[str, int]) -> None:
         self.viewport = size
@@ -302,7 +303,7 @@ class ZenRowsScreenshotPage:
             "url": self.url,
             "js_render": "true",
             "screenshot": "true",
-            "wait": "3000",
+            "wait": str(self.wait),
         }
         response = session.get(ZENROWS_API_URL, params=params, timeout=self.timeout)
         response.raise_for_status()
@@ -525,7 +526,7 @@ class FnacZenRowsScraper:
         try:
             with self._counter_lock:
                 self.total_screenshot_calls += 1
-            page = ZenRowsScreenshotPage(url)
+            page = ZenRowsScreenshotPage(url, timeout=self.fetch_timeout, wait=self.fetch_wait)
             capture_and_upload(page, "fnac", result.get("retailersku", ""), url)
         except Exception as exc:
             logger.warning("NULL screenshot failed for sku=%s: %s", result.get("retailersku"), exc)
@@ -789,6 +790,18 @@ def main() -> None:
         log_enabled = True
     except Exception:
         save_log = None
+
+    if args.html_dir:
+        html_dir = Path(args.html_dir)
+        if not html_dir.is_dir():
+            logger.error("--html-dir does not exist or is not a directory: %s", args.html_dir)
+            raise SystemExit(2)
+        if args.save_html is not None:
+            logger.error("--html-dir cannot be combined with --save-html")
+            raise SystemExit(2)
+        if not args.dry_run:
+            logger.error("--html-dir is replay-only. Use --dry-run so DB/SFTP/NULL screenshots are not skipped in production.")
+            raise SystemExit(2)
 
     save_html_dir = None
     if args.save_html is not None:
