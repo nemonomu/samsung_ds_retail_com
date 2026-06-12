@@ -22,7 +22,17 @@ import pymysql
 from botocore.exceptions import ClientError
 from PIL import Image, ImageDraw, ImageFont
 
-from config import AWS_CONFIG, DB_CONFIG
+from config import DB_CONFIG
+try:
+    from config import S3_CONFIG
+    AWS_CONFIG = {
+        'bucket_name': S3_CONFIG['bucket'],
+        'access_key_id': S3_CONFIG['access_key'],
+        'secret_access_key': S3_CONFIG['secret_key'],
+        'region': S3_CONFIG['region'],
+    }
+except (ImportError, KeyError):
+    from config import AWS_CONFIG
 from retailer_settings import RETAILERS
 
 NULL_SCREENSHOT_PREFIX = 'ds-null-screenshots'

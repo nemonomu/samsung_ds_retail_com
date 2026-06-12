@@ -789,6 +789,15 @@ class RecoveryManager:
         # 5. 각 URL 재크롤링 및 DB UPDATE
         success_count = 0
         fail_count = 0
+        _retailer_name = None
+        delete_screenshots_for_sku = None
+        if has_null:
+            try:
+                from null_screenshot import RETAILER_NAME_BY_TARGET_KEY, delete_screenshots_for_sku
+                _retailer_name = RETAILER_NAME_BY_TARGET_KEY.get(target)
+            except Exception:
+                _retailer_name = None
+                delete_screenshots_for_sku = None
         recovered_results = {}  # producturl -> 복구된 result
         missing_results = []  # 누락 URL INSERT용
 
@@ -800,6 +809,15 @@ class RecoveryManager:
                     url = row['producturl']
                     original_kr_crawl_datetime = row['kr_crawl_datetime']  # 원본 시간 저장
                     logger.info(f"\n[{i+1}/{len(null_records)}] 재크롤링: {url[:60]}...")
+
+                    if _retailer_name and delete_screenshots_for_sku:
+                        try:
+                            sku = row.get('retailersku', '')
+                            original_date = str(original_kr_crawl_datetime)[:10].replace('-', '')
+                            if sku and len(original_date) == 8:
+                                delete_screenshots_for_sku(_retailer_name, sku, original_date)
+                        except Exception as e:
+                            logger.debug(f"ignored screenshot delete error: {e}")
 
                     result = self.recrawl_url(scraper, url, row, target)
 
