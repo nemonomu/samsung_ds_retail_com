@@ -170,7 +170,7 @@ def extract_visible_price_texts(page_html: str) -> List[str]:
 
 def has_online_stock_exhausted(page_html: str) -> bool:
     text = normalize_for_match(page_html)
-    return "stock en ligne epuise" in text
+    return bool(re.search(r"stock\s+en\s+ligne.{0,30}puis", text))
 
 
 def current_offer_price(digital_data: Dict[str, Any]) -> Optional[float]:
@@ -471,12 +471,16 @@ class FnacZenRowsScraper:
         online_oos = has_online_stock_exhausted(page_html)
         condition = current_offer_condition(digital_data)
 
+        if price_texts:
+            visible_price = parse_price(price_texts[0])
+            if visible_price is not None:
+                if online_oos:
+                    return result, "ONLINE_STOCK_EXHAUSTED"
+                result["retailprice"] = visible_price
+                return result, "VISIBLE_PRICE_BOX"
+
         if is_click_and_collect_only(digital_data):
             return result, "CLICK_AND_COLLECT_ONLY"
-
-        if price_texts:
-            result["retailprice"] = parse_price(price_texts[0])
-            return result, "VISIBLE_PRICE_BOX"
 
         if not is_new_condition(condition):
             return result, "NON_NEW_OFFER_IGNORED"
