@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 from config import DB_CONFIG_V2 as DB_CONFIG
 from config import FILE_SERVER_CONFIG
 from alert_monitor import monitor_and_alert
-from null_screenshot import is_null_result, capture_and_upload
+from null_screenshot import is_null_result, capture_and_upload, delete_screenshots_for_sku
 
 class CoolblueScraper:
     def __init__(self):
@@ -1023,14 +1023,34 @@ class CoolblueScraper:
                     # 재시도 (max_retries=0으로 추가 재시도 방지)
                     retry_result = self.extract_product_info(url, row_data, retry_count=0, max_retries=0)
 
-                    # 재시도 성공 여부 확인 (하나라도 값이 있으면 성공)
-                    if retry_result['retailprice'] is not None or retry_result['title'] is not None or retry_result['imageurl'] is not None:
+                    # 재시도 성공 여부 확인 (모니터링 핵심 필드가 모두 있으면 성공)
+                    if not is_null_result(retry_result):
                         logger.info(f"✅ 재시도 성공: price={retry_result['retailprice']}, title={'있음' if retry_result['title'] else '없음'}, image={'있음' if retry_result['imageurl'] else '없음'}")
+                        screenshot_dates = set()
+                        try:
+                            original_result = results[result_idx]
+                            original_date = str(original_result.get('kr_crawl_datetime', ''))[:10].replace('-', '')
+                            if len(original_date) == 8:
+                                screenshot_dates.add(original_date)
+                        except Exception:
+                            pass
+
+                        retry_date = str(retry_result.get('kr_crawl_datetime', ''))[:10].replace('-', '')
+                        if len(retry_date) == 8:
+                            screenshot_dates.add(retry_date)
+
                         # 기존 결과 업데이트
                         results[result_idx] = retry_result
+
+                        sku = retry_result.get('retailersku', '')
+                        for screenshot_date in screenshot_dates:
+                            try:
+                                delete_screenshots_for_sku('coolblue', sku, screenshot_date)
+                            except Exception as e:
+                                logger.debug(f"ignored coolblue retry screenshot delete error: {e}")
                     else:
-                        logger.warning(f"❌ 재시도 실패: title, imageurl, retailprice 모두 NULL")
-                        # title, imageurl, retailprice 모두 null인 경우만 최종 실패로 기록
+                        logger.warning(f"❌ 재시도 실패: title/imageurl/retailprice 중 NULL 존재")
+                        results[result_idx] = retry_result
                         final_all_null_failures.append(fail_item)
 
                 # 최종 실패 개수 업데이트

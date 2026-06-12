@@ -1,8 +1,8 @@
 """
 NULL 필드 발생 시 스크린샷 캡처 + S3 업로드 헬퍼
-- ships_from / sold_by / retailprice 중 하나라도 NULL이면 호출
+- title / imageurl / retailprice 중 하나라도 NULL이면 호출
 - Selenium / DrissionPage / Playwright 드라이버 모두 지원
-- 버킷은 AWS_CONFIG['bucket_name'], S3 키는 'ds-null-screenshots/' prefix 사용
+- 버킷은 S3_CONFIG 또는 AWS_CONFIG, S3 키는 모니터링 경로(YYYY/YYYYMM/YYYYMMDD/retailer/) 사용
 
 사용 예 (각 크롤러의 extract_product_info 내부, return 직전):
     from null_screenshot import is_null_result, capture_and_upload
