@@ -149,11 +149,15 @@ def extract_visible_price_texts(page_html: str) -> List[str]:
         r"<[^>]+class=[\"'][^\"']*f-faPriceBox__price[^\"']*[\"'][^>]*>(.*?)</[^>]+>",
         r"<span[^>]*class=[\"'][^\"']*userPrice[^\"']*[\"'][^>]*>(.*?)</span>",
     ]
+    autres_match = re.search(r"autres\s+offres", page_html or "", re.IGNORECASE)
+    autres_start = autres_match.start() if autres_match else None
     prices = []
     for pattern in patterns:
         for match in re.finditer(pattern, page_html or "", re.IGNORECASE | re.DOTALL):
+            if autres_start is not None and match.start() >= autres_start:
+                continue
             context = normalize_for_match((page_html or "")[max(0, match.start() - 350):match.end() + 350])
-            if "autres offres" in context or "neufs des" in context or "neuf des" in context:
+            if "neufs des" in context or "neuf des" in context:
                 continue
             text = normalize_text(match.group(1))
             if text and re.search(r"\d", text):
