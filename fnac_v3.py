@@ -361,24 +361,69 @@ class FnacZenRowsScraper:
         logger.info("FNAC targets loaded: %s", len(df))
         return df.to_dict("records")
 
-    def fetch_html(self, url: str, timeout: int = 90) -> Tuple[int, str, Optional[str], float]:
-        session = requests.Session()
-        session.trust_env = False
-        params = {
-            "apikey": ZENROWS_API_KEY,
-            "url": url,
-        }
-        start = time.time()
-        response = session.get(ZENROWS_API_URL, params=params, timeout=timeout)
-        elapsed = time.time() - start
-        self.total_zenrows_calls += 1
-        self.total_call_seconds += elapsed
-        cost = response.headers.get("X-Request-Cost")
-        try:
-            self.total_zenrows_cost += float(cost or 0)
-        except ValueError:
-            pass
-        return response.status_code, response.text or "", cost, elapsed
+    def fetch_html(self, url: str, timeout: int = 90, max_attempts: int = 4) -> Tuple[int, str, Optional[str], float]:
+        retry_statuses = {408, 409, 422, 425, 429, 500, 502, 503, 504}
+        last_status = 0
+        last_text = ""
+        last_cost = None
+        total_elapsed = 0.0
+
+        for attempt in range(1, max_attempts + 1):
+            session = requests.Session()
+            session.trust_env = False
+            params = {
+                "apikey": ZENROWS_API_KEY,
+                "url": url,
+            }
+            start = time.time()
+            try:
+                response = session.get(ZENROWS_API_URL, params=params, timeout=timeout)
+                elapsed = time.time() - start
+                self.total_zenrows_calls += 1
+                self.total_call_seconds += elapsed
+                total_elapsed += elapsed
+                cost = response.headers.get("X-Request-Cost")
+                try:
+                    self.total_zenrows_cost += float(cost or 0)
+                except ValueError:
+                    pass
+
+                if response.status_code == 200:
+                    if attempt > 1:
+                        logger.info("ZenRows fetch recovered on attempt %s/%s", attempt, max_attempts)
+                    return response.status_code, response.text or "", cost, total_elapsed
+
+                last_status = response.status_code
+                last_text = response.text or ""
+                last_cost = cost
+                logger.warning(
+                    "ZenRows fetch attempt failed (%s/%s): status=%s cost=%s",
+                    attempt,
+                    max_attempts,
+                    response.status_code,
+                    cost,
+                )
+            except requests.RequestException as exc:
+                elapsed = time.time() - start
+                self.total_zenrows_calls += 1
+                self.total_call_seconds += elapsed
+                total_elapsed += elapsed
+                last_status = 0
+                last_text = str(exc)
+                last_cost = None
+                logger.warning(
+                    "ZenRows fetch exception (%s/%s): %s",
+                    attempt,
+                    max_attempts,
+                    exc,
+                )
+
+            if attempt < max_attempts and (last_status == 0 or last_status in retry_statuses):
+                time.sleep(min(3 * attempt, 10))
+                continue
+            break
+
+        return last_status, last_text, last_cost, total_elapsed
 
     def base_result(self, row: Dict[str, Any]) -> Dict[str, Any]:
         now_time = datetime.now(self.korea_tz)
@@ -472,13 +517,16 @@ class FnacZenRowsScraper:
                 "Y" if result.get("imageurl") else "N",
                 reason,
             )
-            self.capture_null_screenshot(result, url)
+            if status_code == 200:
+                self.capture_null_screenshot(result, url)
+            else:
+                self.error_logs.append(f"{url}: fetch failed {reason}")
+                logger.warning("Skip NULL screenshot for fetch failure sku=%s reason=%s", row.get("retailersku"), reason)
             return result
         except Exception as exc:
             logger.error("Product collection failed url=%s: %s", url, exc)
             self.error_logs.append(f"{url}: {exc}")
             result = self.base_result(row)
-            self.capture_null_screenshot(result, url)
             return result
 
     def collect(self, targets: List[Dict[str, Any]], sleep_seconds: float = 0.2) -> List[Dict[str, Any]]:
