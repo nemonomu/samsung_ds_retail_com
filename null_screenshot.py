@@ -323,7 +323,7 @@ def _get_s3_config():
 
 
 def is_null_result(result):
-    """ships_from / sold_by / retailprice 중 하나라도 NULL/empty 인지 확인"""
+    """Return True when monitored product fields are NULL/empty."""
     if not result:
         return True
 
@@ -339,8 +339,8 @@ def is_null_result(result):
             pass
         return False
 
-    return _is_empty(result.get('ships_from')) or \
-           _is_empty(result.get('sold_by')) or \
+    return _is_empty(result.get('title')) or \
+           _is_empty(result.get('imageurl')) or \
            _is_empty(result.get('retailprice'))
 
 

@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 from config import DB_CONFIG_V2 as DB_CONFIG
 from config import FILE_SERVER_CONFIG
 from alert_monitor import monitor_and_alert
-from null_screenshot import is_null_result, capture_and_upload
+from null_screenshot import is_null_result, capture_and_upload, delete_screenshots_for_sku
 
 class CurrysScraper:
     def __init__(self):
@@ -835,12 +835,33 @@ def main():
                             # title 성공한 경우 기존 데이터 업데이트
                             mask = final_results_df['producturl'] == retry_row['producturl']
                             if mask.any():
+                                screenshot_dates = set()
+                                try:
+                                    original_kr = final_results_df.loc[mask, 'kr_crawl_datetime'].iloc[0]
+                                    original_date = str(original_kr)[:10].replace('-', '')
+                                    if len(original_date) == 8:
+                                        screenshot_dates.add(original_date)
+                                except Exception:
+                                    pass
+
                                 final_results_df.loc[mask, 'retailprice'] = retry_row['retailprice']
                                 final_results_df.loc[mask, 'title'] = retry_row['title']
                                 final_results_df.loc[mask, 'imageurl'] = retry_row['imageurl']
                                 final_results_df.loc[mask, 'crawl_datetime'] = retry_row['crawl_datetime']
                                 final_results_df.loc[mask, 'crawl_strdatetime'] = retry_row['crawl_strdatetime']
                                 retry_success_data.append(retry_row)
+
+                                retry_date = str(retry_row.get('kr_crawl_datetime', ''))[:10].replace('-', '')
+                                if len(retry_date) == 8:
+                                    screenshot_dates.add(retry_date)
+
+                                if not is_null_result(retry_row):
+                                    sku = retry_row.get('retailersku', '')
+                                    for screenshot_date in screenshot_dates:
+                                        try:
+                                            delete_screenshots_for_sku('currys', sku, screenshot_date)
+                                        except Exception as e:
+                                            logger.debug(f"ignored currys retry screenshot delete error: {e}")
 
                     # 재시도 성공 데이터 DB 저장
                     if retry_success_data and scraper.db_engine:
