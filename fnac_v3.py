@@ -374,6 +374,8 @@ class FnacZenRowsScraper:
             params = {
                 "apikey": ZENROWS_API_KEY,
                 "url": url,
+                "js_render": "true",
+                "wait": "3000",
             }
             start = time.time()
             try:
