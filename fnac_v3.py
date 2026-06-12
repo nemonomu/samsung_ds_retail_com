@@ -424,9 +424,6 @@ class FnacZenRowsScraper:
         online_oos = has_online_stock_exhausted(page_html)
         condition = current_offer_condition(digital_data)
 
-        if online_oos:
-            return result, "ONLINE_STOCK_EXHAUSTED"
-
         if is_click_and_collect_only(digital_data):
             return result, "CLICK_AND_COLLECT_ONLY"
 
@@ -436,6 +433,9 @@ class FnacZenRowsScraper:
         if price_texts:
             result["retailprice"] = parse_price(price_texts[0])
             return result, "VISIBLE_PRICE_BOX"
+
+        if online_oos:
+            return result, "ONLINE_STOCK_EXHAUSTED"
 
         fallback_price = current_offer_price(digital_data)
         if fallback_price is not None:
