@@ -779,7 +779,8 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=3, help="Parallel product workers")
     parser.add_argument("--timeout", type=int, default=30, help="ZenRows HTML request timeout seconds")
     parser.add_argument("--wait", type=int, default=150, help="ZenRows js_render wait milliseconds")
-    parser.add_argument("--save-html", nargs="?", const="", default=None, help="Save fetched HTML to optional directory")
+    parser.add_argument("--save-html", default=None, help="Override fetched HTML save directory")
+    parser.add_argument("--no-save-html", action="store_true", help="Disable default HTML saving to fnac_log/YYYYMMDD")
     parser.add_argument("--html-dir", default=None, help="Parse saved HTML from this directory instead of calling ZenRows")
     args = parser.parse_args()
 
@@ -796,7 +797,7 @@ def main() -> None:
         if not html_dir.is_dir():
             logger.error("--html-dir does not exist or is not a directory: %s", args.html_dir)
             raise SystemExit(2)
-        if args.save_html is not None:
+        if args.save_html:
             logger.error("--html-dir cannot be combined with --save-html")
             raise SystemExit(2)
         if not args.dry_run:
@@ -804,11 +805,10 @@ def main() -> None:
             raise SystemExit(2)
 
     save_html_dir = None
-    if args.save_html is not None:
+    if not args.html_dir and not args.no_save_html:
         save_html_dir = args.save_html or os.path.join(
-            "debug_html",
-            "fnac",
-            datetime.now(pytz.timezone("Asia/Seoul")).strftime("%Y%m%d_%H%M%S"),
+            "fnac_log",
+            datetime.now(pytz.timezone("Asia/Seoul")).strftime("%Y%m%d"),
         )
         logger.info("HTML save enabled: %s", save_html_dir)
 
