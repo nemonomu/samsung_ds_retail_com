@@ -24,10 +24,13 @@ import os
 import random
 import re
 import sys
+import threading
 import time
 import unicodedata
 import zipfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -58,6 +61,11 @@ def normalize_product_url(url: str) -> str:
         return url or ""
     query = [(key, value) for key, value in parse_qsl(parts.query, keep_blank_values=True) if key.lower() != "oref"]
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+
+
+def safe_filename(value: Any) -> str:
+    text = str(value or "").strip() or "unknown"
+    return re.sub(r"[^0-9A-Za-z_.-]+", "_", text)
 
 
 def setup_stdout() -> None:
@@ -302,12 +310,26 @@ class ZenRowsScreenshotPage:
 
 
 class FnacZenRowsScraper:
-    def __init__(self, capture_null: bool = True):
+    def __init__(
+        self,
+        capture_null: bool = True,
+        save_html_dir: Optional[str] = None,
+        html_dir: Optional[str] = None,
+        fetch_timeout: int = 30,
+        fetch_wait: int = 150,
+    ):
         self.db_engine = None
         self.country_code = "fr"
         self.korea_tz = pytz.timezone("Asia/Seoul")
         self.local_tz = pytz.timezone("Europe/Paris")
         self.capture_null = capture_null
+        self.fetch_timeout = fetch_timeout
+        self.fetch_wait = fetch_wait
+        self.save_html_dir = Path(save_html_dir) if save_html_dir else None
+        self.html_dir = Path(html_dir) if html_dir else None
+        if self.save_html_dir:
+            self.save_html_dir.mkdir(parents=True, exist_ok=True)
+        self._counter_lock = threading.Lock()
         self.total_zenrows_calls = 0
         self.total_screenshot_calls = 0
         self.total_call_seconds = 0.0
@@ -364,8 +386,18 @@ class FnacZenRowsScraper:
         logger.info("FNAC targets loaded: %s", len(df))
         return df.to_dict("records")
 
-    def fetch_html(self, url: str, timeout: int = 90, max_attempts: int = 4) -> Tuple[int, str, Optional[str], float]:
+    def record_zenrows_call(self, elapsed: float, cost: Optional[str]) -> None:
+        with self._counter_lock:
+            self.total_zenrows_calls += 1
+            self.total_call_seconds += elapsed
+            try:
+                self.total_zenrows_cost += float(cost or 0)
+            except ValueError:
+                pass
+
+    def fetch_html(self, url: str, timeout: Optional[int] = None, max_attempts: int = 4) -> Tuple[int, str, Optional[str], float]:
         retry_statuses = {408, 409, 422, 425, 429, 500, 502, 503, 504}
+        timeout = timeout or self.fetch_timeout
         last_status = 0
         last_text = ""
         last_cost = None
@@ -378,20 +410,15 @@ class FnacZenRowsScraper:
                 "apikey": ZENROWS_API_KEY,
                 "url": url,
                 "js_render": "true",
-                "wait": "3000",
+                "wait": str(self.fetch_wait),
             }
             start = time.time()
             try:
                 response = session.get(ZENROWS_API_URL, params=params, timeout=timeout)
                 elapsed = time.time() - start
-                self.total_zenrows_calls += 1
-                self.total_call_seconds += elapsed
                 total_elapsed += elapsed
                 cost = response.headers.get("X-Request-Cost")
-                try:
-                    self.total_zenrows_cost += float(cost or 0)
-                except ValueError:
-                    pass
+                self.record_zenrows_call(elapsed, cost)
 
                 if response.status_code == 200:
                     if attempt > 1:
@@ -410,9 +437,8 @@ class FnacZenRowsScraper:
                 )
             except requests.RequestException as exc:
                 elapsed = time.time() - start
-                self.total_zenrows_calls += 1
-                self.total_call_seconds += elapsed
                 total_elapsed += elapsed
+                self.record_zenrows_call(elapsed, None)
                 last_status = 0
                 last_text = str(exc)
                 last_cost = None
@@ -497,17 +523,50 @@ class FnacZenRowsScraper:
         if not self.capture_null or not is_null_result(result):
             return
         try:
-            self.total_screenshot_calls += 1
+            with self._counter_lock:
+                self.total_screenshot_calls += 1
             page = ZenRowsScreenshotPage(url)
             capture_and_upload(page, "fnac", result.get("retailersku", ""), url)
         except Exception as exc:
             logger.warning("NULL screenshot failed for sku=%s: %s", result.get("retailersku"), exc)
 
+    def html_cache_path(self, row: Dict[str, Any]) -> Optional[Path]:
+        if not self.save_html_dir:
+            return None
+        idx = row.get("_crawl_index")
+        prefix = f"{int(idx):02d}_" if idx else ""
+        return self.save_html_dir / f"{prefix}{safe_filename(row.get('retailersku'))}.html"
+
+    def save_html(self, row: Dict[str, Any], page_html: str) -> None:
+        path = self.html_cache_path(row)
+        if not path:
+            return
+        try:
+            path.write_text(page_html or "", encoding="utf-8", errors="replace")
+        except Exception as exc:
+            logger.warning("HTML save failed sku=%s path=%s: %s", row.get("retailersku"), path, exc)
+
+    def load_html(self, row: Dict[str, Any]) -> Optional[str]:
+        if not self.html_dir:
+            return None
+        sku = safe_filename(row.get("retailersku"))
+        candidates = sorted(self.html_dir.glob(f"*_{sku}.html")) + sorted(self.html_dir.glob(f"{sku}.html"))
+        if not candidates:
+            logger.warning("HTML cache missing sku=%s dir=%s", row.get("retailersku"), self.html_dir)
+            return None
+        return candidates[0].read_text(encoding="utf-8", errors="replace")
+
     def collect_one(self, row: Dict[str, Any]) -> Dict[str, Any]:
         url = row.get("url", "")
         request_url = normalize_product_url(url)
         try:
-            status_code, page_html, cost, elapsed = self.fetch_html(request_url)
+            if self.html_dir:
+                page_html = self.load_html(row)
+                status_code, cost, elapsed = (200, None, 0.0) if page_html is not None else (0, None, 0.0)
+            else:
+                status_code, page_html, cost, elapsed = self.fetch_html(request_url)
+                if status_code == 200:
+                    self.save_html(row, page_html)
             if status_code != 200:
                 result = self.base_result(row)
                 reason = f"HTTP_{status_code}"
@@ -522,11 +581,12 @@ class FnacZenRowsScraper:
                 "Y" if result.get("imageurl") else "N",
                 reason,
             )
-            if status_code == 200:
+            if status_code == 200 and not self.html_dir:
                 self.capture_null_screenshot(result, request_url)
             else:
-                self.error_logs.append(f"{url}: fetch failed {reason}")
-                logger.warning("Skip NULL screenshot for fetch failure sku=%s reason=%s", row.get("retailersku"), reason)
+                if status_code != 200:
+                    self.error_logs.append(f"{url}: fetch failed {reason}")
+                    logger.warning("Skip NULL screenshot for fetch failure sku=%s reason=%s", row.get("retailersku"), reason)
             return result
         except Exception as exc:
             logger.error("Product collection failed url=%s: %s", url, exc)
@@ -534,14 +594,42 @@ class FnacZenRowsScraper:
             result = self.base_result(row)
             return result
 
-    def collect(self, targets: List[Dict[str, Any]], sleep_seconds: float = 0.2) -> List[Dict[str, Any]]:
-        results = []
+    def collect(self, targets: List[Dict[str, Any]], sleep_seconds: float = 0.2, workers: int = 1) -> List[Dict[str, Any]]:
+        indexed_targets = []
         for idx, row in enumerate(targets, start=1):
-            logger.info("[%s/%s] %s", idx, len(targets), row.get("url"))
-            results.append(self.collect_one(row))
-            if sleep_seconds and idx < len(targets):
-                time.sleep(sleep_seconds)
-        return results
+            row_copy = dict(row)
+            row_copy["_crawl_index"] = idx
+            indexed_targets.append(row_copy)
+
+        if workers <= 1:
+            results = []
+            for idx, row in enumerate(indexed_targets, start=1):
+                logger.info("[%s/%s] %s", idx, len(indexed_targets), row.get("url"))
+                results.append(self.collect_one(row))
+                if sleep_seconds and idx < len(indexed_targets):
+                    time.sleep(sleep_seconds)
+            return results
+
+        results: List[Optional[Dict[str, Any]]] = [None] * len(indexed_targets)
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            future_to_idx = {}
+            for idx, row in enumerate(indexed_targets, start=1):
+                logger.info("[%s/%s] %s", idx, len(indexed_targets), row.get("url"))
+                future_to_idx[executor.submit(self.collect_one, row)] = idx - 1
+                if sleep_seconds and idx < len(indexed_targets):
+                    time.sleep(sleep_seconds)
+
+            for future in as_completed(future_to_idx):
+                result_idx = future_to_idx[future]
+                try:
+                    results[result_idx] = future.result()
+                except Exception as exc:
+                    row = indexed_targets[result_idx]
+                    logger.error("Parallel collection failed url=%s: %s", row.get("url"), exc)
+                    self.error_logs.append(f"{row.get('url')}: {exc}")
+                    results[result_idx] = self.base_result(row)
+
+        return [result for result in results if result is not None]
 
     def save_to_db(self, df: pd.DataFrame) -> bool:
         if self.db_engine is None:
@@ -686,7 +774,12 @@ def main() -> None:
     parser.add_argument("--no-db", action="store_true", help="Skip DB save")
     parser.add_argument("--no-upload", action="store_true", help="Skip SFTP upload")
     parser.add_argument("--no-capture-null", action="store_true", help="Skip NULL screenshots")
-    parser.add_argument("--sleep", type=float, default=0.2, help="Delay between ZenRows requests")
+    parser.add_argument("--sleep", type=float, default=0.0, help="Delay between ZenRows request submissions")
+    parser.add_argument("--workers", type=int, default=3, help="Parallel product workers")
+    parser.add_argument("--timeout", type=int, default=30, help="ZenRows HTML request timeout seconds")
+    parser.add_argument("--wait", type=int, default=150, help="ZenRows js_render wait milliseconds")
+    parser.add_argument("--save-html", nargs="?", const="", default=None, help="Save fetched HTML to optional directory")
+    parser.add_argument("--html-dir", default=None, help="Parse saved HTML from this directory instead of calling ZenRows")
     args = parser.parse_args()
 
     log_enabled = False
@@ -697,8 +790,26 @@ def main() -> None:
     except Exception:
         save_log = None
 
-    capture_null = (not args.no_capture_null) and (not args.dry_run)
-    scraper = FnacZenRowsScraper(capture_null=capture_null)
+    save_html_dir = None
+    if args.save_html is not None:
+        save_html_dir = args.save_html or os.path.join(
+            "debug_html",
+            "fnac",
+            datetime.now(pytz.timezone("Asia/Seoul")).strftime("%Y%m%d_%H%M%S"),
+        )
+        logger.info("HTML save enabled: %s", save_html_dir)
+
+    if args.html_dir:
+        logger.info("HTML replay enabled: %s", args.html_dir)
+
+    capture_null = (not args.no_capture_null) and (not args.dry_run) and (not args.html_dir)
+    scraper = FnacZenRowsScraper(
+        capture_null=capture_null,
+        save_html_dir=save_html_dir,
+        html_dir=args.html_dir,
+        fetch_timeout=args.timeout,
+        fetch_wait=args.wait,
+    )
     target_count = 0
     results_df = None
 
@@ -727,7 +838,7 @@ def main() -> None:
             send_alert("No FNAC targets")
             return
 
-        results = scraper.collect(targets, sleep_seconds=args.sleep)
+        results = scraper.collect(targets, sleep_seconds=args.sleep, workers=max(1, args.workers))
         results_df = pd.DataFrame(results)
         scraper.analyze_results(results_df)
 
