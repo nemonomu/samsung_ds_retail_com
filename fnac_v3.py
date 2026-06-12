@@ -492,11 +492,6 @@ class FnacZenRowsScraper:
         if online_oos:
             return result, "ONLINE_STOCK_EXHAUSTED"
 
-        fallback_price = current_offer_price(digital_data)
-        if fallback_price is not None:
-            result["retailprice"] = fallback_price
-            return result, "CURRENT_OFFER_FALLBACK"
-
         return result, "PRICE_NOT_FOUND"
 
     def capture_null_screenshot(self, result: Dict[str, Any], url: str) -> None:
