@@ -177,19 +177,6 @@ def has_online_stock_exhausted(page_html: str) -> bool:
     return bool(re.search(r"stock\s+en\s+ligne.{0,30}puis", text))
 
 
-def current_offer_price(digital_data: Dict[str, Any]) -> Optional[float]:
-    product = first_dict(digital_data.get("product"))
-    attributes = first_dict(product.get("attributes"))
-    current_offer = first_dict(attributes.get("currentOffer"))
-    price_obj = current_offer.get("price")
-    if isinstance(price_obj, dict):
-        for key in ("priceWithTax", "price", "amount", "value"):
-            price = parse_price(price_obj.get(key))
-            if price is not None:
-                return price
-    return None
-
-
 def current_offer_condition(digital_data: Dict[str, Any]) -> Optional[str]:
     product = first_dict(digital_data.get("product"))
     attributes = first_dict(product.get("attributes"))
