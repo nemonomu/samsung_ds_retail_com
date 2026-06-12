@@ -9,7 +9,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import pandas as pd
 import pymysql
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 import paramiko
 import time
 import random
@@ -766,7 +766,7 @@ class CoolblueScraper:
             # 저장된 데이터 확인
             with self.db_engine.connect() as conn:
                 count_query = "SELECT COUNT(*) FROM coolblue_price_crawl_tbl_nl_v2 WHERE DATE(crawl_datetime) = CURDATE()"
-                result = conn.execute(count_query)
+                result = conn.execute(text(count_query))
                 today_count = result.scalar()
                 logger.info(f"📊 오늘 저장된 총 레코드: {today_count}개")
             
