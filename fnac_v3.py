@@ -147,7 +147,6 @@ def extract_json_ld_products(page_html: str) -> List[Dict[str, Any]]:
 def extract_visible_price_texts(page_html: str) -> List[str]:
     patterns = [
         r"<[^>]+class=[\"'][^\"']*f-faPriceBox__price[^\"']*[\"'][^>]*>(.*?)</[^>]+>",
-        r"<span[^>]*class=[\"'][^\"']*userPrice[^\"']*[\"'][^>]*>(.*?)</span>",
     ]
     autres_match = re.search(r"autres\s+offres", page_html or "", re.IGNORECASE)
     autres_start = autres_match.start() if autres_match else None
@@ -156,7 +155,11 @@ def extract_visible_price_texts(page_html: str) -> List[str]:
         for match in re.finditer(pattern, page_html or "", re.IGNORECASE | re.DOTALL):
             if autres_start is not None and match.start() >= autres_start:
                 continue
-            context = normalize_for_match((page_html or "")[max(0, match.start() - 350):match.end() + 350])
+            raw_context = (page_html or "")[max(0, match.start() - 2500):match.end() + 350]
+            offer_conditions = re.findall(r"data-condition=[\"']([^\"']+)[\"']", raw_context, re.IGNORECASE)
+            if offer_conditions and normalize_for_match(offer_conditions[-1]) not in {"new", "neuf"}:
+                continue
+            context = normalize_for_match(raw_context)
             if "neufs des" in context or "neuf des" in context:
                 continue
             text = normalize_text(match.group(1))
