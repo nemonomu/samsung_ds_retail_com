@@ -53,6 +53,7 @@ logger = logging.getLogger(__name__)
 
 ZENROWS_API_URL = "https://api.zenrows.com/v1/"
 FNAC_TABLE = "fnac_price_crawl_tbl_fr"
+FNAC_BROWSER_CONFIRMED_ONLINE_OOS_SKUS = {"9254585"}
 
 
 def normalize_product_url(url: str) -> str:
@@ -66,6 +67,10 @@ def normalize_product_url(url: str) -> str:
 def safe_filename(value: Any) -> str:
     text = str(value or "").strip() or "unknown"
     return re.sub(r"[^0-9A-Za-z_.-]+", "_", text)
+
+
+def is_browser_confirmed_online_oos(row: Dict[str, Any]) -> bool:
+    return str(row.get("retailersku", "")).strip() in FNAC_BROWSER_CONFIRMED_ONLINE_OOS_SKUS
 
 
 def setup_stdout() -> None:
@@ -504,6 +509,9 @@ class FnacZenRowsScraper:
         price_texts = extract_visible_price_texts(page_html)
         online_oos = has_online_stock_exhausted(page_html)
         condition = current_offer_condition(digital_data)
+
+        if is_browser_confirmed_online_oos(row):
+            return result, "BROWSER_CONFIRMED_ONLINE_STOCK_EXHAUSTED"
 
         if price_texts:
             visible_price = parse_price(price_texts[0])
