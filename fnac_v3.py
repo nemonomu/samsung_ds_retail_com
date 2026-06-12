@@ -318,6 +318,8 @@ class FnacZenRowsScraper:
         html_dir: Optional[str] = None,
         fetch_timeout: int = 30,
         fetch_wait: int = 150,
+        screenshot_timeout: int = 90,
+        screenshot_wait: int = 150,
     ):
         self.db_engine = None
         self.country_code = "fr"
@@ -326,6 +328,8 @@ class FnacZenRowsScraper:
         self.capture_null = capture_null
         self.fetch_timeout = fetch_timeout
         self.fetch_wait = fetch_wait
+        self.screenshot_timeout = screenshot_timeout
+        self.screenshot_wait = screenshot_wait
         self.save_html_dir = Path(save_html_dir) if save_html_dir else None
         self.html_dir = Path(html_dir) if html_dir else None
         if self.save_html_dir:
@@ -526,7 +530,7 @@ class FnacZenRowsScraper:
         try:
             with self._counter_lock:
                 self.total_screenshot_calls += 1
-            page = ZenRowsScreenshotPage(url, timeout=self.fetch_timeout, wait=self.fetch_wait)
+            page = ZenRowsScreenshotPage(url, timeout=self.screenshot_timeout, wait=self.screenshot_wait)
             capture_and_upload(page, "fnac", result.get("retailersku", ""), url)
         except Exception as exc:
             logger.warning("NULL screenshot failed for sku=%s: %s", result.get("retailersku"), exc)
@@ -779,6 +783,8 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=3, help="Parallel product workers")
     parser.add_argument("--timeout", type=int, default=30, help="ZenRows HTML request timeout seconds")
     parser.add_argument("--wait", type=int, default=150, help="ZenRows js_render wait milliseconds")
+    parser.add_argument("--screenshot-timeout", type=int, default=90, help="ZenRows NULL screenshot request timeout seconds")
+    parser.add_argument("--screenshot-wait", type=int, default=150, help="ZenRows NULL screenshot wait milliseconds")
     parser.add_argument("--save-html", default=None, help="Override fetched HTML save directory")
     parser.add_argument("--no-save-html", action="store_true", help="Disable default HTML saving to fnac_log/YYYYMMDD")
     parser.add_argument("--html-dir", default=None, help="Parse saved HTML from this directory instead of calling ZenRows")
@@ -822,6 +828,8 @@ def main() -> None:
         html_dir=args.html_dir,
         fetch_timeout=args.timeout,
         fetch_wait=args.wait,
+        screenshot_timeout=args.screenshot_timeout,
+        screenshot_wait=args.screenshot_wait,
     )
     target_count = 0
     results_df = None
