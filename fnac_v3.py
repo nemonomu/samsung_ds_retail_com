@@ -427,12 +427,12 @@ class FnacZenRowsScraper:
         if is_click_and_collect_only(digital_data):
             return result, "CLICK_AND_COLLECT_ONLY"
 
-        if not is_new_condition(condition):
-            return result, "NON_NEW_OFFER_IGNORED"
-
         if price_texts:
             result["retailprice"] = parse_price(price_texts[0])
             return result, "VISIBLE_PRICE_BOX"
+
+        if not is_new_condition(condition):
+            return result, "NON_NEW_OFFER_IGNORED"
 
         if online_oos:
             return result, "ONLINE_STOCK_EXHAUSTED"
