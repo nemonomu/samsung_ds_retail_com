@@ -29,6 +29,7 @@ import unicodedata
 import zipfile
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Tuple
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import pandas as pd
 import paramiko
@@ -49,6 +50,14 @@ logger = logging.getLogger(__name__)
 
 ZENROWS_API_URL = "https://api.zenrows.com/v1/"
 FNAC_TABLE = "fnac_price_crawl_tbl_fr"
+
+
+def normalize_product_url(url: str) -> str:
+    parts = urlsplit(url or "")
+    if not parts.query:
+        return url or ""
+    query = [(key, value) for key, value in parse_qsl(parts.query, keep_blank_values=True) if key.lower() != "oref"]
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
 def setup_stdout() -> None:
@@ -496,8 +505,9 @@ class FnacZenRowsScraper:
 
     def collect_one(self, row: Dict[str, Any]) -> Dict[str, Any]:
         url = row.get("url", "")
+        request_url = normalize_product_url(url)
         try:
-            status_code, page_html, cost, elapsed = self.fetch_html(url)
+            status_code, page_html, cost, elapsed = self.fetch_html(request_url)
             if status_code != 200:
                 result = self.base_result(row)
                 reason = f"HTTP_{status_code}"
@@ -513,7 +523,7 @@ class FnacZenRowsScraper:
                 reason,
             )
             if status_code == 200:
-                self.capture_null_screenshot(result, url)
+                self.capture_null_screenshot(result, request_url)
             else:
                 self.error_logs.append(f"{url}: fetch failed {reason}")
                 logger.warning("Skip NULL screenshot for fetch failure sku=%s reason=%s", row.get("retailersku"), reason)
