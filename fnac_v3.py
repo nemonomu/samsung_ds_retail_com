@@ -53,7 +53,6 @@ logger = logging.getLogger(__name__)
 
 ZENROWS_API_URL = "https://api.zenrows.com/v1/"
 FNAC_TABLE = "fnac_price_crawl_tbl_fr"
-FNAC_BROWSER_CONFIRMED_ONLINE_OOS_SKUS = {"9254585"}
 
 
 def normalize_product_url(url: str) -> str:
@@ -67,10 +66,6 @@ def normalize_product_url(url: str) -> str:
 def safe_filename(value: Any) -> str:
     text = str(value or "").strip() or "unknown"
     return re.sub(r"[^0-9A-Za-z_.-]+", "_", text)
-
-
-def is_browser_confirmed_online_oos(row: Dict[str, Any]) -> bool:
-    return str(row.get("retailersku", "")).strip() in FNAC_BROWSER_CONFIRMED_ONLINE_OOS_SKUS
 
 
 def setup_stdout() -> None:
@@ -197,7 +192,21 @@ def extract_visible_price_texts(page_html: str) -> List[str]:
     return deduped
 
 
+def has_v2_availability_stock_exhausted(page_html: str) -> bool:
+    for match in re.finditer(
+        r"<[^>]+data-automation-id=[\"']product-availability[\"'][^>]*>",
+        page_html or "",
+        re.IGNORECASE,
+    ):
+        context = normalize_for_match((page_html or "")[match.start():match.start() + 1200])
+        if "stock en ligne" in context and "puis" in context:
+            return True
+    return False
+
+
 def has_online_stock_exhausted(page_html: str) -> bool:
+    if has_v2_availability_stock_exhausted(page_html):
+        return True
     text = normalize_for_match(page_html)
     return bool(re.search(r"stock\s+en\s+ligne.{0,30}puis", text))
 
@@ -510,9 +519,6 @@ class FnacZenRowsScraper:
         online_oos = has_online_stock_exhausted(page_html)
         condition = current_offer_condition(digital_data)
 
-        if is_browser_confirmed_online_oos(row):
-            return result, "BROWSER_CONFIRMED_ONLINE_STOCK_EXHAUSTED"
-
         if price_texts:
             visible_price = parse_price(price_texts[0])
             if visible_price is not None:
@@ -532,16 +538,17 @@ class FnacZenRowsScraper:
 
         return result, "PRICE_NOT_FOUND"
 
-    def capture_null_screenshot(self, result: Dict[str, Any], url: str) -> None:
+    def capture_null_screenshot(self, result: Dict[str, Any], url: str) -> str:
         if not self.capture_null or not is_null_result(result):
-            return
+            return "skip"
         try:
             with self._counter_lock:
                 self.total_screenshot_calls += 1
             page = ZenRowsScreenshotPage(url, timeout=self.screenshot_timeout, wait=self.screenshot_wait)
-            capture_and_upload(page, "fnac", result.get("retailersku", ""), url)
+            return "ok" if capture_and_upload(page, "fnac", result.get("retailersku", ""), url) else "fail"
         except Exception as exc:
             logger.warning("NULL screenshot failed for sku=%s: %s", result.get("retailersku"), exc)
+            return "fail"
 
     def html_cache_path(self, row: Dict[str, Any]) -> Optional[Path]:
         if not self.save_html_dir:
@@ -572,6 +579,9 @@ class FnacZenRowsScraper:
     def collect_one(self, row: Dict[str, Any]) -> Dict[str, Any]:
         url = row.get("url", "")
         request_url = normalize_product_url(url)
+        reason = "UNKNOWN"
+        status_code = 0
+        s3_status = "skip"
         try:
             if self.html_dir:
                 page_html = self.load_html(row)
@@ -586,25 +596,21 @@ class FnacZenRowsScraper:
                 logger.warning("Fetch failed sku=%s status=%s cost=%s", row.get("retailersku"), status_code, cost)
             else:
                 result, reason = self.parse_product(page_html, row)
-            logger.info(
-                "sku=%s price=%s title=%s image=%s reason=%s",
-                result.get("retailersku"),
-                result.get("retailprice"),
-                "Y" if result.get("title") else "N",
-                "Y" if result.get("imageurl") else "N",
-                reason,
-            )
             if status_code == 200 and not self.html_dir:
-                self.capture_null_screenshot(result, request_url)
+                s3_status = self.capture_null_screenshot(result, request_url)
             else:
                 if status_code != 200:
                     self.error_logs.append(f"{url}: fetch failed {reason}")
                     logger.warning("Skip NULL screenshot for fetch failure sku=%s reason=%s", row.get("retailersku"), reason)
+            result["_crawl_reason"] = reason
+            result["_s3_upload"] = s3_status
             return result
         except Exception as exc:
             logger.error("Product collection failed url=%s: %s", url, exc)
             self.error_logs.append(f"{url}: {exc}")
             result = self.base_result(row)
+            result["_crawl_reason"] = f"EXCEPTION: {exc}"
+            result["_s3_upload"] = s3_status
             return result
 
     def collect(self, targets: List[Dict[str, Any]], sleep_seconds: float = 0.2, workers: int = 1) -> List[Dict[str, Any]]:
@@ -612,13 +618,17 @@ class FnacZenRowsScraper:
         for idx, row in enumerate(targets, start=1):
             row_copy = dict(row)
             row_copy["_crawl_index"] = idx
+            row_copy["_crawl_total"] = len(targets)
             indexed_targets.append(row_copy)
+
+        logger.info("FNAC collection queued: targets=%s workers=%s sleep=%s", len(indexed_targets), workers, sleep_seconds)
 
         if workers <= 1:
             results = []
             for idx, row in enumerate(indexed_targets, start=1):
-                logger.info("[%s/%s] %s", idx, len(indexed_targets), row.get("url"))
-                results.append(self.collect_one(row))
+                result = self.collect_one(row)
+                results.append(result)
+                self.log_collect_result(idx, len(indexed_targets), row, result)
                 if sleep_seconds and idx < len(indexed_targets):
                     time.sleep(sleep_seconds)
             return results
@@ -627,7 +637,6 @@ class FnacZenRowsScraper:
         with ThreadPoolExecutor(max_workers=workers) as executor:
             future_to_idx = {}
             for idx, row in enumerate(indexed_targets, start=1):
-                logger.info("[%s/%s] %s", idx, len(indexed_targets), row.get("url"))
                 future_to_idx[executor.submit(self.collect_one, row)] = idx - 1
                 if sleep_seconds and idx < len(indexed_targets):
                     time.sleep(sleep_seconds)
@@ -641,8 +650,22 @@ class FnacZenRowsScraper:
                     logger.error("Parallel collection failed url=%s: %s", row.get("url"), exc)
                     self.error_logs.append(f"{row.get('url')}: {exc}")
                     results[result_idx] = self.base_result(row)
+                    results[result_idx]["_crawl_reason"] = f"EXCEPTION: {exc}"
+                    results[result_idx]["_s3_upload"] = "skip"
+                self.log_collect_result(result_idx + 1, len(indexed_targets), indexed_targets[result_idx], results[result_idx])
 
         return [result for result in results if result is not None]
+
+    def log_collect_result(self, idx: int, total: int, row: Dict[str, Any], result: Dict[str, Any]) -> None:
+        logger.info(
+            "[%s/%s] product_url: %s, price: %s, S3 upload: %s, reason: %s",
+            idx,
+            total,
+            row.get("url", ""),
+            result.get("retailprice"),
+            result.get("_s3_upload", "skip"),
+            result.get("_crawl_reason", ""),
+        )
 
     def save_to_db(self, df: pd.DataFrame) -> bool:
         if self.db_engine is None:
@@ -869,6 +892,7 @@ def main() -> None:
 
         results = scraper.collect(targets, sleep_seconds=args.sleep, workers=max(1, args.workers))
         results_df = pd.DataFrame(results)
+        results_df = results_df[[col for col in results_df.columns if not str(col).startswith("_")]]
         scraper.analyze_results(results_df)
 
         if args.dry_run:
