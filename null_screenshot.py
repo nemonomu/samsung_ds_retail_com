@@ -324,7 +324,9 @@ def _get_s3_config():
 
 def is_null_result(result):
     """Return True when monitored product fields are NULL/empty."""
-    if not result:
+    if result is None:
+        return True
+    if isinstance(result, dict) and not result:
         return True
 
     def _is_empty(v):
@@ -333,7 +335,10 @@ def is_null_result(result):
         if isinstance(v, str) and v == '':
             return True
         try:
-            if pd.isna(v):
+            empty = pd.isna(v)
+            if hasattr(empty, 'all'):
+                return bool(empty.all())
+            if empty:
                 return True
         except (TypeError, ValueError):
             pass
