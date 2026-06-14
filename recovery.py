@@ -791,13 +791,15 @@ class RecoveryManager:
         fail_count = 0
         _retailer_name = None
         delete_screenshots_for_sku = None
+        is_null_result = None
         if has_null:
             try:
-                from null_screenshot import RETAILER_NAME_BY_TARGET_KEY, delete_screenshots_for_sku
+                from null_screenshot import RETAILER_NAME_BY_TARGET_KEY, delete_screenshots_for_sku, is_null_result
                 _retailer_name = RETAILER_NAME_BY_TARGET_KEY.get(target)
             except Exception:
                 _retailer_name = None
                 delete_screenshots_for_sku = None
+                is_null_result = None
         recovered_results = {}  # producturl -> 복구된 result
         missing_results = []  # 누락 URL INSERT용
 
@@ -828,6 +830,20 @@ class RecoveryManager:
                             logger.info(f"  -> 성공: title={str(result.get('title', ''))[:30]}, price={result.get('retailprice')}")
                             success_count += 1
                             recovered_results[url] = result
+                            if _retailer_name and delete_screenshots_for_sku and is_null_result and not is_null_result(result):
+                                try:
+                                    sku = result.get('retailersku') or row.get('retailersku', '')
+                                    screenshot_dates = set()
+                                    original_date = str(original_kr_crawl_datetime)[:10].replace('-', '')
+                                    result_date = str(result.get('kr_crawl_datetime', ''))[:10].replace('-', '')
+                                    if len(original_date) == 8:
+                                        screenshot_dates.add(original_date)
+                                    if len(result_date) == 8:
+                                        screenshot_dates.add(result_date)
+                                    for screenshot_date in screenshot_dates:
+                                        delete_screenshots_for_sku(_retailer_name, sku, screenshot_date)
+                                except Exception as e:
+                                    logger.debug(f"ignored recovered screenshot cleanup error: {e}")
                         else:
                             logger.warning(f"  -> DB UPDATE 실패")
                             fail_count += 1

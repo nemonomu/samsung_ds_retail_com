@@ -114,8 +114,28 @@ def _get_monitoring_target(cursor, retailer):
     return cursor.fetchone()
 
 
-def _insert_monitoring_file_and_anomaly(retailer, retailsku, url, file_name, file_path, file_size, crawl_date):
+def _result_value(result_data, key):
+    if result_data is None:
+        return None
+    try:
+        value = result_data.get(key)
+    except AttributeError:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return value
+
+
+def _insert_monitoring_file_and_anomaly(retailer, retailsku, url, file_name, file_path, file_size, crawl_date, result_data=None):
     sku_for_db = str(retailsku).strip() if retailsku else ''
+    title = _result_value(result_data, 'title')
+    retailprice = _result_value(result_data, 'retailprice')
+    ships_from = _result_value(result_data, 'ships_from')
+    sold_by = _result_value(result_data, 'sold_by')
+    imageurl = _result_value(result_data, 'imageurl')
     conn = None
     try:
         conn = _get_db_connection()
@@ -168,25 +188,47 @@ def _insert_monitoring_file_and_anomaly(retailer, retailsku, url, file_name, fil
                 cursor.execute("""
                     UPDATE ssd_crawl_db.ds_monitoring_report_anomaly
                     SET screenshot_id = %s,
+                        title = COALESCE(%s, title),
+                        retailprice = COALESCE(%s, retailprice),
+                        ships_from = COALESCE(%s, ships_from),
+                        sold_by = COALESCE(%s, sold_by),
+                        imageurl = COALESCE(%s, imageurl),
                         producturl = COALESCE(NULLIF(producturl, ''), %s),
                         country_code = COALESCE(NULLIF(country_code, ''), %s),
                         updated_at = %s,
                         updated_id = %s
                     WHERE id = %s
-                """, (file_id, url, country, now, MONITORING_CREATED_ID, existing[0]))
+                """, (
+                    file_id,
+                    title,
+                    retailprice,
+                    ships_from,
+                    sold_by,
+                    imageurl,
+                    url,
+                    country,
+                    now,
+                    MONITORING_CREATED_ID,
+                    existing[0]
+                ))
             else:
                 cursor.execute("""
                     INSERT INTO ssd_crawl_db.ds_monitoring_report_anomaly
                     (crawl_date, retailer_id, country_code, title, retailprice, ships_from, sold_by,
                      imageurl, producturl, retailersku, screenshot_id, cause, memo, is_del,
                      created_at, created_id)
-                    VALUES (%s, %s, %s, NULL, NULL, NULL, NULL,
-                            NULL, %s, %s, %s, %s, NULL, 0,
+                    VALUES (%s, %s, %s, %s, %s, %s, %s,
+                            %s, %s, %s, %s, %s, NULL, 0,
                             %s, %s)
                 """, (
                     crawl_date,
                     retailer_id,
                     country or '',
+                    title,
+                    retailprice,
+                    ships_from,
+                    sold_by,
+                    imageurl,
                     url,
                     sku_for_db,
                     file_id,
@@ -590,7 +632,7 @@ def delete_screenshots_for_sku(retailer, retailsku, date_yyyymmdd):
         return 0
 
 
-def capture_and_upload(driver, retailer, retailsku, url):
+def capture_and_upload(driver, retailer, retailsku, url, result_data=None):
     """스크린샷 캡처 후 S3 업로드
 
     동일 (retailer, retailsku, 날짜) 의 기존 스크린샷이 있으면 삭제 후 새로 업로드.
@@ -601,6 +643,7 @@ def capture_and_upload(driver, retailer, retailsku, url):
         retailer: 리테일러명 (예: 'amazon_gb', 'amazon_es', 'currys', 'fnac', 'x-kom')
         retailsku: 제품 SKU (파일명에 포함)
         url: 현재 페이지 URL (로깅용)
+        result_data: 크롤링 결과 dict/Series. 전달되면 모니터링 anomaly row에 가능한 값을 함께 저장.
 
     Returns:
         S3 key 문자열 (성공 시) / None (실패 시)
@@ -649,7 +692,8 @@ def capture_and_upload(driver, retailer, retailsku, url):
             file_name,
             file_path,
             len(screenshot_bytes),
-            crawl_date
+            crawl_date,
+            result_data
         )
         logger.info(f"NULL 스크린샷 S3 업로드 완료: s3://{bucket_name}/{s3_key}, file_id={file_id}")
         return s3_key
