@@ -399,8 +399,8 @@ class DanawaScraper:
                 if not price_found:
                     # 가격을 못 찾았을 때만 재고 상태 확인
                     if not self.check_stock_status():
-                        result['retailprice'] = 0
-                        logger.info("재고 없음으로 가격 0 설정")
+                        result['retailprice'] = None
+                        logger.info("재고 없음으로 가격 NULL 설정")
                     else:
                         logger.warning("모든 가격 XPath에서 추출 실패")
 
@@ -791,13 +791,13 @@ class DanawaScraper:
         
         total = len(df)
         with_price = df[df['retailprice'] > 0].shape[0] if 'retailprice' in df.columns else 0
-        out_of_stock = df[df['retailprice'] == 0].shape[0] if 'retailprice' in df.columns else 0
+        price_null = df[df['retailprice'].isna()].shape[0] if 'retailprice' in df.columns else 0
         failed = df[(df['retailprice'].isna()) | (df['retailprice'] < 0)].shape[0] if 'retailprice' in df.columns else 0
         success_rate = (with_price / total * 100) if total > 0 else 0
         
         logger.info(f"전체 제품: {total}개")
         logger.info(f"가격 추출 성공: {with_price}개")
-        logger.info(f"재고 없음: {out_of_stock}개")
+        logger.info(f"가격 NULL(품절 포함): {price_null}개")
         logger.info(f"가격 추출 실패: {failed}개")
         logger.info(f"성공률: {success_rate:.1f}%")
         
@@ -831,7 +831,7 @@ def get_db_history(engine, days=7):
         SELECT DATE(crawl_datetime) as date, 
                COUNT(*) as total_count,
                SUM(CASE WHEN retailprice IS NOT NULL AND retailprice > 0 THEN 1 ELSE 0 END) as with_price,
-               SUM(CASE WHEN retailprice = 0 THEN 1 ELSE 0 END) as out_of_stock,
+               SUM(CASE WHEN retailprice IS NULL OR retailprice = 0 THEN 1 ELSE 0 END) as price_null,
                COUNT(DISTINCT brand) as brands,
                COUNT(DISTINCT item) as items
         FROM danawa_price_crawl_tbl_kr_v2
@@ -965,14 +965,14 @@ def main():
     final_title_success = final_results_df['title'].notna().sum()
     final_title_null = final_results_df['title'].isna().sum()
     final_price_success = final_results_df[final_results_df['retailprice'] > 0].shape[0]
-    final_out_of_stock = final_results_df[final_results_df['retailprice'] == 0].shape[0]
+    final_price_null = final_results_df[final_results_df['retailprice'].isna()].shape[0]
     title_success_rate = (final_title_success / len(final_results_df) * 100) if len(final_results_df) > 0 else 0
 
     logger.info(f"\n📊 === 최종 결과 ===")
     logger.info(f"전체: {len(final_results_df)}개")
     logger.info(f"title 성공: {final_title_success}개, title null: {final_title_null}개")
     logger.info(f"price 성공: {final_price_success}개")
-    logger.info(f"재고없음: {final_out_of_stock}개")
+    logger.info(f"price NULL(품절 포함): {final_price_null}개")
     logger.info(f"title 성공률: {title_success_rate:.1f}%")
 
     # 개선율 표시
