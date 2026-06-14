@@ -488,7 +488,7 @@ class CentrecomScraper:
 
             # NULL 필드 발견 시 스크린샷 + S3 업로드
             if should_capture_centrecom_null_screenshot(result):
-                capture_and_upload(self.driver, 'centrecom', row_data.get('retailersku', ''), url)
+                capture_and_upload(self.driver, 'centrecom', row_data.get('retailersku', ''), url, result)
 
             return result
 
@@ -548,7 +548,7 @@ class CentrecomScraper:
             # NULL 필드 발견 시 스크린샷 + S3 업로드 (best-effort)
             try:
                 if should_capture_centrecom_null_screenshot(fail_result):
-                    capture_and_upload(self.driver, 'centrecom', row_data.get('retailersku', ''), url)
+                    capture_and_upload(self.driver, 'centrecom', row_data.get('retailersku', ''), url, fail_result)
             except Exception:
                 pass
 

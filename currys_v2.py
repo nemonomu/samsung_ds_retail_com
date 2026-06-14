@@ -370,7 +370,7 @@ class CurrysScraper:
 
             # NULL 필드 발견 시 스크린샷 + S3 업로드
             if is_null_result(result):
-                capture_and_upload(self.driver, 'currys', row_data.get('retailersku', ''), url)
+                capture_and_upload(self.driver, 'currys', row_data.get('retailersku', ''), url, result)
 
             return result
 
@@ -436,7 +436,7 @@ class CurrysScraper:
             # NULL 필드 발견 시 스크린샷 + S3 업로드 (best-effort)
             try:
                 if is_null_result(fail_result):
-                    capture_and_upload(self.driver, 'currys', row_data.get('retailersku', ''), url)
+                    capture_and_upload(self.driver, 'currys', row_data.get('retailersku', ''), url, fail_result)
             except Exception:
                 pass
 
