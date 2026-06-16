@@ -25,6 +25,8 @@ MONITORING_CREATED_ID = 'crawler_null_capture'
 KST = timezone(timedelta(hours=9))
 CAPTURE_WIDTH = 1920
 CAPTURE_HEIGHT = 1080
+DEFAULT_NULL_FIELDS = ('title', 'imageurl', 'retailprice')
+FULL_NULL_FIELDS = DEFAULT_NULL_FIELDS + ('ships_from', 'sold_by')
 
 # auto_recovery target_key → retailer 디렉토리/파일명에 사용할 리테일러명
 RETAILER_NAME_BY_TARGET_KEY = {
@@ -364,7 +366,7 @@ def _get_s3_config():
     raise ImportError('S3 config not found: expected AWS_CONFIG or S3_CONFIG')
 
 
-def is_null_result(result):
+def is_null_result(result, fields=None):
     """Return True when monitored product fields are NULL/empty."""
     if result is None:
         return True
@@ -386,9 +388,15 @@ def is_null_result(result):
             pass
         return False
 
-    return _is_empty(result.get('title')) or \
-           _is_empty(result.get('imageurl')) or \
-           _is_empty(result.get('retailprice'))
+    monitored_fields = fields or DEFAULT_NULL_FIELDS
+    for field in monitored_fields:
+        try:
+            value = result.get(field)
+        except AttributeError:
+            value = None
+        if _is_empty(value):
+            return True
+    return False
 
 
 def _prepare_selenium_for_capture(driver):

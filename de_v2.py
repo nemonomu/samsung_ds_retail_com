@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 from config import DB_CONFIG_V2 as DB_CONFIG
 from config import FILE_SERVER_CONFIG
 from alert_monitor import monitor_and_alert
-from null_screenshot import is_null_result, capture_and_upload
+from null_screenshot import FULL_NULL_FIELDS, is_null_result, capture_and_upload
 from cookie_consent import accept_cookies
 
 class AmazonDEScraper:
@@ -1004,7 +1004,7 @@ class AmazonDEScraper:
             logger.info(f"배송지: {result['ships_from']}")
 
             # NULL 필드 발견 시 스크린샷 + S3 업로드
-            if is_null_result(result):
+            if is_null_result(result, FULL_NULL_FIELDS):
                 capture_and_upload(self.driver, 'amazon_de', row_data.get('retailersku', ''), url, result)
 
             return result
@@ -1057,7 +1057,7 @@ class AmazonDEScraper:
 
             # NULL 필드 발견 시 스크린샷 + S3 업로드 (best-effort)
             try:
-                if is_null_result(fail_result):
+                if is_null_result(fail_result, FULL_NULL_FIELDS):
                     capture_and_upload(self.driver, 'amazon_de', row_data.get('retailersku', ''), url, fail_result)
             except Exception:
                 pass

@@ -29,6 +29,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+FULL_NULL_FIELD_TARGETS = {'fr', 'gb', 'de', 'es', 'in', 'it', 'jp', 'nl', 'usa'}
+
 # 설정 임포트
 from config import DB_CONFIG_V2 as DB_CONFIG
 from config import FILE_SERVER_CONFIG
@@ -792,14 +794,18 @@ class RecoveryManager:
         _retailer_name = None
         delete_screenshots_for_sku = None
         is_null_result = None
+        null_check_fields = None
         if has_null:
             try:
-                from null_screenshot import RETAILER_NAME_BY_TARGET_KEY, delete_screenshots_for_sku, is_null_result
+                from null_screenshot import FULL_NULL_FIELDS, RETAILER_NAME_BY_TARGET_KEY, delete_screenshots_for_sku, is_null_result
                 _retailer_name = RETAILER_NAME_BY_TARGET_KEY.get(target)
+                if target in FULL_NULL_FIELD_TARGETS:
+                    null_check_fields = FULL_NULL_FIELDS
             except Exception:
                 _retailer_name = None
                 delete_screenshots_for_sku = None
                 is_null_result = None
+                null_check_fields = None
         recovered_results = {}  # producturl -> 복구된 result
         missing_results = []  # 누락 URL INSERT용
 
@@ -830,7 +836,7 @@ class RecoveryManager:
                             logger.info(f"  -> 성공: title={str(result.get('title', ''))[:30]}, price={result.get('retailprice')}")
                             success_count += 1
                             recovered_results[url] = result
-                            if _retailer_name and delete_screenshots_for_sku and is_null_result and not is_null_result(result):
+                            if _retailer_name and delete_screenshots_for_sku and is_null_result and not is_null_result(result, null_check_fields):
                                 try:
                                     sku = result.get('retailersku') or row.get('retailersku', '')
                                     screenshot_dates = set()
