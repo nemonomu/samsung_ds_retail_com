@@ -18,10 +18,11 @@ from pathlib import Path
 
 import pandas as pd
 
+from crawler_session import MONITORING_CREATED_ID
+
 logger = logging.getLogger(__name__)
 
 S3_PATH_PREFIX = 'ds-null-screenshots'
-MONITORING_CREATED_ID = 'crawler_null_capture'
 KST = timezone(timedelta(hours=9))
 CAPTURE_WIDTH = 1920
 CAPTURE_HEIGHT = 1080

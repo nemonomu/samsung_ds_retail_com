@@ -5,6 +5,7 @@ Amazon 크롤링 모니터링 및 알림 모듈
 """
 
 import smtplib
+import html
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
@@ -13,6 +14,7 @@ import logging
 import pandas as pd
 
 from config import EMAIL_CONFIG
+from crawler_session import MONITORING_CREATED_ID, SESSION_STARTED_AT_KST
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +59,156 @@ COUNTRY_SHORT_NAMES = {
     'fr_fnac': 'fnac',
     'au_centrecom': 'centrecom'
 }
+
+MONITORING_RETAILER_KEYS = {
+    'usa': 'amazon_usa',
+    'gb': 'amazon_gb',
+    'de': 'amazon_de',
+    'fr': 'amazon_fr',
+    'es': 'amazon_es',
+    'it': 'amazon_it',
+    'jp': 'amazon_jp',
+    'in': 'amazon_in',
+    'nl': 'amazon_nl',
+    'usa_bestbuy': 'bestbuy',
+    'gb_currys': 'currys',
+    'de_mediamarkt': 'mediamarkt',
+    'nl_coolblue': 'coolblue',
+    'pl_xkom': 'x-kom',
+    'kr_danawa': 'danawa',
+    'fr_fnac': 'fnac',
+    'au_centrecom': 'centrecom'
+}
+
+
+def _get_monitoring_screenshot_links(country_code, crawl_date=None):
+    """Return presigned S3 screenshot links for today's monitoring anomalies."""
+    retailer_key = MONITORING_RETAILER_KEYS.get(country_code)
+    if not retailer_key:
+        return []
+
+    conn = None
+    try:
+        import boto3
+        import pymysql
+        try:
+            from config import DB_CONFIG as db_config
+        except ImportError:
+            from config import DB_CONFIG_V2 as db_config
+        from null_screenshot import _get_s3_config
+
+        if crawl_date is None:
+            crawl_date = datetime.now(pytz.timezone('Asia/Seoul')).strftime('%Y-%m-%d')
+
+        conn = pymysql.connect(
+            host=db_config['host'],
+            port=db_config.get('port', 3306),
+            user=db_config['user'],
+            password=db_config['password'],
+            database='ssd_crawl_db',
+            charset='utf8mb4',
+            autocommit=True
+        )
+
+        with conn.cursor(pymysql.cursors.DictCursor) as cursor:
+            cursor.execute("""
+                SELECT
+                    a.retailersku,
+                    a.producturl,
+                    a.title,
+                    a.retailprice,
+                    a.ships_from,
+                    a.sold_by,
+                    a.imageurl,
+                    f.file_path,
+                    f.file_name
+                FROM ssd_crawl_db.ds_monitoring_report_anomaly a
+                JOIN ssd_crawl_db.ds_monitoring_targets t
+                    ON t.retailer_id = a.retailer_id
+                JOIN ssd_crawl_db.ds_monitoring_file f
+                    ON f.file_id = a.screenshot_id
+                   AND f.is_del = 0
+                WHERE a.crawl_date = %s
+                  AND a.is_del = 0
+                  AND a.screenshot_id IS NOT NULL
+                  AND f.created_at >= %s
+                  AND f.created_id = %s
+                  AND t.is_active = 1
+                  AND t.is_del = 0
+                  AND (
+                      LOWER(t.retailer) = %s
+                      OR LOWER(REPLACE(t.retailer, '_', '-')) = REPLACE(%s, '_', '-')
+                  )
+                ORDER BY a.id DESC
+            """, (
+                crawl_date,
+                SESSION_STARTED_AT_KST,
+                MONITORING_CREATED_ID,
+                retailer_key.lower(),
+                retailer_key.lower()
+            ))
+            rows = cursor.fetchall()
+
+        if not rows:
+            return []
+
+        s3_config = _get_s3_config()
+        s3_client = boto3.client(
+            's3',
+            aws_access_key_id=s3_config['access_key_id'],
+            aws_secret_access_key=s3_config['secret_access_key'],
+            region_name=s3_config['region']
+        )
+
+        links = []
+        for row in rows:
+            s3_key = f"{row['file_path']}{row['file_name']}"
+            null_fields = []
+            for field in ('title', 'retailprice', 'ships_from', 'sold_by', 'imageurl'):
+                value = row.get(field)
+                if value is None or (isinstance(value, str) and value.strip() == ''):
+                    null_fields.append(field)
+                else:
+                    try:
+                        if pd.isna(value):
+                            null_fields.append(field)
+                    except (TypeError, ValueError):
+                        pass
+            screenshot_url = s3_client.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': s3_config['bucket_name'], 'Key': s3_key},
+                ExpiresIn=7 * 24 * 60 * 60
+            )
+            links.append({
+                'retailersku': row.get('retailersku') or '',
+                'producturl': row.get('producturl') or '',
+                'null_fields': null_fields,
+                'screenshot_url': screenshot_url
+            })
+        return links
+
+    except Exception as e:
+        logger.warning(f"monitoring screenshot links skipped: {e}")
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
+def _extract_crawl_date(results_df):
+    """Pick the report date from crawl results, falling back to today's KST date."""
+    today = datetime.now(pytz.timezone('Asia/Seoul')).strftime('%Y-%m-%d')
+    if results_df is None or results_df.empty or 'kr_crawl_datetime' not in results_df.columns:
+        return today
+
+    try:
+        crawl_dates = pd.to_datetime(results_df['kr_crawl_datetime'], errors='coerce').dropna()
+        if not crawl_dates.empty:
+            return crawl_dates.max().strftime('%Y-%m-%d')
+    except Exception as e:
+        logger.warning(f"crawl date fallback to today: {e}")
+
+    return today
 
 
 def _download_previous_df(country_code, file_prefix, skip_date=None):
@@ -351,6 +503,7 @@ def analyze_crawl_results(country_code, target_count, results_df, error_logs=Non
     analysis = {
         'country_code': country_code,
         'country_name': COUNTRY_NAMES.get(country_code, country_code.upper()),
+        'crawl_date': _extract_crawl_date(results_df),
         'target_count': target_count,
         'crawled_count': len(results_df) if results_df is not None else 0,
         'alerts': [],
@@ -786,6 +939,49 @@ def send_alert_email(analysis, error_message=None, audit_errors=None):
 
             html_content += """</pre>
                 </div>
+            </div>
+            """
+
+        screenshot_links = _get_monitoring_screenshot_links(
+            analysis['country_code'],
+            analysis.get('crawl_date')
+        )
+        if screenshot_links:
+            html_content += f"""
+            <div class="section">
+                <h3>Monitoring screenshots ({len(screenshot_links)})</h3>
+                <table>
+                    <tr>
+                        <th>SKU</th>
+                        <th>NULL fields</th>
+                        <th>Product URL</th>
+                        <th>Screenshot</th>
+                    </tr>
+            """
+            for item in screenshot_links:
+                sku = html.escape(str(item.get('retailersku', '')))
+                null_fields = html.escape(', '.join(item.get('null_fields') or []) or '-')
+                producturl = item.get('producturl') or ''
+                screenshot_url = item.get('screenshot_url') or ''
+                product_link = (
+                    f'<a href="{html.escape(producturl, quote=True)}">open</a>'
+                    if producturl else '-'
+                )
+                screenshot_link = (
+                    f'<a href="{html.escape(screenshot_url, quote=True)}">screenshot</a>'
+                    if screenshot_url else '-'
+                )
+                html_content += f"""
+                    <tr>
+                        <td>{sku}</td>
+                        <td>{null_fields}</td>
+                        <td>{product_link}</td>
+                        <td>{screenshot_link}</td>
+                    </tr>
+                """
+            html_content += """
+                </table>
+                <p style="color: #666; font-size: 12px;">Screenshot links are S3 presigned URLs and expire after 7 days.</p>
             </div>
             """
 

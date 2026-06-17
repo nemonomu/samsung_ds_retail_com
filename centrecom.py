@@ -64,6 +64,15 @@ def should_capture_centrecom_null_screenshot(result):
     return False
 
 
+def capture_centrecom_null_screenshot(driver, retailer_sku, url, result):
+    """Upload Centrecom null screenshot without breaking the crawl flow."""
+    try:
+        if should_capture_centrecom_null_screenshot(result):
+            capture_and_upload(driver, 'centrecom', retailer_sku, url, result)
+    except Exception as exc:
+        logger.warning(f"Centrecom NULL screenshot upload skipped: {exc}")
+
+
 def run_monitoring_capture_for_centrecom(crawl_date):
     """Run monitoring screenshot capture for Centrecom anomalies after crawling."""
     try:
@@ -458,6 +467,12 @@ class CentrecomScraper:
                 else:
                     # 실패 - 빈 결과 반환
                     logger.error("차단 페이지 해결 실패")
+                    capture_centrecom_null_screenshot(
+                        self.driver,
+                        row_data.get('retailersku', ''),
+                        url,
+                        result
+                    )
                     return result
 
             # 가격 추출
@@ -488,7 +503,7 @@ class CentrecomScraper:
 
             # NULL 필드 발견 시 스크린샷 + S3 업로드
             if should_capture_centrecom_null_screenshot(result):
-                capture_and_upload(self.driver, 'centrecom', row_data.get('retailersku', ''), url, result)
+                capture_centrecom_null_screenshot(self.driver, row_data.get('retailersku', ''), url, result)
 
             return result
 
@@ -546,11 +561,7 @@ class CentrecomScraper:
             }
 
             # NULL 필드 발견 시 스크린샷 + S3 업로드 (best-effort)
-            try:
-                if should_capture_centrecom_null_screenshot(fail_result):
-                    capture_and_upload(self.driver, 'centrecom', row_data.get('retailersku', ''), url, fail_result)
-            except Exception:
-                pass
+            capture_centrecom_null_screenshot(self.driver, row_data.get('retailersku', ''), url, fail_result)
 
             return fail_result
 
