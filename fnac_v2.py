@@ -275,7 +275,7 @@ class FnacScraperV2:
             logger.error(f"세션 초기화 실패: {e}")
             return False
 
-    def extract_product_info(self, url, row_data, retry_count=0, max_retries=10):
+    def extract_product_info(self, url, row_data, retry_count=0, max_retries=3):
         """제품 정보 추출 (재시도 로직)"""
         try:
             logger.info(f"페이지 접속: {url} (시도: {retry_count + 1}/{max_retries})")
@@ -571,7 +571,7 @@ class FnacScraperV2:
         except Exception as e:
             logger.error(f"페이지 처리 오류: {e}")
 
-            # 재시도 로직 (고정 10초 대기, 최대 10회)
+            # Retry with a fixed 10 second wait, up to 3 attempts
             if retry_count < max_retries - 1:
                 wait_time = 10
                 logger.info(f"{wait_time}초 후 재시도... ({retry_count + 2}/{max_retries})")
@@ -847,7 +847,7 @@ class FnacScraperV2:
                 except Exception as e:
                     logger.error(f"마지막 저장 실패: {e}")
 
-            # 차단 페이지로 인한 실패 목록 재시도 (10회씩)
+            # Retry blocked-page failures up to 3 times
             if blocked_page_failures:
                 logger.info("=" * 60)
                 logger.info(f"차단 페이지 실패 {len(blocked_page_failures)}개 재시도 시작")
@@ -861,8 +861,9 @@ class FnacScraperV2:
                     logger.info(f"재시도 진행: {fail_idx + 1}/{len(blocked_page_failures)} - {fail_item['item']}")
 
                     retry_success = False
-                    for retry in range(10):
-                        logger.info(f"차단 페이지 재시도 {retry + 1}/10: {url}")
+                    max_blocked_retries = 3
+                    for retry in range(max_blocked_retries):
+                        logger.info(f"차단 페이지 재시도 {retry + 1}/{max_blocked_retries}: {url}")
                         result = self.extract_product_info(url, row_data, retry_count=0, max_retries=1)
                         result.pop('_out_of_stock', False)
 
@@ -875,16 +876,16 @@ class FnacScraperV2:
                             retry_success = True
                             break
                         else:
-                            logger.warning(f"재시도 {retry + 1}/10 실패")
-                            if retry < 9:
+                            logger.warning(f"blocked page retry {retry + 1}/{max_blocked_retries} failed")
+                            if retry < max_blocked_retries - 1:
                                 time.sleep(10)
 
                     if not retry_success:
-                        logger.error(f"최종 실패 (10회 재시도 후에도 실패): {url}")
+                        logger.error(f"final failure after {max_blocked_retries} blocked-page retries: {url}")
                         final_blocked_failures.append({
                             'url': url,
                             'item': fail_item['item'],
-                            'reason': '차단 페이지로 인한 최종 실패 (10회 재시도 후)'
+                            'reason': f'blocked page final failure after {max_blocked_retries} retries'
                         })
 
                 if final_blocked_failures:
