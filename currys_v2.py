@@ -227,11 +227,31 @@ class CurrysScraper:
             logger.debug(f"쿠키 팝업 처리 중 오류 (무시): {e}")
             return False
     
-    def extract_product_info(self, url, row_data, retry_count=0, max_retries=3):
+    def is_core_result_all_null(self, result):
+        """Return True when title, price, and image URL are all missing."""
+        return (
+            not result.get('title')
+            and result.get('retailprice') is None
+            and not result.get('imageurl')
+        )
+
+    def extract_product_info(
+        self,
+        url,
+        row_data,
+        retry_count=0,
+        max_retries=3,
+        all_null_refresh_count=0,
+        max_all_null_refreshes=1,
+        use_current_page=False,
+    ):
         """제품 정보 추출 (재시도 로직 포함)"""
         try:
             logger.info(f"🔍 페이지 접속: {url} (시도: {retry_count + 1}/{max_retries + 1})")
-            self.driver.get(url)
+            if use_current_page:
+                logger.info("Currys refreshed page recollect")
+            else:
+                self.driver.get(url)
             
             # 쿠키 동의 팝업 처리
             self.handle_cookie_consent()
@@ -239,7 +259,7 @@ class CurrysScraper:
             # 페이지 로드 대기
             wait = WebDriverWait(self.driver, 20)
             time.sleep(random.uniform(3, 5))
-            
+
             # 현재 시간
             # V2: 타임존 분리
 
@@ -369,6 +389,30 @@ class CurrysScraper:
             #     result['vat'] = 'o' if any(text in page_source for text in vat_texts) else 'x'
 
             # NULL 필드 발견 시 스크린샷 + S3 업로드
+            if self.is_core_result_all_null(result) and all_null_refresh_count < max_all_null_refreshes:
+                next_refresh_count = all_null_refresh_count + 1
+                logger.warning(
+                    f"Currys title/price/image all NULL - refresh {next_refresh_count}/{max_all_null_refreshes} before screenshot"
+                )
+                use_refreshed_page = True
+                try:
+                    self.driver.refresh()
+                    time.sleep(random.uniform(3, 5))
+                    self.handle_cookie_consent()
+                except Exception as refresh_error:
+                    logger.warning(f"Currys all-NULL refresh failed, recollect via URL: {refresh_error}")
+                    use_refreshed_page = False
+
+                return self.extract_product_info(
+                    url,
+                    row_data,
+                    retry_count=retry_count,
+                    max_retries=max_retries,
+                    all_null_refresh_count=next_refresh_count,
+                    max_all_null_refreshes=max_all_null_refreshes,
+                    use_current_page=use_refreshed_page,
+                )
+
             if is_null_result(result):
                 capture_and_upload(self.driver, 'currys', row_data.get('retailersku', ''), url, result)
 
@@ -392,7 +436,15 @@ class CurrysScraper:
                 self.setup_driver()
                 
                 # 재귀 호출로 재시도
-                return self.extract_product_info(url, row_data, retry_count + 1, max_retries)
+                return self.extract_product_info(
+                    url,
+                    row_data,
+                    retry_count=retry_count + 1,
+                    max_retries=max_retries,
+                    all_null_refresh_count=0,
+                    max_all_null_refreshes=max_all_null_refreshes,
+                    use_current_page=False,
+                )
             
             # 최대 재시도 횟수 초과 시 기본값 반환
             logger.error(f"❌ 최대 재시도 횟수 초과: {url}")
