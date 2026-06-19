@@ -429,6 +429,40 @@ class AmazonUKScraper:
         
         return None
     
+    def retry_missing_seller_fields(self, result):
+        """Retry seller fields after dynamic buybox content has had time to render."""
+        if result.get('ships_from') and result.get('sold_by'):
+            return
+
+        seller_selectors = self.selectors.get('sold_by', []) + self.selectors.get('ships_from', [])
+        if not seller_selectors:
+            return
+
+        def has_displayed_seller_element(driver):
+            for selector in seller_selectors:
+                try:
+                    elements = (
+                        driver.find_elements(By.XPATH, selector)
+                        if selector.startswith('//') or selector.startswith('(')
+                        else driver.find_elements(By.CSS_SELECTOR, selector)
+                    )
+                    if any(element.is_displayed() for element in elements):
+                        return True
+                except Exception:
+                    continue
+            return False
+
+        try:
+            WebDriverWait(self.driver, 3).until(has_displayed_seller_element)
+        except Exception:
+            pass
+
+        if not result.get('ships_from'):
+            result['ships_from'] = self.extract_ships_from(self.selectors.get('ships_from', []))
+
+        if not result.get('sold_by'):
+            result['sold_by'] = self.extract_element_text(self.selectors.get('sold_by', []), "Sold By")
+
     def check_stock_availability(self, url):
         """재고 상태 확인"""
         try:
@@ -567,6 +601,9 @@ class AmazonUKScraper:
 
             # 가격 추출
             result['retailprice'] = self.extract_price(url)
+
+            self.retry_missing_seller_fields(result)
+            has_seller = bool(result['ships_from'] or result['sold_by'])
 
             # 판매자 정보 있는데 가격 없으면 3초 대기 후 1회 재시도
             if result['retailprice'] is None and has_seller:
