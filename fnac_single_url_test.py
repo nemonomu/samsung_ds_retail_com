@@ -1,3 +1,4 @@
+import json
 import re
 import sys
 import time
@@ -58,6 +59,26 @@ def first_attr(page, selectors, attrs):
     return None
 
 
+def image_from_data_medias(page):
+    try:
+        raw = page.locator("section.f-productMedias").first.get_attribute("data-medias", timeout=3000)
+        if not raw:
+            return None
+        medias = json.loads(raw)
+        if not isinstance(medias, list):
+            return None
+        for media in medias:
+            if not isinstance(media, dict):
+                continue
+            for key in ("src", "thumbnailSrc"):
+                value = clean_text(media.get(key))
+                if value:
+                    return value
+    except Exception:
+        return None
+    return None
+
+
 def extract_from_dom(page):
     return page.evaluate(
         """
@@ -104,10 +125,22 @@ def extract_from_dom(page):
             let imageurl =
                 clean(imageNode?.getAttribute('data-zoom')) ||
                 clean(imageNode?.getAttribute('src')) ||
-                clean(imageNode?.getAttribute('data-src'));
+                clean(imageNode?.getAttribute('data-src')) ||
+                clean(imageNode?.getAttribute('data-lazyimage'));
+            if (!imageurl) {
+                try {
+                    const mediaNode = document.querySelector('section.f-productMedias[data-medias]');
+                    const medias = JSON.parse(mediaNode?.getAttribute('data-medias') || '[]');
+                    for (const media of medias) {
+                        imageurl = clean(media?.src) || clean(media?.thumbnailSrc);
+                        if (imageurl) break;
+                    }
+                } catch (e) {}
+            }
             if (!imageurl && product.image) {
                 imageurl = Array.isArray(product.image) ? product.image[0] : product.image;
             }
+            if (!imageurl) imageurl = clean(document.querySelector('meta[property="og:image"]')?.content);
             if (!imageurl && tcVars) imageurl = clean(tcVars.product_picture_url);
 
             const priceText =
@@ -156,7 +189,9 @@ def main():
                 ".f-productMedias__viewItem--main",
                 "#FnacContent section[class*='f-productMedias'] img",
                 "#FnacContent img[src*='fnac-static.com']",
-            ], ["data-zoom", "src", "data-src"])
+                "img[data-lazyimage*='fnac-static.com']",
+            ], ["data-zoom", "src", "data-src", "data-lazyimage"])
+            imageurl = imageurl or image_from_data_medias(page)
             price_text = first_text(page, [
                 ".f-faPriceBox__price",
                 "[data-automation-id*='price']",
