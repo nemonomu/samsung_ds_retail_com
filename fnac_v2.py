@@ -533,29 +533,7 @@ class FnacScraperV2:
                     except:
                         continue
 
-                # JavaScript로 이미지 찾기
-                if not image_found:
-                    try:
-                        js_result = self.page.evaluate("""
-                            () => {
-                                var imgs = document.querySelectorAll('img');
-                                for (var i = 0; i < imgs.length; i++) {
-                                    var src = imgs[i].src || imgs[i].getAttribute('data-src');
-                                    if (src && src.includes('fnac-static.com')) {
-                                        return src;
-                                    }
-                                }
-                                return null;
-                            }
-                        """)
-
-                        if js_result:
-                            result['imageurl'] = js_result
-                            logger.info(f"이미지 URL (JS): {result['imageurl']}")
-                            image_found = True
-                    except:
-                        pass
-
+                # Broad page-wide image fallback removed; DB selectors only.
                 if not image_found:
                     logger.warning("이미지 URL 추출 실패")
 
