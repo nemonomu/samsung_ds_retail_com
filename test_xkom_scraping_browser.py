@@ -31,12 +31,32 @@ OUT_DIR = Path("xkom_probe_outputs") / "scraping_browser"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
+WYCOFANY_XPATH = '//*[@id="app"]/div[2]/div/div[1]/div[2]/div[2]/div[2]/div[2]/div/div[1]/div/button/span/span[1]/span'
+
+
 def db_engine():
     cfg = DB_CONFIG_V2
     return create_engine(
         f"mysql+pymysql://{cfg['user']}:{cfg['password']}@"
         f"{cfg['host']}:{cfg['port']}/{cfg['database']}"
     )
+
+
+def load_xpaths_from_db():
+    query = text("""
+        SELECT element_type, selector_value, priority
+        FROM mall_selectors
+        WHERE mall_name = 'x-kom'
+          AND country_code = 'pl'
+          AND is_active = TRUE
+        ORDER BY element_type, priority DESC
+    """)
+    xpaths = {"price": [], "title": [], "imageurl": [], "availability": []}
+    with db_engine().connect() as conn:
+        rows = conn.execute(query).mappings().all()
+    for row in rows:
+        xpaths.setdefault(row["element_type"], []).append(row["selector_value"])
+    return xpaths
 
 
 def load_test_target_from_db():
@@ -84,21 +104,128 @@ def connection_url():
     return "wss://browser.zenrows.com?" + urlencode(query)
 
 
-def extract_price_from_text(text_value):
-    patterns = [
-        r"Cena:\s*([0-9][0-9\s]*[,.][0-9]{2})\s*z(?:l|ł)",
-        r"([0-9][0-9\s]*[,.][0-9]{2})\s*z(?:l|ł)",
-        r"([0-9][0-9\s]{2,})\s*z(?:l|ł)",
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, text_value or "", flags=re.IGNORECASE)
-        if match:
-            raw = match.group(1).replace(" ", "").replace(",", ".")
-            try:
-                return float(raw)
-            except ValueError:
+def parse_xkom_price(price_text):
+    text_value = (price_text or "").replace("zł", "").replace("z\u0142", "").replace("PLN", "").replace(" ", "").strip()
+    match = re.search(r"(\d+)[,.]?(\d*)", text_value)
+    if not match:
+        return None
+    price = match.group(1)
+    if match.group(2):
+        price += "." + match.group(2)
+    try:
+        return float(price)
+    except ValueError:
+        return None
+
+
+def locator_for_selector(page, selector):
+    if selector.startswith("//"):
+        return page.locator(f"xpath={selector}")
+    return page.locator(selector)
+
+
+async def first_locator_text(locator, timeout=3000):
+    if await locator.count() == 0:
+        return None
+    first = locator.first
+    try:
+        return (await first.inner_text(timeout=timeout)).strip()
+    except Exception:
+        return None
+
+
+async def first_locator_attr(locator, attr, timeout=3000):
+    if await locator.count() == 0:
+        return None
+    try:
+        return await locator.first.get_attribute(attr, timeout=timeout)
+    except Exception:
+        return None
+
+
+async def detect_wycofany_v2(page):
+    try:
+        text_value = await first_locator_text(page.locator(f"xpath={WYCOFANY_XPATH}"))
+        if text_value and "Produkt wycofany" in text_value:
+            return True, "xpath"
+    except Exception:
+        pass
+    return False, None
+
+
+async def extract_product_info_v2_logic(page, xpaths):
+    result = {
+        "retailprice": None,
+        "title": None,
+        "imageurl": None,
+        "is_wycofany": False,
+        "wycofany_source": None,
+        "price_selector": None,
+        "title_selector": None,
+        "image_selector": None,
+    }
+
+    is_wycofany, wycofany_source = await detect_wycofany_v2(page)
+    result["is_wycofany"] = is_wycofany
+    result["wycofany_source"] = wycofany_source
+
+    price_found = False
+    for selector in ([] if is_wycofany else xpaths.get("price", [])):
+        try:
+            if selector.startswith("meta"):
+                text_value = await first_locator_attr(page.locator(selector), "content")
+                price = parse_xkom_price(text_value)
+                if price is not None:
+                    result["retailprice"] = price
+                    result["price_selector"] = selector
+                    price_found = True
+                    break
                 continue
-    return None
+
+            locator = locator_for_selector(page, selector)
+            count = await locator.count()
+            for index in range(count):
+                price_text = (await locator.nth(index).inner_text(timeout=3000)).strip()
+                if not price_text:
+                    continue
+                price = parse_xkom_price(price_text)
+                if price is not None:
+                    result["retailprice"] = price
+                    result["price_selector"] = selector
+                    price_found = True
+                    break
+            if price_found:
+                break
+        except Exception:
+            continue
+
+    for selector in xpaths.get("title", []):
+        try:
+            if selector.startswith("meta"):
+                value = await first_locator_attr(page.locator(selector), "content")
+            else:
+                value = await first_locator_text(locator_for_selector(page, selector))
+            if value:
+                result["title"] = value
+                result["title_selector"] = selector
+                break
+        except Exception:
+            continue
+
+    for selector in xpaths.get("imageurl", []):
+        try:
+            if selector.startswith("meta"):
+                value = await first_locator_attr(page.locator(selector), "content")
+            else:
+                value = await first_locator_attr(locator_for_selector(page, selector), "src")
+            if value:
+                result["imageurl"] = value
+                result["image_selector"] = selector
+                break
+        except Exception:
+            continue
+
+    return result
 
 
 def detect_state(title, body_text, html):
@@ -116,10 +243,10 @@ def detect_state(title, body_text, html):
                 "g-recaptcha",
             ]
         ),
-        "wycofany": "produkt wycofany" in merged or "wycofany" in merged,
-        "temporary_unavailable": "czasowo niedost" in merged,
-        "notify_availability": "powiadom mnie o dost" in merged,
-        "add_to_cart": "dodaj do koszyka" in merged,
+        "wycofany_text_seen": "produkt wycofany" in merged or "wycofany" in merged,
+        "temporary_unavailable_text_seen": "czasowo niedost" in merged,
+        "notify_availability_text_seen": "powiadom mnie o dost" in merged,
+        "add_to_cart_text_seen": "dodaj do koszyka" in merged,
     }
 
 
@@ -130,28 +257,9 @@ async def safe_text(page):
         return ""
 
 
-async def meta_price(page):
-    for selector in [
-        'meta[property="product:price:amount"]',
-        'meta[itemprop="price"]',
-        '[data-name="Price"]',
-    ]:
-        try:
-            locator = page.locator(selector).first
-            if await locator.count() == 0:
-                continue
-            content = await locator.get_attribute("content", timeout=3000)
-            text_value = content or await locator.inner_text(timeout=3000)
-            price = extract_price_from_text(text_value)
-            if price is not None:
-                return price, selector, text_value
-        except Exception:
-            continue
-    return None, None, None
-
-
 async def run():
     target = default_test_target()
+    xpaths = load_xpaths_from_db()
     url = target["url"]
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
     html_path = OUT_DIR / f"xkom_scraping_browser_{run_id}.html"
@@ -174,9 +282,8 @@ async def run():
             current_url = page.url
             body_text = await safe_text(page)
             html = await page.content()
-            price_meta, price_source, price_source_text = await meta_price(page)
-            price_text = extract_price_from_text(body_text)
             state = detect_state(title, body_text, html)
+            extracted = await extract_product_info_v2_logic(page, xpaths)
 
             await page.screenshot(path=str(png_path), full_page=True)
             html_path.write_text(html, encoding="utf-8")
@@ -186,12 +293,10 @@ async def run():
                 "url": url,
                 "current_url": current_url,
                 "status": response.status if response else None,
-                "title": title,
-                "state": state,
-                "price_meta": price_meta,
-                "price_text": price_text,
-                "price_source": price_source,
-                "price_source_text": price_source_text,
+                "page_title": title,
+                "state_diagnostics": state,
+                "xkom_v2_logic": extracted,
+                "selector_counts": {key: len(value) for key, value in xpaths.items()},
                 "body_text_sample": body_text[:3000],
                 "html_path": str(html_path),
                 "screenshot_path": str(png_path),
@@ -200,11 +305,11 @@ async def run():
             print(json.dumps({
                 "target": target,
                 "status": result["status"],
-                "title": title,
+                "page_title": title,
                 "current_url": current_url,
-                "state": state,
-                "price_meta": price_meta,
-                "price_text": price_text,
+                "state_diagnostics": state,
+                "xkom_v2_logic": extracted,
+                "selector_counts": result["selector_counts"],
                 "html_path": str(html_path),
                 "screenshot_path": str(png_path),
                 "meta_path": str(meta_path),
