@@ -6,28 +6,58 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlencode
 
-import pandas as pd
 from playwright.async_api import async_playwright
+from sqlalchemy import create_engine, text
 
-from config import ZENROWS_API_KEY
+from config import DB_CONFIG_V2, ZENROWS_API_KEY
 
 
 OUT_DIR = Path("xkom_probe_outputs") / "scraping_browser"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def default_test_url():
+def db_engine():
+    cfg = DB_CONFIG_V2
+    return create_engine(
+        f"mysql+pymysql://{cfg['user']}:{cfg['password']}@"
+        f"{cfg['host']}:{cfg['port']}/{cfg['database']}"
+    )
+
+
+def load_test_target_from_db():
+    sku = os.environ.get("XKOM_SCRAPING_BROWSER_RETAILERSKU")
+    limit = int(os.environ.get("XKOM_SCRAPING_BROWSER_DB_LIMIT", "1"))
+    where = [
+        "country = 'pl'",
+        "mall_name = 'x-kom'",
+        "is_active = TRUE",
+    ]
+    params = {"limit": limit}
+    if sku:
+        where.append("retailersku = :retailersku")
+        params["retailersku"] = sku
+
+    query = text(f"""
+        SELECT id, retailersku, url
+        FROM samsung_price_tracking_list
+        WHERE {' AND '.join(where)}
+        ORDER BY id
+        LIMIT :limit
+    """)
+    with db_engine().connect() as conn:
+        row = conn.execute(query, params).mappings().first()
+    if not row:
+        raise RuntimeError("No active x-kom target found in samsung_price_tracking_list")
+    return dict(row)
+
+
+def default_test_target():
     env_url = os.environ.get("XKOM_SCRAPING_BROWSER_TEST_URL")
     if env_url:
-        return env_url
-
-    sample_csv = Path("xkom_probe_outputs/xkom_compare_63_output_20260613_180215.csv")
-    if sample_csv.exists():
-        df = pd.read_csv(sample_csv, encoding="utf-8-sig")
-        if "producturl" in df.columns and df["producturl"].notna().any():
-            return str(df[df["producturl"].notna()].iloc[0]["producturl"])
-
-    return "https://www.x-kom.pl"
+        return {"id": None, "retailersku": None, "url": env_url, "source": "env_url"}
+    target = load_test_target_from_db()
+    target["source"] = "db"
+    return target
 
 
 def connection_url():
@@ -39,14 +69,14 @@ def connection_url():
     return "wss://browser.zenrows.com?" + urlencode(query)
 
 
-def extract_price_from_text(text):
+def extract_price_from_text(text_value):
     patterns = [
-        r"Cena:\s*([0-9][0-9\s]*[,.][0-9]{2})\s*zł",
-        r"([0-9][0-9\s]*[,.][0-9]{2})\s*zł",
-        r"([0-9][0-9\s]{2,})\s*zł",
+        r"Cena:\s*([0-9][0-9\s]*[,.][0-9]{2})\s*z(?:l|ł)",
+        r"([0-9][0-9\s]*[,.][0-9]{2})\s*z(?:l|ł)",
+        r"([0-9][0-9\s]{2,})\s*z(?:l|ł)",
     ]
     for pattern in patterns:
-        match = re.search(pattern, text or "", flags=re.IGNORECASE)
+        match = re.search(pattern, text_value or "", flags=re.IGNORECASE)
         if match:
             raw = match.group(1).replace(" ", "").replace(",", ".")
             try:
@@ -72,8 +102,8 @@ def detect_state(title, body_text, html):
             ]
         ),
         "wycofany": "produkt wycofany" in merged or "wycofany" in merged,
-        "temporary_unavailable": "czasowo niedostępny" in merged,
-        "notify_availability": "powiadom mnie o dostępności" in merged,
+        "temporary_unavailable": "czasowo niedost" in merged,
+        "notify_availability": "powiadom mnie o dost" in merged,
         "add_to_cart": "dodaj do koszyka" in merged,
     }
 
@@ -96,17 +126,18 @@ async def meta_price(page):
             if await locator.count() == 0:
                 continue
             content = await locator.get_attribute("content", timeout=3000)
-            text = content or await locator.inner_text(timeout=3000)
-            price = extract_price_from_text(text)
+            text_value = content or await locator.inner_text(timeout=3000)
+            price = extract_price_from_text(text_value)
             if price is not None:
-                return price, selector, text
+                return price, selector, text_value
         except Exception:
             continue
     return None, None, None
 
 
 async def run():
-    url = default_test_url()
+    target = default_test_target()
+    url = target["url"]
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
     html_path = OUT_DIR / f"xkom_scraping_browser_{run_id}.html"
     png_path = OUT_DIR / f"xkom_scraping_browser_{run_id}.png"
@@ -136,6 +167,7 @@ async def run():
             html_path.write_text(html, encoding="utf-8")
 
             result = {
+                "target": target,
                 "url": url,
                 "current_url": current_url,
                 "status": response.status if response else None,
@@ -151,6 +183,7 @@ async def run():
             }
             meta_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
             print(json.dumps({
+                "target": target,
                 "status": result["status"],
                 "title": title,
                 "current_url": current_url,
