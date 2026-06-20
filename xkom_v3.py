@@ -53,6 +53,10 @@ try:
 except ImportError:
     ZENROWS_API_KEY = os.environ.get('ZENROWS_API_KEY')
 try:
+    from config import XKOM_MOB_API_KEY
+except ImportError:
+    XKOM_MOB_API_KEY = None
+try:
     from config import TWOCAPTCHA_API_KEY
 except ImportError:
     TWOCAPTCHA_API_KEY = None
@@ -83,6 +87,8 @@ except ImportError:
 from alert_monitor import monitor_and_alert
 from null_screenshot import is_null_result, capture_and_upload
 from cookie_consent import accept_cookies
+
+DEFAULT_XKOM_MOB_API_KEY = 'jfsTOgOL23CN2G8Y'
 
 class XKomScraper:
     def __init__(self):
@@ -214,21 +220,22 @@ class XKomScraper:
         return match.group(1) if match else None
 
     def load_xkom_mobile_api_key(self):
-        key = os.environ.get('XKOM_MOB_API_KEY')
+        key = os.environ.get('XKOM_MOB_API_KEY') or XKOM_MOB_API_KEY
         if key:
             return key
 
-        static_scan_path = os.environ.get(
-            'XKOM_STATIC_SCAN_PATH',
-            os.path.join('xkom_probe_outputs', 'xkom_static_api_scan.json')
-        )
-        try:
-            with open(static_scan_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            return data.get('env', {}).get('MOB_API_KEY')
-        except Exception as e:
-            logger.warning(f"X-kom mobile API key load failed: {e}")
-            return None
+        static_scan_path = os.environ.get('XKOM_STATIC_SCAN_PATH')
+        if static_scan_path:
+            try:
+                with open(static_scan_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                key = data.get('env', {}).get('MOB_API_KEY')
+                if key:
+                    return key
+            except Exception as e:
+                logger.warning(f"X-kom mobile API key load failed from XKOM_STATIC_SCAN_PATH: {e}")
+
+        return DEFAULT_XKOM_MOB_API_KEY
 
     def xkom_api_headers(self):
         api_key = self.load_xkom_mobile_api_key()
