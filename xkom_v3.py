@@ -22,11 +22,17 @@ import logging
 import os
 import traceback
 import json
+from urllib.parse import urlencode
 import zipfile
 import hashlib
 import requests
 import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
+
+try:
+    from playwright.sync_api import sync_playwright
+except ImportError:
+    sync_playwright = None
 
 # 로깅 설정
 logging.basicConfig(
@@ -50,6 +56,30 @@ try:
     from config import TWOCAPTCHA_API_KEY
 except ImportError:
     TWOCAPTCHA_API_KEY = None
+try:
+    from config import XKOM_USE_API
+except ImportError:
+    XKOM_USE_API = None
+try:
+    from config import XKOM_API_CAPTURE_NULL_SCREENSHOTS
+except ImportError:
+    XKOM_API_CAPTURE_NULL_SCREENSHOTS = None
+try:
+    from config import XKOM_ENABLE_SELENIUM_FALLBACK
+except ImportError:
+    XKOM_ENABLE_SELENIUM_FALLBACK = None
+try:
+    from config import ZENROWS_SCRAPING_BROWSER_COUNTRY
+except ImportError:
+    ZENROWS_SCRAPING_BROWSER_COUNTRY = None
+try:
+    from config import ZENROWS_SCRAPING_BROWSER_SESSION_TTL
+except ImportError:
+    ZENROWS_SCRAPING_BROWSER_SESSION_TTL = None
+try:
+    from config import XKOM_API_NULL_SCREENSHOT_WAIT_MS
+except ImportError:
+    XKOM_API_NULL_SCREENSHOT_WAIT_MS = None
 from alert_monitor import monitor_and_alert
 from null_screenshot import is_null_result, capture_and_upload
 from cookie_consent import accept_cookies
@@ -80,8 +110,14 @@ class XKomScraper:
         # DB 연결 설정
         self.setup_db_connection()
         
-        # DB에서 XPath 로드
-        self.load_xpaths_from_db()
+        self.XPATHS = {
+            'price': [],
+            'title': [],
+            'imageurl': [],
+            'availability': []
+        }
+        if not self.bool_setting('XKOM_USE_API', True):
+            self.load_xpaths_from_db()
         
     def setup_db_connection(self):
         """DB 연결 설정"""
@@ -306,13 +342,26 @@ class XKomScraper:
         if not product:
             return None
         photo = product.get('MainPhoto') or product.get('Photo') or {}
-        for key in ('Url', 'url', 'ThumbnailUrl', 'thumbnailUrl'):
-            if photo.get(key):
-                return photo.get(key)
         template = photo.get('UrlTemplate') or photo.get('urlTemplate')
         if template:
-            return template.replace('{SIZE}', 'big')
+            return template.replace('{SIZE}', 'product-new-big')
+        for key in ('Url', 'url', 'ThumbnailUrl', 'thumbnailUrl'):
+            if photo.get(key):
+                return str(photo.get(key)).replace('product-large', 'product-new-big')
         return None
+
+    def title_from_xkom_product(self, product):
+        if not product:
+            return None
+        product_name = product.get('DescriptiveProductName') or product.get('Name')
+        category = product.get('Category') or {}
+        category_name = category.get('NameSingular')
+        if product_name and category_name:
+            return (
+                f"{product_name} - {category_name} - "
+                "najlepsze ceny, tysi\u0105ce opinii w x-kom.pl"
+            )
+        return product_name
 
     def make_xkom_api_record(self, row_data, product, local_time, now_time):
         crawl_dt = local_time.strftime('%Y-%m-%dT%H:%M:%S')
@@ -353,9 +402,126 @@ class XKomScraper:
             'crawl_strdatetime': local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4],
             'kr_crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),
             'kr_crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4],
-            'title': (product or {}).get('Name') or (product or {}).get('DescriptiveProductName'),
+            'title': self.title_from_xkom_product(product),
             'vat': row_data.get('vat', 'x')
         }
+
+    def config_setting(self, name, default=None):
+        value = os.environ.get(name)
+        if value is None:
+            value = globals().get(name, None)
+        return default if value is None else value
+
+    def bool_setting(self, name, default=False):
+        value = self.config_setting(name, default)
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {'1', 'true', 'yes', 'y', 'on'}
+
+    def str_setting(self, name, default=None):
+        value = self.config_setting(name, default)
+        if value is None:
+            return None
+        value = str(value).strip()
+        return value or None
+
+    def int_setting(self, name, default=0):
+        value = self.config_setting(name, default)
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    def zenrows_scraping_browser_url(self):
+        if not ZENROWS_API_KEY:
+            raise RuntimeError('ZENROWS_API_KEY is required for ZenRows Scraping Browser screenshots')
+
+        query = {
+            'apikey': ZENROWS_API_KEY,
+            'proxy_country': self.str_setting('ZENROWS_SCRAPING_BROWSER_COUNTRY', 'pl') or 'pl',
+        }
+        session_ttl = self.str_setting('ZENROWS_SCRAPING_BROWSER_SESSION_TTL')
+        if session_ttl:
+            query['session_ttl'] = session_ttl
+        return 'wss://browser.zenrows.com?' + urlencode(query)
+
+    def page_has_bot_check_text(self, page):
+        try:
+            merged = ((page.title() or '') + '\n' + (page.content() or '')).lower()
+        except Exception:
+            return False
+        return any(marker in merged for marker in [
+            'verify you are human',
+            'verifying you are human',
+            'just a moment',
+            'checking your browser',
+            'cf-turnstile',
+            'challenges.cloudflare.com',
+            'g-recaptcha',
+        ])
+
+    def capture_api_null_screenshots(self, records):
+        if not self.bool_setting('XKOM_API_CAPTURE_NULL_SCREENSHOTS', True):
+            return
+
+        null_records = [record for record in records if is_null_result(record)]
+        if not null_records:
+            return
+
+        if sync_playwright is None:
+            logger.warning('x-kom API null screenshot skipped: playwright is not installed')
+            return
+
+        logger.info(f"x-kom API null screenshot capture via ZenRows Scraping Browser start: {len(null_records)} records")
+        browser = None
+        page = None
+        try:
+            wait_ms = self.int_setting('XKOM_API_NULL_SCREENSHOT_WAIT_MS', 12000)
+            with sync_playwright() as p:
+                browser = p.chromium.connect_over_cdp(self.zenrows_scraping_browser_url())
+                context = browser.contexts[0] if browser.contexts else browser.new_context(
+                    viewport={'width': 1920, 'height': 1080},
+                    locale='pl-PL',
+                )
+                page = context.new_page()
+
+                for record in null_records:
+                    url = record.get('producturl')
+                    sku = record.get('retailersku', '')
+                    if not url:
+                        continue
+                    try:
+                        response = page.goto(url, wait_until='domcontentloaded', timeout=90000)
+                        page.wait_for_timeout(wait_ms)
+                        try:
+                            page.wait_for_load_state('networkidle', timeout=20000)
+                        except Exception:
+                            pass
+                        if self.page_has_bot_check_text(page):
+                            logger.warning(f"x-kom ZenRows screenshot page still shows bot check: sku={sku} url={url}")
+                        status = response.status if response else None
+                        logger.info(f"x-kom API null screenshot page loaded: sku={sku} status={status} current_url={page.url}")
+                        capture_and_upload(page, 'x-kom', sku, page.url or url, record)
+                    except Exception as e:
+                        logger.warning(f"x-kom API null screenshot failed: sku={sku} url={url} error={e}")
+                    finally:
+                        try:
+                            page.goto('about:blank', wait_until='domcontentloaded', timeout=10000)
+                        except Exception:
+                            pass
+        except Exception as e:
+            logger.warning(f"x-kom API null screenshot batch skipped: {e}")
+        finally:
+            try:
+                if page:
+                    page.close()
+            except Exception:
+                pass
+            try:
+                if browser:
+                    browser.close()
+            except Exception:
+                pass
 
     def crawl_once_api(self):
         urls_data = getattr(self, 'urls_data', None) or self.get_crawl_targets()
@@ -395,6 +561,7 @@ class XKomScraper:
 
         df = pd.DataFrame(records)
         success_count = int(df['retailprice'].notna().sum()) if 'retailprice' in df else 0
+        self.capture_api_null_screenshots(records)
         if self.db_engine:
             self.save_to_db(df)
         save_results = self.save_results(df.copy(), save_db=False)
@@ -1512,17 +1679,29 @@ Python 버전: {os.sys.version.split()[0]}
                 logger.warning("크롤링 대상이 없습니다.")
                 return
 
-            if os.environ.get('XKOM_USE_API', '0') != '0':
+            if self.bool_setting('XKOM_USE_API', True):
                 try:
                     logger.info("x-kom API batch crawl start")
                     if self.crawl_once_api():
                         logger.info("x-kom API batch crawl finished")
                         return
                 except Exception as e:
-                    logger.error(f"x-kom API batch crawl failed, fallback to Selenium: {e}")
+                    logger.error(f"x-kom API batch crawl failed: {e}")
                     logger.error(traceback.format_exc())
 
+
+                if not self.bool_setting('XKOM_ENABLE_SELENIUM_FALLBACK', False):
+                    monitor_and_alert(
+                        'pl_xkom',
+                        len(self.urls_data),
+                        None,
+                        error_message='x-kom API batch crawl failed and Selenium fallback is disabled'
+                    )
+                    return
+                logger.warning('x-kom API batch crawl failed; Selenium fallback is enabled')
             # 드라이버 설정
+            if not any(self.XPATHS.values()):
+                self.load_xpaths_from_db()
             if not self.setup_driver():
                 logger.error("드라이버 설정 실패로 종료합니다.")
                 return
