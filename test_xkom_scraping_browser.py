@@ -11,6 +11,21 @@ from sqlalchemy import create_engine, text
 
 from config import DB_CONFIG_V2, ZENROWS_API_KEY
 
+try:
+    from config import (
+        XKOM_SCRAPING_BROWSER_DB_LIMIT,
+        XKOM_SCRAPING_BROWSER_RETAILERSKU,
+        XKOM_SCRAPING_BROWSER_TEST_URL,
+        ZENROWS_SCRAPING_BROWSER_COUNTRY,
+        ZENROWS_SCRAPING_BROWSER_SESSION_TTL,
+    )
+except ImportError:
+    XKOM_SCRAPING_BROWSER_DB_LIMIT = 1
+    XKOM_SCRAPING_BROWSER_RETAILERSKU = None
+    XKOM_SCRAPING_BROWSER_TEST_URL = None
+    ZENROWS_SCRAPING_BROWSER_COUNTRY = "pl"
+    ZENROWS_SCRAPING_BROWSER_SESSION_TTL = "5m"
+
 
 OUT_DIR = Path("xkom_probe_outputs") / "scraping_browser"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -25,8 +40,8 @@ def db_engine():
 
 
 def load_test_target_from_db():
-    sku = os.environ.get("XKOM_SCRAPING_BROWSER_RETAILERSKU")
-    limit = int(os.environ.get("XKOM_SCRAPING_BROWSER_DB_LIMIT", "1"))
+    sku = os.environ.get("XKOM_SCRAPING_BROWSER_RETAILERSKU") or XKOM_SCRAPING_BROWSER_RETAILERSKU
+    limit = int(os.environ.get("XKOM_SCRAPING_BROWSER_DB_LIMIT") or XKOM_SCRAPING_BROWSER_DB_LIMIT or 1)
     where = [
         "country = 'pl'",
         "mall_name = 'x-kom'",
@@ -52,7 +67,7 @@ def load_test_target_from_db():
 
 
 def default_test_target():
-    env_url = os.environ.get("XKOM_SCRAPING_BROWSER_TEST_URL")
+    env_url = os.environ.get("XKOM_SCRAPING_BROWSER_TEST_URL") or XKOM_SCRAPING_BROWSER_TEST_URL
     if env_url:
         return {"id": None, "retailersku": None, "url": env_url, "source": "env_url"}
     target = load_test_target_from_db()
@@ -63,8 +78,8 @@ def default_test_target():
 def connection_url():
     query = {
         "apikey": ZENROWS_API_KEY,
-        "proxy_country": os.environ.get("ZENROWS_SCRAPING_BROWSER_COUNTRY", "pl"),
-        "session_ttl": os.environ.get("ZENROWS_SCRAPING_BROWSER_SESSION_TTL", "5m"),
+        "proxy_country": os.environ.get("ZENROWS_SCRAPING_BROWSER_COUNTRY") or ZENROWS_SCRAPING_BROWSER_COUNTRY or "pl",
+        "session_ttl": os.environ.get("ZENROWS_SCRAPING_BROWSER_SESSION_TTL") or ZENROWS_SCRAPING_BROWSER_SESSION_TTL or "5m",
     }
     return "wss://browser.zenrows.com?" + urlencode(query)
 
