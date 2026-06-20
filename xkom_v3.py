@@ -526,6 +526,59 @@ class XKomScraper:
             logger.debug(f"x-kom cookie JS fallback failed: {e}")
         return False
 
+    def is_scraping_browser_closed_error(self, error):
+        text = repr(error)
+        return any(marker in text for marker in [
+            'TargetClosedError',
+            'has been closed',
+            'browser has been closed',
+            'Target page, context or browser has been closed',
+        ])
+
+    def close_zenrows_screenshot_browser(self, browser):
+        if not browser:
+            return
+        try:
+            browser.close()
+        except Exception:
+            pass
+
+    def open_zenrows_screenshot_page(self, playwright):
+        browser = playwright.chromium.connect_over_cdp(self.zenrows_scraping_browser_url())
+        context = browser.new_context(
+            viewport={'width': 1920, 'height': 1080},
+            device_scale_factor=1,
+            locale='pl-PL',
+        )
+        page = context.new_page()
+        self.prepare_playwright_page_for_capture(page)
+        return browser, page
+
+    def capture_one_api_null_screenshot(self, page, record, wait_ms):
+        url = record.get('producturl')
+        sku = record.get('retailersku', '')
+        if not url:
+            return False
+
+        response = page.goto(url, wait_until='domcontentloaded', timeout=90000)
+        self.prepare_playwright_page_for_capture(page)
+        page.wait_for_timeout(wait_ms)
+        self.accept_xkom_cookies_playwright(page)
+        self.prepare_playwright_page_for_capture(page)
+        try:
+            page.wait_for_load_state('networkidle', timeout=20000)
+        except Exception:
+            pass
+        if self.page_has_bot_check_text(page):
+            logger.warning(f"x-kom ZenRows screenshot page still shows bot check: sku={sku} url={url}")
+        status = response.status if response else None
+        logger.info(f"x-kom API null screenshot page loaded: sku={sku} status={status} current_url={page.url}")
+        s3_key = capture_and_upload(page, 'x-kom', sku, page.url or url, record)
+        if not s3_key:
+            logger.warning(f"x-kom API null screenshot upload returned empty result: sku={sku} url={url}")
+            return False
+        return True
+
     def capture_api_null_screenshots(self, records):
         if not self.bool_setting('XKOM_API_CAPTURE_NULL_SCREENSHOTS', True):
             return
@@ -541,58 +594,64 @@ class XKomScraper:
         logger.info(f"x-kom API null screenshot capture via ZenRows Scraping Browser start: {len(null_records)} records")
         browser = None
         page = None
+        success_count = 0
+        failure_count = 0
         try:
             wait_ms = self.int_setting('XKOM_API_NULL_SCREENSHOT_WAIT_MS', 12000)
+            max_retries = self.int_setting('XKOM_API_NULL_SCREENSHOT_MAX_RETRIES', 2)
             with sync_playwright() as p:
-                browser = p.chromium.connect_over_cdp(self.zenrows_scraping_browser_url())
-                context = browser.new_context(
-                    viewport={'width': 1920, 'height': 1080},
-                    device_scale_factor=1,
-                    locale='pl-PL',
-                )
-                page = context.new_page()
-                self.prepare_playwright_page_for_capture(page)
+                browser, page = self.open_zenrows_screenshot_page(p)
 
                 for record in null_records:
-                    url = record.get('producturl')
                     sku = record.get('retailersku', '')
+                    url = record.get('producturl')
                     if not url:
                         continue
-                    try:
-                        response = page.goto(url, wait_until='domcontentloaded', timeout=90000)
-                        self.prepare_playwright_page_for_capture(page)
-                        page.wait_for_timeout(wait_ms)
-                        self.accept_xkom_cookies_playwright(page)
-                        self.prepare_playwright_page_for_capture(page)
+
+                    attempt = 1
+                    while attempt <= max_retries + 1:
                         try:
-                            page.wait_for_load_state('networkidle', timeout=20000)
-                        except Exception:
-                            pass
-                        if self.page_has_bot_check_text(page):
-                            logger.warning(f"x-kom ZenRows screenshot page still shows bot check: sku={sku} url={url}")
-                        status = response.status if response else None
-                        logger.info(f"x-kom API null screenshot page loaded: sku={sku} status={status} current_url={page.url}")
-                        capture_and_upload(page, 'x-kom', sku, page.url or url, record)
-                    except Exception as e:
-                        logger.warning(f"x-kom API null screenshot failed: sku={sku} url={url} error={e}")
-                    finally:
-                        try:
-                            page.goto('about:blank', wait_until='domcontentloaded', timeout=10000)
-                        except Exception:
-                            pass
+                            try:
+                                page_closed = page is None or page.is_closed()
+                            except Exception:
+                                page_closed = True
+                            if page_closed:
+                                self.close_zenrows_screenshot_browser(browser)
+                                browser, page = self.open_zenrows_screenshot_page(p)
+
+                            if self.capture_one_api_null_screenshot(page, record, wait_ms):
+                                success_count += 1
+                            else:
+                                failure_count += 1
+                            break
+                        except Exception as e:
+                            if self.is_scraping_browser_closed_error(e) and attempt <= max_retries:
+                                logger.warning(
+                                    f"x-kom API null screenshot retry: sku={sku} "
+                                    f"attempt={attempt + 1}/{max_retries + 1} reason={e}"
+                                )
+                                self.close_zenrows_screenshot_browser(browser)
+                                browser, page = self.open_zenrows_screenshot_page(p)
+                                attempt += 1
+                                continue
+
+                            failure_count += 1
+                            logger.warning(f"x-kom API null screenshot failed: sku={sku} url={url} error={e}")
+                            break
+                        finally:
+                            try:
+                                if page and not page.is_closed():
+                                    page.goto('about:blank', wait_until='domcontentloaded', timeout=10000)
+                            except Exception:
+                                pass
         except Exception as e:
             logger.warning(f"x-kom API null screenshot batch skipped: {e}")
         finally:
-            try:
-                if page:
-                    page.close()
-            except Exception:
-                pass
-            try:
-                if browser:
-                    browser.close()
-            except Exception:
-                pass
+            self.close_zenrows_screenshot_browser(browser)
+            logger.info(
+                f"x-kom API null screenshot capture finished: "
+                f"success={success_count} failure={failure_count} total={len(null_records)}"
+            )
 
     def crawl_once_api(self):
         urls_data = getattr(self, 'urls_data', None) or self.get_crawl_targets()
