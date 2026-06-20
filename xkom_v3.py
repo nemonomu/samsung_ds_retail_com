@@ -467,6 +467,65 @@ class XKomScraper:
             'g-recaptcha',
         ])
 
+    def prepare_playwright_page_for_capture(self, page):
+        try:
+            page.set_viewport_size({'width': 1920, 'height': 1080})
+        except Exception as e:
+            logger.debug(f"x-kom screenshot viewport setup failed: {e}")
+        try:
+            page.evaluate("""
+                () => {
+                    window.scrollTo(0, 0);
+                    document.documentElement.style.overflowX = 'hidden';
+                    if (document.body) document.body.style.overflowX = 'hidden';
+                }
+            """)
+        except Exception as e:
+            logger.debug(f"x-kom screenshot page normalization failed: {e}")
+
+    def accept_xkom_cookies_playwright(self, page):
+        selectors = [
+            'button:has-text("W porz\u0105dku")',
+            'button:has-text("W porzadku")',
+            'text="W porz\u0105dku"',
+            'text="W porzadku"',
+            'button:has-text("Akceptuj\u0119")',
+            'button:has-text("Akceptuje")',
+            'button:has-text("Accept")',
+            '#onetrust-accept-btn-handler',
+        ]
+        for selector in selectors:
+            try:
+                locator = page.locator(selector).first
+                if locator.count() > 0 and locator.is_visible(timeout=1000):
+                    locator.click(timeout=3000)
+                    page.wait_for_timeout(1000)
+                    logger.info(f"x-kom cookie popup accepted for screenshot: selector={selector}")
+                    return True
+            except Exception:
+                continue
+        try:
+            clicked = page.evaluate("""
+                () => {
+                    const wanted = ['W porz\u0105dku', 'W porzadku', 'Akceptuj\u0119', 'Akceptuje', 'Accept'];
+                    for (const button of Array.from(document.querySelectorAll('button'))) {
+                        const text = (button.innerText || button.textContent || '').trim();
+                        if (wanted.some((value) => text.includes(value))) {
+                            button.click();
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+            """)
+            if clicked:
+                page.wait_for_timeout(1000)
+                logger.info('x-kom cookie popup accepted for screenshot by JS fallback')
+                return True
+        except Exception as e:
+            logger.debug(f"x-kom cookie JS fallback failed: {e}")
+        return False
+
     def capture_api_null_screenshots(self, records):
         if not self.bool_setting('XKOM_API_CAPTURE_NULL_SCREENSHOTS', True):
             return
@@ -486,11 +545,13 @@ class XKomScraper:
             wait_ms = self.int_setting('XKOM_API_NULL_SCREENSHOT_WAIT_MS', 12000)
             with sync_playwright() as p:
                 browser = p.chromium.connect_over_cdp(self.zenrows_scraping_browser_url())
-                context = browser.contexts[0] if browser.contexts else browser.new_context(
+                context = browser.new_context(
                     viewport={'width': 1920, 'height': 1080},
+                    device_scale_factor=1,
                     locale='pl-PL',
                 )
                 page = context.new_page()
+                self.prepare_playwright_page_for_capture(page)
 
                 for record in null_records:
                     url = record.get('producturl')
@@ -499,7 +560,10 @@ class XKomScraper:
                         continue
                     try:
                         response = page.goto(url, wait_until='domcontentloaded', timeout=90000)
+                        self.prepare_playwright_page_for_capture(page)
                         page.wait_for_timeout(wait_ms)
+                        self.accept_xkom_cookies_playwright(page)
+                        self.prepare_playwright_page_for_capture(page)
                         try:
                             page.wait_for_load_state('networkidle', timeout=20000)
                         except Exception:
