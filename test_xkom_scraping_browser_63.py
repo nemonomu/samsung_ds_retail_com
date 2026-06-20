@@ -19,19 +19,27 @@ from test_xkom_scraping_browser import (
 )
 
 try:
-    from config import (
-        XKOM_SCRAPING_BROWSER_63_LIMIT,
-        XKOM_SCRAPING_BROWSER_63_SAVE_HTML,
-        XKOM_SCRAPING_BROWSER_63_SAVE_SCREENSHOTS,
-    )
+    import config as app_config
 except ImportError:
-    XKOM_SCRAPING_BROWSER_63_LIMIT = 63
-    XKOM_SCRAPING_BROWSER_63_SAVE_HTML = True
-    XKOM_SCRAPING_BROWSER_63_SAVE_SCREENSHOTS = False
+    app_config = None
+
+XKOM_SCRAPING_BROWSER_63_LIMIT = getattr(app_config, "XKOM_SCRAPING_BROWSER_63_LIMIT", 63)
+XKOM_SCRAPING_BROWSER_63_SAVE_HTML = getattr(app_config, "XKOM_SCRAPING_BROWSER_63_SAVE_HTML", True)
+XKOM_SCRAPING_BROWSER_63_SAVE_SCREENSHOTS = getattr(app_config, "XKOM_SCRAPING_BROWSER_63_SAVE_SCREENSHOTS", False)
+XKOM_SCRAPING_BROWSER_63_MAX_RETRIES = getattr(app_config, "XKOM_SCRAPING_BROWSER_63_MAX_RETRIES", 2)
+XKOM_SCRAPING_BROWSER_63_SESSION_TTL = getattr(app_config, "XKOM_SCRAPING_BROWSER_63_SESSION_TTL", None)
 
 
 OUT_ROOT = Path("xkom_probe_outputs") / "scraping_browser_63"
 OUT_ROOT.mkdir(parents=True, exist_ok=True)
+
+
+BROWSER_CLOSED_MARKERS = (
+    "TargetClosedError",
+    "has been closed",
+    "browser has been closed",
+    "Target page, context or browser has been closed",
+)
 
 
 def bool_config(name, default):
@@ -48,6 +56,22 @@ def int_config(name, default):
     if value is None:
         value = default
     return int(value)
+
+
+def str_config(name, default=None):
+    value = os.environ.get(name)
+    if value is None:
+        value = default
+    if value is None:
+        return None
+    value = str(value).strip()
+    return value or None
+
+
+def is_browser_closed_error(error):
+    if not error:
+        return False
+    return any(marker in error for marker in BROWSER_CLOSED_MARKERS)
 
 
 def load_targets(limit):
@@ -75,6 +99,7 @@ def compact_record(record):
     target = record.get("target") or {}
     return {
         "idx": record.get("idx"),
+        "attempt": record.get("attempt"),
         "id": target.get("id"),
         "retailersku": target.get("retailersku"),
         "status": record.get("status"),
@@ -94,14 +119,34 @@ def compact_record(record):
     }
 
 
-async def collect_one(page, target, xpaths, idx, total, run_dir, save_html, save_screenshots):
+async def connect_browser(playwright, session_ttl=None):
+    browser = await playwright.chromium.connect_over_cdp(
+        connection_url(session_ttl=session_ttl, use_config_session_ttl=False)
+    )
+    context = browser.contexts[0] if browser.contexts else await browser.new_context()
+    page = await context.new_page()
+    return browser, page
+
+
+async def close_browser(browser):
+    if not browser:
+        return
+    try:
+        await browser.close()
+    except Exception:
+        pass
+
+
+async def collect_one(page, target, xpaths, idx, total, run_dir, save_html, save_screenshots, attempt):
     item_start = time.perf_counter()
     sku = target.get("retailersku") or target.get("id") or idx
-    html_path = run_dir / f"{idx:03d}_{safe_name(sku)}.html" if save_html else None
-    png_path = run_dir / f"{idx:03d}_{safe_name(sku)}.png" if save_screenshots else None
+    suffix = f"_{attempt}" if attempt > 1 else ""
+    html_path = run_dir / f"{idx:03d}_{safe_name(sku)}{suffix}.html" if save_html else None
+    png_path = run_dir / f"{idx:03d}_{safe_name(sku)}{suffix}.png" if save_screenshots else None
 
     record = {
         "idx": idx,
+        "attempt": attempt,
         "target": target,
         "url": target.get("url"),
         "current_url": None,
@@ -156,7 +201,8 @@ async def run():
     limit = int_config("XKOM_SCRAPING_BROWSER_63_LIMIT", XKOM_SCRAPING_BROWSER_63_LIMIT or 63)
     save_html = bool_config("XKOM_SCRAPING_BROWSER_63_SAVE_HTML", XKOM_SCRAPING_BROWSER_63_SAVE_HTML)
     save_screenshots = bool_config("XKOM_SCRAPING_BROWSER_63_SAVE_SCREENSHOTS", XKOM_SCRAPING_BROWSER_63_SAVE_SCREENSHOTS)
-
+    max_retries = int_config("XKOM_SCRAPING_BROWSER_63_MAX_RETRIES", XKOM_SCRAPING_BROWSER_63_MAX_RETRIES)
+    session_ttl = str_config("XKOM_SCRAPING_BROWSER_63_SESSION_TTL", XKOM_SCRAPING_BROWSER_63_SESSION_TTL)
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir = OUT_ROOT / f"run_{run_id}"
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -170,25 +216,51 @@ async def run():
 
     start = time.perf_counter()
     records = []
+    reconnect_count = 0
 
     async with async_playwright() as p:
-        browser = await p.chromium.connect_over_cdp(connection_url())
-        context = browser.contexts[0] if browser.contexts else await browser.new_context()
-        page = await context.new_page()
+        browser = None
+        page = None
         try:
+            browser, page = await connect_browser(p, session_ttl=session_ttl)
             for idx, target in enumerate(targets, start=1):
-                records.append(await collect_one(
-                    page=page,
-                    target=target,
-                    xpaths=xpaths,
-                    idx=idx,
-                    total=len(targets),
-                    run_dir=run_dir,
-                    save_html=save_html,
-                    save_screenshots=save_screenshots,
-                ))
+                attempt = 1
+                while True:
+                    if page is None or page.is_closed():
+                        await close_browser(browser)
+                        browser, page = await connect_browser(p, session_ttl=session_ttl)
+                        reconnect_count += 1
+
+                    record = await collect_one(
+                        page=page,
+                        target=target,
+                        xpaths=xpaths,
+                        idx=idx,
+                        total=len(targets),
+                        run_dir=run_dir,
+                        save_html=save_html,
+                        save_screenshots=save_screenshots,
+                        attempt=attempt,
+                    )
+
+                    if record.get("error") and is_browser_closed_error(record.get("error")) and attempt <= max_retries:
+                        print(json.dumps({
+                            "retry": f"{idx}/{len(targets)}",
+                            "id": target.get("id"),
+                            "retailersku": target.get("retailersku"),
+                            "next_attempt": attempt + 1,
+                            "reason": record.get("error"),
+                        }, ensure_ascii=False))
+                        await close_browser(browser)
+                        browser, page = await connect_browser(p, session_ttl=session_ttl)
+                        reconnect_count += 1
+                        attempt += 1
+                        continue
+
+                    records.append(record)
+                    break
         finally:
-            await browser.close()
+            await close_browser(browser)
 
     total_elapsed = round(time.perf_counter() - start, 3)
     compact_rows = [compact_record(record) for record in records]
@@ -210,6 +282,9 @@ async def run():
         "wycofany_count": wycofany_count,
         "total_elapsed_seconds": total_elapsed,
         "avg_elapsed_seconds_per_item": round(total_elapsed / len(records), 3) if records else None,
+        "max_retries": max_retries,
+        "reconnect_count": reconnect_count,
+        "session_ttl": session_ttl,
         "save_html": save_html,
         "save_screenshots": save_screenshots,
         "run_dir": str(run_dir),
@@ -221,10 +296,11 @@ async def run():
     }
     summary_json.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    with summary_csv.open("w", newline="", encoding="utf-8-sig") as f:
-        writer = csv.DictWriter(f, fieldnames=list(compact_rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(compact_rows)
+    if compact_rows:
+        with summary_csv.open("w", newline="", encoding="utf-8-sig") as f:
+            writer = csv.DictWriter(f, fieldnames=list(compact_rows[0].keys()))
+            writer.writeheader()
+            writer.writerows(compact_rows)
 
     final_log = {
         "target_count": len(targets),
@@ -236,6 +312,9 @@ async def run():
         "wycofany_count": wycofany_count,
         "total_elapsed_seconds": total_elapsed,
         "avg_elapsed_seconds_per_item": summary["avg_elapsed_seconds_per_item"],
+        "max_retries": max_retries,
+        "reconnect_count": reconnect_count,
+        "session_ttl": session_ttl,
         "summary_json": str(summary_json),
         "summary_csv": str(summary_csv),
         "run_dir": str(run_dir),

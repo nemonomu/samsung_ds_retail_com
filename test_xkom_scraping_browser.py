@@ -24,7 +24,7 @@ except ImportError:
     XKOM_SCRAPING_BROWSER_RETAILERSKU = None
     XKOM_SCRAPING_BROWSER_TEST_URL = None
     ZENROWS_SCRAPING_BROWSER_COUNTRY = "pl"
-    ZENROWS_SCRAPING_BROWSER_SESSION_TTL = "5m"
+    ZENROWS_SCRAPING_BROWSER_SESSION_TTL = None
 
 
 OUT_DIR = Path("xkom_probe_outputs") / "scraping_browser"
@@ -95,17 +95,20 @@ def default_test_target():
     return target
 
 
-def connection_url():
+def connection_url(session_ttl=None, use_config_session_ttl=True):
     query = {
         "apikey": ZENROWS_API_KEY,
         "proxy_country": os.environ.get("ZENROWS_SCRAPING_BROWSER_COUNTRY") or ZENROWS_SCRAPING_BROWSER_COUNTRY or "pl",
-        "session_ttl": os.environ.get("ZENROWS_SCRAPING_BROWSER_SESSION_TTL") or ZENROWS_SCRAPING_BROWSER_SESSION_TTL or "5m",
     }
+    if session_ttl is None and use_config_session_ttl:
+        session_ttl = os.environ.get("ZENROWS_SCRAPING_BROWSER_SESSION_TTL") or ZENROWS_SCRAPING_BROWSER_SESSION_TTL
+    if session_ttl:
+        query["session_ttl"] = session_ttl
     return "wss://browser.zenrows.com?" + urlencode(query)
 
 
 def parse_xkom_price(price_text):
-    text_value = (price_text or "").replace("zł", "").replace("z\u0142", "").replace("PLN", "").replace(" ", "").strip()
+    text_value = (price_text or "").replace("z\u0142", "").replace("PLN", "").replace(" ", "").strip()
     match = re.search(r"(\d+)[,.]?(\d*)", text_value)
     if not match:
         return None
