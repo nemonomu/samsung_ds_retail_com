@@ -504,6 +504,8 @@ class FnacZenRowsScraper:
         self._counter_lock = threading.Lock()
         self.total_zenrows_calls = 0
         self.total_screenshot_calls = 0
+        self.total_screenshot_success = 0
+        self.total_screenshot_fail = 0
         self.total_browser_calls = 0
         self.total_browser_seconds = 0.0
         self.total_call_seconds = 0.0
@@ -778,89 +780,153 @@ class FnacZenRowsScraper:
     def capture_null_screenshot(self, result: Dict[str, Any], display_url: str, load_url: Optional[str] = None) -> str:
         if not self.capture_null or not is_null_result(result):
             return "skip"
-        browser = None
-        context = None
-        page = None
-        try:
-            with self._counter_lock:
-                self.total_screenshot_calls += 1
-            from playwright.sync_api import sync_playwright
+        with self._counter_lock:
+            self.total_screenshot_calls += 1
 
-            start = time.time()
-            target_url = load_url or normalize_product_url(display_url) or display_url
-            with sync_playwright() as playwright:
-                browser = playwright.chromium.connect_over_cdp(
-                    self.scraping_browser_wss(),
-                    timeout=self.screenshot_timeout * 1000,
-                )
-                context = browser.new_context(
-                    viewport={"width": 1920, "height": 1080},
-                    device_scale_factor=1,
-                    locale="fr-FR",
-                    timezone_id="Europe/Paris",
-                )
-                page = context.new_page()
-                self.prepare_playwright_page_for_capture(page)
-                response = page.goto(target_url, wait_until="domcontentloaded", timeout=self.screenshot_timeout * 1000)
-                self.prepare_playwright_page_for_capture(page)
-                page.wait_for_timeout(max(12000, int(self.screenshot_wait or 0)))
-                self.accept_cookie_popup(page)
-                self.prepare_playwright_page_for_capture(page)
+        try:
+            from playwright.sync_api import sync_playwright
+        except Exception as exc:
+            logger.warning("NULL screenshot skipped because Playwright import failed sku=%s: %s", result.get("retailersku"), exc)
+            with self._counter_lock:
+                self.total_screenshot_fail += 1
+            return "fail"
+
+        target_urls = []
+        for candidate in (load_url, normalize_product_url(display_url), display_url):
+            if candidate and candidate not in target_urls:
+                target_urls.append(candidate)
+
+        max_browser_attempts = max(2, int(self.browser_retries or 1) + 1)
+        uploaded = None
+        last_error = None
+        start = time.time()
+
+        with sync_playwright() as playwright:
+            for browser_attempt in range(1, max_browser_attempts + 1):
+                browser = None
+                context = None
+                page = None
+                attempt_start = time.time()
                 try:
-                    page.wait_for_load_state("networkidle", timeout=20000)
-                except Exception:
-                    pass
-                ready = self.wait_for_screenshot_ready(page, result.get("retailersku"), target_url)
-                if not ready:
-                    logger.warning("Reload NULL screenshot page after blank readiness check sku=%s", result.get("retailersku"))
-                    response = page.goto(target_url, wait_until="domcontentloaded", timeout=self.screenshot_timeout * 1000)
+                    browser = playwright.chromium.connect_over_cdp(
+                        self.scraping_browser_wss(),
+                        timeout=self.screenshot_timeout * 1000,
+                    )
+                    context = browser.new_context(
+                        viewport={"width": 1920, "height": 1080},
+                        device_scale_factor=1,
+                        locale="fr-FR",
+                        timezone_id="Europe/Paris",
+                    )
+                    page = context.new_page()
                     self.prepare_playwright_page_for_capture(page)
-                    page.wait_for_timeout(max(8000, int(self.screenshot_wait or 0)))
-                    self.accept_cookie_popup(page)
-                    self.prepare_playwright_page_for_capture(page)
+                    self.warmup_fnac_screenshot_session(page)
+
+                    for url_attempt, target_url in enumerate(target_urls, start=1):
+                        response = self.load_screenshot_page(page, target_url, max(12000, int(self.screenshot_wait or 0)))
+                        ready = self.wait_for_screenshot_ready(page, result.get("retailersku"), target_url)
+                        if not ready:
+                            logger.warning(
+                                "Reload NULL screenshot page after blank readiness check sku=%s browser_attempt=%s url_attempt=%s url=%s",
+                                result.get("retailersku"),
+                                browser_attempt,
+                                url_attempt,
+                                target_url,
+                            )
+                            response = self.load_screenshot_page(page, target_url, max(8000, int(self.screenshot_wait or 0)))
+                            ready = self.wait_for_screenshot_ready(page, result.get("retailersku"), target_url)
+                        if not ready:
+                            logger.warning(
+                                "NULL screenshot target still blank sku=%s browser_attempt=%s url_attempt=%s url=%s",
+                                result.get("retailersku"),
+                                browser_attempt,
+                                url_attempt,
+                                target_url,
+                            )
+                            continue
+
+                        status_code = response.status if response else 0
+                        if status_code and status_code >= 400:
+                            logger.warning("NULL screenshot page loaded with status=%s sku=%s", status_code, result.get("retailersku"))
+                        uploaded = capture_and_upload(page, "fnac", result.get("retailersku", ""), display_url, result)
+                        if uploaded:
+                            break
+
+                    if uploaded:
+                        break
+                    logger.warning(
+                        "Retry NULL screenshot with fresh browser sku=%s next_attempt=%s/%s urls=%s",
+                        result.get("retailersku"),
+                        browser_attempt + 1,
+                        max_browser_attempts,
+                        target_urls,
+                    )
+                except Exception as exc:
+                    last_error = exc
+                    logger.warning(
+                        "NULL screenshot browser attempt failed sku=%s attempt=%s/%s: %s",
+                        result.get("retailersku"),
+                        browser_attempt,
+                        max_browser_attempts,
+                        exc,
+                    )
+                finally:
                     try:
-                        page.wait_for_load_state("networkidle", timeout=20000)
+                        if page is not None:
+                            page.close()
                     except Exception:
                         pass
-                    ready = self.wait_for_screenshot_ready(page, result.get("retailersku"), target_url)
-                if not ready:
-                    logger.warning("Skip NULL screenshot upload because rendered page is still blank sku=%s url=%s", result.get("retailersku"), target_url)
-                    uploaded = None
-                else:
-                    status = response.status if response else 0
-                    if status and status >= 400:
-                        logger.warning("NULL screenshot page loaded with status=%s sku=%s", status, result.get("retailersku"))
-                    uploaded = capture_and_upload(page, "fnac", result.get("retailersku", ""), display_url, result)
-                page.close()
-                page = None
-                context.close()
-                context = None
-                browser.close()
-                browser = None
-            elapsed = time.time() - start
-            with self._counter_lock:
-                self.total_browser_calls += 1
-                self.total_browser_seconds += elapsed
-            return "ok" if uploaded else "fail"
+                    try:
+                        if context is not None:
+                            context.close()
+                    except Exception:
+                        pass
+                    try:
+                        if browser is not None:
+                            browser.close()
+                    except Exception:
+                        pass
+                    elapsed = time.time() - attempt_start
+                    with self._counter_lock:
+                        self.total_browser_calls += 1
+                        self.total_browser_seconds += elapsed
+
+        status = "ok" if uploaded else "fail"
+        if not uploaded:
+            logger.warning(
+                "NULL screenshot upload failed after browser retries sku=%s urls=%s last_error=%s elapsed=%0.1f",
+                result.get("retailersku"),
+                target_urls,
+                last_error,
+                time.time() - start,
+            )
+        with self._counter_lock:
+            if status == "ok":
+                self.total_screenshot_success += 1
+            else:
+                self.total_screenshot_fail += 1
+        return status
+
+    def warmup_fnac_screenshot_session(self, page: Any) -> None:
+        try:
+            page.goto("https://www.fnac.com", wait_until="domcontentloaded", timeout=self.screenshot_timeout * 1000)
+            self.prepare_playwright_page_for_capture(page)
+            page.wait_for_timeout(3000)
+            self.accept_cookie_popup(page)
         except Exception as exc:
-            logger.warning("NULL screenshot failed for sku=%s: %s", result.get("retailersku"), exc)
-            return "fail"
-        finally:
-            try:
-                if page is not None:
-                    page.close()
-            except Exception:
-                pass
-            try:
-                if context is not None:
-                    context.close()
-            except Exception:
-                pass
-            try:
-                if browser is not None:
-                    browser.close()
-            except Exception:
-                pass
+            logger.debug("FNAC screenshot warmup failed: %s", exc)
+
+    def load_screenshot_page(self, page: Any, url: str, wait_ms: int) -> Any:
+        response = page.goto(url, wait_until="domcontentloaded", timeout=self.screenshot_timeout * 1000)
+        self.prepare_playwright_page_for_capture(page)
+        page.wait_for_timeout(wait_ms)
+        self.accept_cookie_popup(page)
+        self.prepare_playwright_page_for_capture(page)
+        try:
+            page.wait_for_load_state("networkidle", timeout=20000)
+        except Exception:
+            pass
+        return response
 
     def accept_cookie_popup(self, page: Any) -> bool:
         page.wait_for_timeout(1500)
@@ -1012,13 +1078,17 @@ class FnacZenRowsScraper:
                     else:
                         self.error_logs.append(f"{url}: scraping browser verify failed status={browser_status}")
                         logger.warning("Keep API result after Scraping Browser verify failure sku=%s status=%s", row.get("retailersku"), browser_status)
-            if status_code == 200 and not self.html_dir:
+            if not self.html_dir:
+                if status_code != 200:
+                    self.error_logs.append(f"{url}: fetch failed {reason}")
+                    logger.warning("Fetch failed; try NULL screenshot evidence sku=%s reason=%s", row.get("retailersku"), reason)
                 screenshot_url = result.get("producturl") or url or request_url
                 s3_status = self.capture_null_screenshot(result, screenshot_url, request_url)
+                if s3_status == "fail":
+                    self.error_logs.append(f"{url}: NULL screenshot upload failed")
             else:
                 if status_code != 200:
                     self.error_logs.append(f"{url}: fetch failed {reason}")
-                    logger.warning("Skip NULL screenshot for fetch failure sku=%s reason=%s", row.get("retailersku"), reason)
             result["_crawl_reason"] = reason
             result["_s3_upload"] = s3_status
             return result
@@ -1208,7 +1278,9 @@ class FnacZenRowsScraper:
         logger.info("image_non_null=%s", int(df["imageurl"].notna().sum()) if "imageurl" in df else 0)
         logger.info("zenrows_calls=%s", self.total_zenrows_calls)
         logger.info("screenshot_calls=%s", self.total_screenshot_calls)
-        logger.info("scraping_browser_verify_calls=%s", self.total_browser_calls)
+        logger.info("screenshot_success=%s", self.total_screenshot_success)
+        logger.info("screenshot_fail=%s", self.total_screenshot_fail)
+        logger.info("scraping_browser_calls=%s", self.total_browser_calls)
         logger.info("scraping_browser_seconds_sum=%0.1f", self.total_browser_seconds)
         logger.info("zenrows_cost_sum_usd=%0.10f", self.total_zenrows_cost)
         logger.info("zenrows_request_seconds_sum=%0.1f", self.total_call_seconds)
@@ -1322,13 +1394,16 @@ def main() -> None:
             print(results_df[preview_cols].to_string(index=False, max_colwidth=80))
             logger.info("--dry-run: skipped DB/SFTP/screenshots")
         else:
-            scraper.save_results(
+            save_status = scraper.save_results(
                 results_df,
                 save_db=not args.no_db,
                 upload_server=not args.no_upload,
             )
+            if not args.no_db and not save_status.get("db_saved"):
+                scraper.error_logs.append("FNAC DB save failed")
+            if not args.no_upload and not save_status.get("server_uploaded"):
+                scraper.error_logs.append("FNAC file server upload failed")
             send_alert()
-
         logger.info("FNAC v3 completed")
     except Exception as exc:
         logger.error("FNAC v3 fatal error: %s", exc)
