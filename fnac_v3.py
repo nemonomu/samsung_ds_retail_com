@@ -63,8 +63,7 @@ FNAC_TABLE = "fnac_price_crawl_tbl_fr"
 
 def normalize_product_url(url: str) -> str:
     parts = urlsplit(url or '')
-    return urlunsplit((parts.scheme, parts.netloc, parts.path, '', parts.fragment))
-
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, parts.query, ''))
 
 def has_oref(url: str) -> bool:
     parts = urlsplit(url or '')
@@ -141,14 +140,31 @@ def extract_json_script(page_html: str, script_id: str) -> Optional[Dict[str, An
         re.IGNORECASE | re.DOTALL,
     )
     match = pattern.search(page_html or "")
-    if not match:
-        return None
-    try:
-        parsed = json.loads(html_lib.unescape(match.group(1)).strip())
-    except json.JSONDecodeError:
-        return None
-    return parsed if isinstance(parsed, dict) else None
+    if match:
+        try:
+            parsed = json.loads(html_lib.unescape(match.group(1)).strip())
+        except json.JSONDecodeError:
+            parsed = None
+        if isinstance(parsed, dict):
+            return parsed
 
+    if script_id != "digitalData":
+        return None
+
+    next_pattern = re.compile(
+        r"\(function\s*\(\s*serialisedData\s*\)\s*\{.*?JSON\.parse\(serialisedData\).*?\}\)\((?P<quote>[\"'])(?P<payload>.*?)(?P=quote)\);",
+        re.IGNORECASE | re.DOTALL,
+    )
+    for next_match in next_pattern.finditer(page_html or ""):
+        payload = next_match.group("payload")
+        try:
+            decoded = json.loads(next_match.group("quote") + payload + next_match.group("quote"))
+            parsed = json.loads(decoded)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return None
 
 def extract_json_ld_products(page_html: str) -> List[Dict[str, Any]]:
     products = []
@@ -247,9 +263,16 @@ def has_v2_availability_stock_exhausted(page_html: str) -> bool:
     return "stock en ligne" in context and ("epuis" in context or "puis" in context)
 
 
-def has_online_stock_exhausted(page_html: str) -> bool:
-    return has_v2_availability_stock_exhausted(page_html)
+def has_next_pdp_stock_exhausted(page_html: str) -> bool:
+    raw_html = page_html or ""
+    if "ProductInformations-module" not in raw_html and "/app/pdp/_next/" not in raw_html:
+        return False
+    context = normalize_for_match(raw_html)
+    return "stock en ligne" in context and ("epuis" in context or "puis" in context)
 
+
+def has_online_stock_exhausted(page_html: str) -> bool:
+    return has_v2_availability_stock_exhausted(page_html) or has_next_pdp_stock_exhausted(page_html)
 
 def current_offer_condition(digital_data: Dict[str, Any]) -> Optional[str]:
     product = first_dict(digital_data.get("product"))
@@ -288,6 +311,36 @@ def first_offer_seller_type(digital_data: Dict[str, Any]) -> Optional[str]:
     if isinstance(offers, list) and offers and isinstance(offers[0], dict):
         return normalize_text(offers[0].get("sellerType"))
     return None
+
+def current_offer_sales_category(digital_data: Dict[str, Any]) -> Optional[str]:
+    product = first_dict(digital_data.get("product"))
+    attributes = first_dict(product.get("attributes"))
+    return normalize_text(attributes.get("salesCategory"))
+
+
+def current_offer_availability_type(digital_data: Dict[str, Any]) -> Optional[str]:
+    product = first_dict(digital_data.get("product"))
+    attributes = first_dict(product.get("attributes"))
+    return normalize_text(attributes.get("availabilityType"))
+
+
+def is_discontinued_fnac_first_marketplace_case(digital_data: Dict[str, Any]) -> bool:
+    return (
+        normalize_for_match(first_offer_seller_type(digital_data)) == "fnac"
+        and normalize_for_match(current_offer_seller_type(digital_data)) == "professional"
+        and normalize_for_match(current_offer_availability_type(digital_data)) == "discontinued"
+        and normalize_for_match(current_offer_sales_category(digital_data)) == "8"
+    )
+def is_base_click_collect_first_marketplace_case(digital_data: Dict[str, Any]) -> bool:
+    product = first_dict(digital_data.get("product"))
+    attributes = first_dict(product.get("attributes"))
+    offers = attributes.get("offer")
+    first_offer = offers[0] if isinstance(offers, list) and offers and isinstance(offers[0], dict) else {}
+    return (
+        normalize_for_match(first_offer.get("sellerType")) == "store"
+        and normalize_for_match(first_offer.get("seller")) == "clickandcollectonly"
+        and normalize_for_match(current_offer_availability_type(digital_data)) == "discontinued"
+    )
 
 
 def has_fnac_first_offer_with_marketplace_current_offer(digital_data: Dict[str, Any]) -> bool:
@@ -479,6 +532,7 @@ class FnacZenRowsScraper:
         fetch_wait: int = 150,
         screenshot_timeout: int = 90,
         screenshot_wait: int = 150,
+        screenshot_max_attempts: int = 0,
         browser_verify_ambiguous: bool = True,
         browser_timeout: int = 90,
         browser_wait: int = 6000,
@@ -493,6 +547,7 @@ class FnacZenRowsScraper:
         self.fetch_wait = fetch_wait
         self.screenshot_timeout = screenshot_timeout
         self.screenshot_wait = screenshot_wait
+        self.screenshot_max_attempts = max(0, int(screenshot_max_attempts or 0))
         self.browser_verify_ambiguous = browser_verify_ambiguous
         self.browser_timeout = browser_timeout
         self.browser_wait = browser_wait
@@ -636,17 +691,12 @@ class FnacZenRowsScraper:
     def should_browser_verify(self, page_html: str, row: Dict[str, Any], result: Dict[str, Any], reason: str) -> bool:
         if not self.browser_verify_ambiguous:
             return False
-        if result.get("retailprice") is None:
-            return False
         if has_oref(row.get("url", "")):
             return False
-        if reason not in {"CURRENT_OFFER_PRICE", "MARKETPLACE_OFFER_FALLBACK", "VISIBLE_PRICE_BOX"}:
-            return False
-        if has_online_stock_exhausted(page_html):
+        if reason not in {"CURRENT_OFFER_PRICE", "VISIBLE_PRICE_BOX", "CLICK_AND_COLLECT_ONLY"}:
             return False
         digital_data = extract_json_script(page_html, "digitalData") or {}
-        return has_fnac_first_offer_with_marketplace_current_offer(digital_data)
-
+        return has_fnac_first_offer_with_marketplace_current_offer(digital_data) or is_click_and_collect_only(digital_data)
     def prepare_playwright_page_for_capture(self, page: Any) -> None:
         try:
             page.set_viewport_size({"width": 1920, "height": 1080})
@@ -752,19 +802,22 @@ class FnacZenRowsScraper:
         online_oos = has_online_stock_exhausted(page_html)
         condition = current_offer_condition(digital_data)
 
+        if not is_new_condition(condition):
+            return result, "NON_NEW_OFFER_IGNORED"
+
+        if is_discontinued_fnac_first_marketplace_case(digital_data):
+            return result, "DISCONTINUED_FNAC_FIRST_MARKETPLACE"
+
+        if not has_oref(row.get("url", "")) and is_base_click_collect_first_marketplace_case(digital_data):
+            return result, "BASE_CLICK_COLLECT_FIRST_MARKETPLACE"
+
+        api_price = current_offer_price(digital_data)
+
         if online_oos:
             return result, "ONLINE_STOCK_EXHAUSTED"
 
-        api_price = current_offer_price(digital_data)
-        marketplace_fallback_price = first_professional_offer_price(digital_data)
-        if api_price is not None:
-            if is_click_and_collect_only(digital_data):
-                if marketplace_fallback_price is not None:
-                    result["retailprice"] = marketplace_fallback_price
-                    return result, "MARKETPLACE_OFFER_FALLBACK"
-                return result, "CLICK_AND_COLLECT_ONLY"
-            result["retailprice"] = api_price
-            return result, "CURRENT_OFFER_PRICE"
+        if is_click_and_collect_only(digital_data):
+            return result, "CLICK_AND_COLLECT_ONLY"
 
         if price_texts:
             visible_price = parse_price(price_texts[0])
@@ -772,17 +825,11 @@ class FnacZenRowsScraper:
                 result["retailprice"] = visible_price
                 return result, "VISIBLE_PRICE_BOX"
 
-        if is_click_and_collect_only(digital_data):
-            if marketplace_fallback_price is not None:
-                result["retailprice"] = marketplace_fallback_price
-                return result, "MARKETPLACE_OFFER_FALLBACK"
-            return result, "CLICK_AND_COLLECT_ONLY"
-
-        if not is_new_condition(condition):
-            return result, "NON_NEW_OFFER_IGNORED"
+        if api_price is not None:
+            result["retailprice"] = api_price
+            return result, "CURRENT_OFFER_PRICE"
 
         return result, "PRICE_NOT_FOUND"
-
     def capture_null_screenshot(self, result: Dict[str, Any], display_url: str, load_url: Optional[str] = None) -> str:
         if not self.capture_null or not is_null_result(result):
             return "skip"
@@ -802,17 +849,25 @@ class FnacZenRowsScraper:
             if candidate and candidate not in target_urls:
                 target_urls.append(candidate)
 
-        max_browser_attempts = max(2, int(self.browser_retries or 1) + 1)
+        max_browser_attempts = self.screenshot_max_attempts
+        max_attempt_label = "unlimited" if max_browser_attempts == 0 else str(max_browser_attempts)
         uploaded = None
         last_error = None
+        last_retry_reason = "not_started"
+        browser_attempt = 0
         start = time.time()
 
         with sync_playwright() as playwright:
-            for browser_attempt in range(1, max_browser_attempts + 1):
+            while not uploaded:
+                browser_attempt += 1
+                if max_browser_attempts and browser_attempt > max_browser_attempts:
+                    break
+
                 browser = None
                 context = None
                 page = None
                 attempt_start = time.time()
+                restricted_seen = False
                 try:
                     browser = playwright.chromium.connect_over_cdp(
                         self.scraping_browser_wss(),
@@ -830,50 +885,107 @@ class FnacZenRowsScraper:
 
                     for url_attempt, target_url in enumerate(target_urls, start=1):
                         response = self.load_screenshot_page(page, target_url, max(12000, int(self.screenshot_wait or 0)))
-                        ready = self.wait_for_screenshot_ready(page, result.get("retailersku"), target_url)
-                        if not ready:
+                        ready_state = self.wait_for_screenshot_ready(page, result.get("retailersku"), target_url)
+                        if ready_state == "restricted":
+                            restricted_seen = True
+                            last_retry_reason = "restricted"
                             logger.warning(
-                                "Reload NULL screenshot page after blank readiness check sku=%s browser_attempt=%s url_attempt=%s url=%s",
+                                "Retry NULL screenshot with fresh browser after FNAC restriction sku=%s browser_attempt=%s/%s url_attempt=%s url=%s",
                                 result.get("retailersku"),
                                 browser_attempt,
+                                max_attempt_label,
+                                url_attempt,
+                                target_url,
+                            )
+                            break
+
+                        if ready_state != "ready":
+                            logger.warning(
+                                "Reload NULL screenshot page after readiness=%s sku=%s browser_attempt=%s/%s url_attempt=%s url=%s",
+                                ready_state,
+                                result.get("retailersku"),
+                                browser_attempt,
+                                max_attempt_label,
                                 url_attempt,
                                 target_url,
                             )
                             response = self.load_screenshot_page(page, target_url, max(8000, int(self.screenshot_wait or 0)))
-                            ready = self.wait_for_screenshot_ready(page, result.get("retailersku"), target_url)
-                        if not ready:
+                            ready_state = self.wait_for_screenshot_ready(page, result.get("retailersku"), target_url)
+
+                        if ready_state == "restricted":
+                            restricted_seen = True
+                            last_retry_reason = "restricted"
                             logger.warning(
-                                "NULL screenshot target still blank sku=%s browser_attempt=%s url_attempt=%s url=%s",
+                                "Retry NULL screenshot with fresh browser after reload restriction sku=%s browser_attempt=%s/%s url_attempt=%s url=%s",
                                 result.get("retailersku"),
                                 browser_attempt,
+                                max_attempt_label,
                                 url_attempt,
                                 target_url,
+                            )
+                            break
+
+                        if ready_state != "ready":
+                            last_retry_reason = ready_state
+                            logger.warning(
+                                "NULL screenshot target not ready sku=%s browser_attempt=%s/%s url_attempt=%s url=%s readiness=%s",
+                                result.get("retailersku"),
+                                browser_attempt,
+                                max_attempt_label,
+                                url_attempt,
+                                target_url,
+                                ready_state,
                             )
                             continue
 
                         status_code = response.status if response else 0
                         if status_code and status_code >= 400:
                             logger.warning("NULL screenshot page loaded with status=%s sku=%s", status_code, result.get("retailersku"))
+
+                        try:
+                            browser_html = page.content()
+                            browser_row = dict(result)
+                            browser_row["url"] = display_url
+                            browser_result, browser_reason = self.parse_product(browser_html, browser_row)
+                            if not is_null_result(browser_result):
+                                result.update({
+                                    "title": browser_result.get("title"),
+                                    "imageurl": browser_result.get("imageurl"),
+                                    "retailprice": browser_result.get("retailprice"),
+                                })
+                                logger.info(
+                                    "NULL screenshot skipped after browser reparse filled fields sku=%s reason=%s price=%s",
+                                    result.get("retailersku"),
+                                    browser_reason,
+                                    result.get("retailprice"),
+                                )
+                                return "skip"
+                        except Exception as exc:
+                            logger.warning("Browser reparse before NULL screenshot failed sku=%s: %s", result.get("retailersku"), exc)
+
                         uploaded = capture_and_upload(page, "fnac", result.get("retailersku", ""), display_url, result)
                         if uploaded:
                             break
+                        last_retry_reason = "upload_not_confirmed"
 
                     if uploaded:
                         break
                     logger.warning(
-                        "Retry NULL screenshot with fresh browser sku=%s next_attempt=%s/%s urls=%s",
+                        "Retry NULL screenshot with fresh browser sku=%s next_attempt=%s/%s urls=%s reason=%s",
                         result.get("retailersku"),
                         browser_attempt + 1,
-                        max_browser_attempts,
+                        max_attempt_label,
                         target_urls,
+                        "restricted" if restricted_seen else last_retry_reason,
                     )
                 except Exception as exc:
                     last_error = exc
+                    last_retry_reason = "exception"
                     logger.warning(
                         "NULL screenshot browser attempt failed sku=%s attempt=%s/%s: %s",
                         result.get("retailersku"),
                         browser_attempt,
-                        max_browser_attempts,
+                        max_attempt_label,
                         exc,
                     )
                 finally:
@@ -897,12 +1009,17 @@ class FnacZenRowsScraper:
                         self.total_browser_calls += 1
                         self.total_browser_seconds += elapsed
 
+                if not uploaded:
+                    time.sleep(min(2 + browser_attempt, 10))
+
         status = "ok" if uploaded else "fail"
         if not uploaded:
             logger.warning(
-                "NULL screenshot upload failed after browser retries sku=%s urls=%s last_error=%s elapsed=%0.1f",
+                "NULL screenshot upload failed after browser retries sku=%s urls=%s attempts=%s last_reason=%s last_error=%s elapsed=%0.1f",
                 result.get("retailersku"),
                 target_urls,
+                browser_attempt,
+                last_retry_reason,
                 last_error,
                 time.time() - start,
             )
@@ -925,13 +1042,19 @@ class FnacZenRowsScraper:
     def load_screenshot_page(self, page: Any, url: str, wait_ms: int) -> Any:
         response = page.goto(url, wait_until="domcontentloaded", timeout=self.screenshot_timeout * 1000)
         self.prepare_playwright_page_for_capture(page)
-        page.wait_for_timeout(wait_ms)
+        page.wait_for_timeout(min(2000, max(0, wait_ms)))
+        self.accept_cookie_popup(page)
+        remaining_wait = max(0, wait_ms - 2000)
+        if remaining_wait:
+            page.wait_for_timeout(remaining_wait)
         self.accept_cookie_popup(page)
         self.prepare_playwright_page_for_capture(page)
         try:
             page.wait_for_load_state("networkidle", timeout=20000)
         except Exception:
             pass
+        self.accept_cookie_popup(page)
+        self.prepare_playwright_page_for_capture(page)
         return response
 
     def accept_cookie_popup(self, page: Any) -> bool:
@@ -941,6 +1064,7 @@ class FnacZenRowsScraper:
             "button:has-text(\"J'accepte\")",
             "button:has-text(\"J'ACCEPTE\")",
             'button:has-text("Tout accepter")',
+            'button:has-text("Tout accepter et fermer")',
             'button:has-text("Accepter")',
             'button:has-text("Accept")',
             ".didomi-button",
@@ -993,7 +1117,7 @@ class FnacZenRowsScraper:
             logger.debug("FNAC cookie JS fallback failed: %s", exc)
         return False
 
-    def wait_for_screenshot_ready(self, page: Any, sku: Any, url: str) -> bool:
+    def wait_for_screenshot_ready(self, page: Any, sku: Any, url: str) -> str:
         deadline = time.time() + 20
         last_state = None
         while time.time() < deadline:
@@ -1002,31 +1126,81 @@ class FnacZenRowsScraper:
                     () => {
                         const body = document.body;
                         const text = body ? (body.innerText || '') : '';
-                        const selectors = [
-                            'h1',
-                            '[data-automation-id="product-title-label"]',
-                            '.f-productHeader__heading',
-                            '.f-productMedias__viewItem--main',
-                            '[data-automation-id="product-availability"]',
-                            '.f-faPriceBox__price'
-                        ];
+                        const normalizedText = text
+                            .normalize('NFKD')
+                            .replace(/[\u0300-\u036f]/g, '')
+                            .replace(/\\s+/g, ' ')
+                            .trim()
+                            .toLowerCase();
+                        const title = document.title || '';
+                        const normalizedTitle = title
+                            .normalize('NFKD')
+                            .replace(/[\u0300-\u036f]/g, '')
+                            .toLowerCase();
+                        const isVisible = (selector) => Array.from(document.querySelectorAll(selector)).some((element) => {
+                            const style = window.getComputedStyle(element);
+                            const rect = element.getBoundingClientRect();
+                            return style && style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+                        });
+                        const titleVisible = isVisible('h1')
+                            || isVisible('[data-automation-id="product-title-label"]')
+                            || isVisible('.f-productHeader__heading');
+                        const productContentVisible = isVisible('.f-productMedias__viewItem--main')
+                            || isVisible('[data-automation-id="product-availability"]')
+                            || isVisible('.f-faPriceBox__price')
+                            || isVisible('[data-automation-id="add-to-cart"]')
+                            || Array.from(document.querySelectorAll('button')).some((element) => {
+                                const style = window.getComputedStyle(element);
+                                const rect = element.getBoundingClientRect();
+                                const label = (element.innerText || element.textContent || '').toLowerCase();
+                                return style && style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0 && label.includes('ajouter au panier');
+                            });
+                        const cookieVisible = Array.from(document.querySelectorAll('button, [role="button"]')).some((element) => {
+                            const style = window.getComputedStyle(element);
+                            const rect = element.getBoundingClientRect();
+                            if (!style || style.display === 'none' || style.visibility === 'hidden' || rect.width <= 0 || rect.height <= 0) return false;
+                            const label = (element.innerText || element.textContent || element.getAttribute('aria-label') || '')
+                                .normalize('NFKD')
+                                .replace(/[\u0300-\u036f]/g, '')
+                                .replace(/[\u2018\u2019\u201A\u201B`\u00B4]/g, "'")
+                                .replace(/\\s+/g, ' ')
+                                .trim()
+                                .toLowerCase();
+                            return label.includes("j'accepte") || label.includes('tout accepter') || label === 'accepter';
+                        }) || normalizedText.includes('preferences sur les cookies');
+                        const isRestricted = normalizedText.includes('acces temporairement restreint')
+                            || normalizedText.includes('comportement du navigateur')
+                            || normalizedText.includes('ce blocage')
+                            || normalizedText.includes('un robot est sur le meme reseau')
+                            || normalizedTitle.includes('acces temporairement restreint');
                         return {
                             textLength: text.trim().length,
-                            hasProductDom: selectors.some((selector) => !!document.querySelector(selector)),
-                            title: document.title || '',
+                            productReady: titleVisible && productContentVisible && !cookieVisible,
+                            cookieVisible,
+                            isRestricted,
+                            title,
+                            currentUrl: window.location.href,
+                            textSample: normalizedText.slice(0, 240),
                             childCount: body ? body.children.length : 0,
                             height: document.documentElement ? document.documentElement.scrollHeight : 0
                         };
                     }
                 """)
                 last_state = state
-                if state and (state.get("hasProductDom") or state.get("textLength", 0) > 300):
-                    return True
+                if state and state.get("isRestricted"):
+                    logger.warning("FNAC restricted page detected during NULL screenshot sku=%s url=%s state=%s", sku, url, state)
+                    return "restricted"
+                if state and state.get("cookieVisible"):
+                    self.accept_cookie_popup(page)
+                    page.wait_for_timeout(1500)
+                    continue
+                if state and state.get("productReady"):
+                    return "ready"
             except Exception:
                 pass
             page.wait_for_timeout(1000)
-        logger.warning("NULL screenshot page may be blank sku=%s url=%s state=%s", sku, url, last_state)
-        return False
+        logger.warning("NULL screenshot page not ready sku=%s url=%s state=%s", sku, url, last_state)
+        return "not_ready"
 
     def html_cache_path(self, row: Dict[str, Any]) -> Optional[Path]:
         if not self.save_html_dir:
@@ -1093,11 +1267,28 @@ class FnacZenRowsScraper:
                     browser_status, browser_html, _ = self.fetch_browser_html(request_url)
                     if browser_status == 200 and browser_html:
                         browser_result, browser_reason = self.parse_product(browser_html, row)
-                        result = browser_result
-                        reason = f"BROWSER_{browser_reason}"
+                        if browser_reason == "ONLINE_STOCK_EXHAUSTED":
+                            result = browser_result
+                            reason = "BROWSER_ONLINE_STOCK_EXHAUSTED"
+                        elif reason == "ONLINE_STOCK_EXHAUSTED":
+                            logger.warning(
+                                "Keep FNAC online stock exhausted result; browser verify tried to recover price sku=%s browser_reason=%s browser_price=%s",
+                                row.get("retailersku"),
+                                browser_reason,
+                                browser_result.get("retailprice"),
+                            )
+                        else:
+                            result = browser_result
+                            reason = f"BROWSER_{browser_reason}"
                     else:
                         self.error_logs.append(f"{url}: scraping browser verify failed status={browser_status}")
-                        logger.warning("Keep API result after Scraping Browser verify failure sku=%s status=%s", row.get("retailersku"), browser_status)
+                        result["retailprice"] = None
+                        reason = f"BROWSER_VERIFY_FAILED_{reason}"
+                        logger.warning(
+                            "Scraping Browser verify failed; clear ambiguous FNAC price sku=%s status=%s",
+                            row.get("retailersku"),
+                            browser_status,
+                        )
             if not self.html_dir:
                 if status_code != 200:
                     self.error_logs.append(f"{url}: fetch failed {reason}")
@@ -1321,6 +1512,7 @@ def main() -> None:
     parser.add_argument("--wait", type=int, default=150, help="ZenRows js_render wait milliseconds")
     parser.add_argument("--screenshot-timeout", type=int, default=90, help="ZenRows NULL screenshot request timeout seconds")
     parser.add_argument("--screenshot-wait", type=int, default=12000, help="ZenRows NULL screenshot wait milliseconds")
+    parser.add_argument("--screenshot-max-attempts", type=int, default=0, help="NULL screenshot fresh browser attempts; 0 means retry until success")
     parser.add_argument("--no-browser-verify", action="store_true", help="Disable Scraping Browser verification for ambiguous FNAC/marketplace buyboxes")
     parser.add_argument("--browser-timeout", type=int, default=90, help="ZenRows Scraping Browser verification timeout seconds")
     parser.add_argument("--browser-wait", type=int, default=6000, help="ZenRows Scraping Browser verification wait milliseconds")
@@ -1370,6 +1562,7 @@ def main() -> None:
         fetch_wait=args.wait,
         screenshot_timeout=args.screenshot_timeout,
         screenshot_wait=args.screenshot_wait,
+        screenshot_max_attempts=args.screenshot_max_attempts,
         browser_verify_ambiguous=not args.no_browser_verify,
         browser_timeout=args.browser_timeout,
         browser_wait=args.browser_wait,
