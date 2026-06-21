@@ -7,10 +7,11 @@ Collection target:
   - imageurl
 
 Main rule aligned with fnac_v2.py:
-  - If the page says "Stock en ligne epuise", retailprice is NULL even when a
-    price is visible.
+  - If the page says "Stock en ligne epuise" in the representative availability
+    block, retailprice is NULL even when a price is visible.
   - Otherwise, collect the visible representative price from
-    .f-faPriceBox__price. Marketplace representative prices are accepted.
+    .f-faPriceBox__price. Marketplace representative prices are accepted when
+    they are the buybox price.
   - "Autres offres" prices alone are not used when there is no representative
     price box.
 """
@@ -32,7 +33,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import quote, parse_qsl, urlsplit, urlunsplit
 
 import pandas as pd
 import paramiko
@@ -47,6 +48,11 @@ from config import DB_CONFIG_V2 as DB_CONFIG
 from config import FILE_SERVER_CONFIG, ZENROWS_API_KEY
 from null_screenshot import capture_and_upload, is_null_result
 
+try:
+    from config import ZENROWS_SCRAPING_BROWSER_COUNTRY
+except Exception:
+    ZENROWS_SCRAPING_BROWSER_COUNTRY = 'fr'
+
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -56,11 +62,13 @@ FNAC_TABLE = "fnac_price_crawl_tbl_fr"
 
 
 def normalize_product_url(url: str) -> str:
-    parts = urlsplit(url or "")
-    if not parts.query:
-        return url or ""
-    query = [(key, value) for key, value in parse_qsl(parts.query, keep_blank_values=True) if key.lower() != "oref"]
-    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+    parts = urlsplit(url or '')
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, '', parts.fragment))
+
+
+def has_oref(url: str) -> bool:
+    parts = urlsplit(url or '')
+    return any(key.lower() == 'oref' and value for key, value in parse_qsl(parts.query, keep_blank_values=True))
 
 
 def safe_filename(value: Any) -> str:
@@ -96,7 +104,7 @@ def parse_price(value: Any) -> Optional[float]:
     text = normalize_text(value)
     if not text:
         return None
-    text = text.replace("\xa0", " ").replace("€", "")
+    text = text.replace("\xa0", " ")
     text = re.sub(r"[^0-9,.\-]", "", text)
     if not text:
         return None
@@ -192,23 +200,55 @@ def extract_visible_price_texts(page_html: str) -> List[str]:
     return deduped
 
 
-def has_v2_availability_stock_exhausted(page_html: str) -> bool:
-    for match in re.finditer(
+def extract_first_dom_text(page_html: str, pattern: str) -> Optional[str]:
+    match = re.search(pattern, page_html or "", re.IGNORECASE | re.DOTALL)
+    if not match:
+        return None
+    return normalize_text(match.group(1))
+
+
+def extract_first_dom_attribute(page_html: str, pattern: str, attribute: str) -> Optional[str]:
+    match = re.search(pattern, page_html or "", re.IGNORECASE | re.DOTALL)
+    if not match:
+        return None
+    tag = match.group(0)
+    attr_match = re.search(
+        rf"\b{re.escape(attribute)}\s*=\s*([\"'])(.*?)\1",
+        tag,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if not attr_match:
+        return None
+    value = html_lib.unescape(attr_match.group(2)).strip()
+    return value or None
+
+
+def first_availability_text(page_html: str) -> Optional[str]:
+    match = re.search(
         r"<[^>]+data-automation-id=[\"']product-availability[\"'][^>]*>",
         page_html or "",
         re.IGNORECASE,
-    ):
-        context = normalize_for_match((page_html or "")[match.start():match.start() + 1200])
-        if "stock en ligne" in context and "puis" in context:
-            return True
-    return False
+    )
+    if not match:
+        return None
+    snippet = (page_html or "")[match.start():match.start() + 1600]
+    next_match = re.search(
+        r"<[^>]+data-automation-id=[\"']product-availability[\"'][^>]*>",
+        snippet[1:],
+        re.IGNORECASE,
+    )
+    if next_match:
+        snippet = snippet[: next_match.start() + 1]
+    return normalize_text(snippet)
+
+
+def has_v2_availability_stock_exhausted(page_html: str) -> bool:
+    context = normalize_for_match(first_availability_text(page_html))
+    return "stock en ligne" in context and ("epuis" in context or "puis" in context)
 
 
 def has_online_stock_exhausted(page_html: str) -> bool:
-    if has_v2_availability_stock_exhausted(page_html):
-        return True
-    text = normalize_for_match(page_html)
-    return bool(re.search(r"stock\s+en\s+ligne.{0,30}puis", text))
+    return has_v2_availability_stock_exhausted(page_html)
 
 
 def current_offer_condition(digital_data: Dict[str, Any]) -> Optional[str]:
@@ -233,6 +273,28 @@ def current_offer_seller(digital_data: Dict[str, Any]) -> Optional[str]:
     )
 
 
+
+def current_offer_seller_type(digital_data: Dict[str, Any]) -> Optional[str]:
+    product = first_dict(digital_data.get("product"))
+    attributes = first_dict(product.get("attributes"))
+    current_offer = first_dict(attributes.get("currentOffer"))
+    return normalize_text(current_offer.get("sellerType"))
+
+
+def first_offer_seller_type(digital_data: Dict[str, Any]) -> Optional[str]:
+    product = first_dict(digital_data.get("product"))
+    attributes = first_dict(product.get("attributes"))
+    offers = attributes.get("offer")
+    if isinstance(offers, list) and offers and isinstance(offers[0], dict):
+        return normalize_text(offers[0].get("sellerType"))
+    return None
+
+
+def has_fnac_first_offer_with_marketplace_current_offer(digital_data: Dict[str, Any]) -> bool:
+    first_type = normalize_for_match(first_offer_seller_type(digital_data))
+    current_type = normalize_for_match(current_offer_seller_type(digital_data))
+    return first_type == "fnac" and current_type not in {"", "fnac"}
+
 def is_click_and_collect_only(digital_data: Dict[str, Any]) -> bool:
     seller = normalize_for_match(current_offer_seller(digital_data))
     return seller == "clickandcollectonly"
@@ -245,7 +307,82 @@ def is_new_condition(condition: Optional[str]) -> bool:
     return normalized in {"new", "neuf"}
 
 
+def current_offer_price(digital_data: Dict[str, Any]) -> Optional[float]:
+    product = first_dict(digital_data.get("product"))
+    attributes = first_dict(product.get("attributes"))
+    current_offer = first_dict(attributes.get("currentOffer"))
+    for path in (
+        ["price", "priceWithTax"],
+        ["price", "price"],
+        ["price", "basePriceWithTax"],
+        ["price", "basePrice"],
+    ):
+        value = nested_get(current_offer, path)
+        if value is not None:
+            parsed = parse_price(value)
+            if parsed is not None:
+                return parsed
+    for path in (
+        ["price", "priceWithTax"],
+        ["price", "price"],
+        ["price", "basePriceWithTax"],
+        ["price", "basePrice"],
+    ):
+        value = nested_get(attributes, path)
+        if value is not None:
+            parsed = parse_price(value)
+            if parsed is not None:
+                return parsed
+    return None
+
+
+
+def offer_price(offer: Dict[str, Any]) -> Optional[float]:
+    for path in (
+        ["price", "priceWithTax"],
+        ["price", "price"],
+        ["price", "basePriceWithTax"],
+        ["price", "basePrice"],
+    ):
+        value = nested_get(offer, path)
+        if value is not None:
+            parsed = parse_price(value)
+            if parsed is not None:
+                return parsed
+    return None
+
+
+def first_professional_offer_price(digital_data: Dict[str, Any]) -> Optional[float]:
+    product = first_dict(digital_data.get("product"))
+    attributes = first_dict(product.get("attributes"))
+    offers = attributes.get("offer")
+    if not isinstance(offers, list):
+        return None
+    for offer in offers:
+        if not isinstance(offer, dict):
+            continue
+        seller_type = normalize_for_match(offer.get("sellerType"))
+        condition = normalize_for_match(offer.get("condition"))
+        seller = normalize_for_match(offer.get("seller"))
+        if seller_type != "professional":
+            continue
+        if condition and condition not in {"new", "neuf"}:
+            continue
+        if seller == "clickandcollectonly":
+            continue
+        price = offer_price(offer)
+        if price is not None:
+            return price
+    return None
 def find_first_image_url(page_html: str, digital_data: Dict[str, Any]) -> Optional[str]:
+    dom_image = extract_first_dom_attribute(
+        page_html,
+        r"<img\b(?=[^>]*\bclass=[\"'][^\"']*f-productMedias__viewItem--main[^\"']*[\"'])[^>]*>",
+        "src",
+    )
+    if dom_image and "fnac-static.com" in dom_image:
+        return dom_image
+
     for product in extract_json_ld_products(page_html):
         images = product.get("image")
         if isinstance(images, str):
@@ -280,6 +417,14 @@ def find_first_image_url(page_html: str, digital_data: Dict[str, Any]) -> Option
 
 
 def extract_title(page_html: str, digital_data: Dict[str, Any]) -> Optional[str]:
+    for pattern in (
+        r"<h1\b(?=[^>]*\bclass=[\"'][^\"']*f-productHeader__heading[^\"']*[\"'])[^>]*>(.*?)</h1>",
+        r"<h1\b(?=[^>]*\bdata-automation-id=[\"']product-title-label[\"'])[^>]*>(.*?)</h1>",
+    ):
+        title = extract_first_dom_text(page_html, pattern)
+        if title:
+            return title
+
     product = first_dict(digital_data.get("product"))
     product_info = first_dict(product.get("productInfo"))
     title = normalize_text(product_info.get("productName") or product_info.get("name"))
@@ -334,6 +479,10 @@ class FnacZenRowsScraper:
         fetch_wait: int = 150,
         screenshot_timeout: int = 90,
         screenshot_wait: int = 150,
+        browser_verify_ambiguous: bool = True,
+        browser_timeout: int = 90,
+        browser_wait: int = 6000,
+        browser_retries: int = 2,
     ):
         self.db_engine = None
         self.country_code = "fr"
@@ -344,6 +493,10 @@ class FnacZenRowsScraper:
         self.fetch_wait = fetch_wait
         self.screenshot_timeout = screenshot_timeout
         self.screenshot_wait = screenshot_wait
+        self.browser_verify_ambiguous = browser_verify_ambiguous
+        self.browser_timeout = browser_timeout
+        self.browser_wait = browser_wait
+        self.browser_retries = max(1, int(browser_retries or 1))
         self.save_html_dir = Path(save_html_dir) if save_html_dir else None
         self.html_dir = Path(html_dir) if html_dir else None
         if self.save_html_dir:
@@ -351,7 +504,10 @@ class FnacZenRowsScraper:
         self._counter_lock = threading.Lock()
         self.total_zenrows_calls = 0
         self.total_screenshot_calls = 0
+        self.total_browser_calls = 0
+        self.total_browser_seconds = 0.0
         self.total_call_seconds = 0.0
+        self.collection_wall_seconds = 0.0
         self.total_zenrows_cost = 0.0
         self.error_logs: List[str] = []
         self.setup_db_connection()
@@ -475,6 +631,53 @@ class FnacZenRowsScraper:
 
         return last_status, last_text, last_cost, total_elapsed
 
+    def should_browser_verify(self, page_html: str, row: Dict[str, Any], result: Dict[str, Any], reason: str) -> bool:
+        return False
+
+    def scraping_browser_wss(self) -> str:
+        country = ZENROWS_SCRAPING_BROWSER_COUNTRY or "fr"
+        return f"wss://browser.zenrows.com?apikey={quote(ZENROWS_API_KEY)}&proxy_country={quote(country)}"
+
+    def fetch_browser_html(self, url: str) -> Tuple[int, str, float]:
+        last_status = 0
+        last_html = ""
+        total_elapsed = 0.0
+        for attempt in range(1, self.browser_retries + 1):
+            start = time.time()
+            try:
+                from playwright.sync_api import sync_playwright
+
+                with sync_playwright() as playwright:
+                    browser = playwright.chromium.connect_over_cdp(self.scraping_browser_wss(), timeout=self.browser_timeout * 1000)
+                    page = browser.new_page(viewport={"width": 1365, "height": 768})
+                    try:
+                        response = page.goto(url, wait_until="domcontentloaded", timeout=self.browser_timeout * 1000)
+                        page.wait_for_timeout(self.browser_wait)
+                        status = response.status if response else 0
+                        html = page.content()
+                    finally:
+                        page.close()
+                        browser.close()
+                elapsed = time.time() - start
+                total_elapsed += elapsed
+                with self._counter_lock:
+                    self.total_browser_calls += 1
+                    self.total_browser_seconds += elapsed
+                if status == 200:
+                    return status, html, total_elapsed
+                last_status = status
+                last_html = html
+                logger.warning("Scraping Browser verify attempt failed (%s/%s): status=%s url=%s", attempt, self.browser_retries, status, url)
+            except Exception as exc:
+                elapsed = time.time() - start
+                total_elapsed += elapsed
+                with self._counter_lock:
+                    self.total_browser_calls += 1
+                    self.total_browser_seconds += elapsed
+                logger.warning("Scraping Browser verify exception (%s/%s): %s", attempt, self.browser_retries, exc)
+            if attempt < self.browser_retries:
+                time.sleep(min(3 * attempt, 10))
+        return last_status, last_html, total_elapsed
     def base_result(self, row: Dict[str, Any]) -> Dict[str, Any]:
         now_time = datetime.now(self.korea_tz)
         local_time = datetime.now(self.local_tz)
@@ -500,7 +703,7 @@ class FnacZenRowsScraper:
             "retailprice": None,
             "sold_by": "Fnac",
             "imageurl": None,
-            "producturl": row.get("url", ""),
+            "producturl": normalize_product_url(row.get("url", "")),
             "crawl_datetime": crawl_datetime_iso,
             "crawl_strdatetime": local_time.strftime("%Y%m%d%H%M%S") + f"{local_time.microsecond:06d}"[:4],
             "kr_crawl_datetime": now_time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -519,15 +722,32 @@ class FnacZenRowsScraper:
         online_oos = has_online_stock_exhausted(page_html)
         condition = current_offer_condition(digital_data)
 
+        api_price = current_offer_price(digital_data)
+        marketplace_fallback_price = first_professional_offer_price(digital_data)
+        if api_price is not None:
+            if online_oos or is_click_and_collect_only(digital_data):
+                if marketplace_fallback_price is not None:
+                    result["retailprice"] = marketplace_fallback_price
+                    return result, "MARKETPLACE_OFFER_FALLBACK"
+                return result, "ONLINE_STOCK_EXHAUSTED"
+            result["retailprice"] = api_price
+            return result, "CURRENT_OFFER_PRICE"
+
         if price_texts:
             visible_price = parse_price(price_texts[0])
             if visible_price is not None:
                 if online_oos:
+                    if marketplace_fallback_price is not None:
+                        result["retailprice"] = marketplace_fallback_price
+                        return result, "MARKETPLACE_OFFER_FALLBACK"
                     return result, "ONLINE_STOCK_EXHAUSTED"
                 result["retailprice"] = visible_price
                 return result, "VISIBLE_PRICE_BOX"
 
         if is_click_and_collect_only(digital_data):
+            if marketplace_fallback_price is not None:
+                result["retailprice"] = marketplace_fallback_price
+                return result, "MARKETPLACE_OFFER_FALLBACK"
             return result, "CLICK_AND_COLLECT_ONLY"
 
         if not is_new_condition(condition):
@@ -596,6 +816,16 @@ class FnacZenRowsScraper:
                 logger.warning("Fetch failed sku=%s status=%s cost=%s", row.get("retailersku"), status_code, cost)
             else:
                 result, reason = self.parse_product(page_html, row)
+                if not self.html_dir and self.should_browser_verify(page_html, row, result, reason):
+                    logger.info("Ambiguous FNAC/marketplace buybox; verify final DOM via Scraping Browser sku=%s", row.get("retailersku"))
+                    browser_status, browser_html, _ = self.fetch_browser_html(request_url)
+                    if browser_status == 200 and browser_html:
+                        browser_result, browser_reason = self.parse_product(browser_html, row)
+                        result = browser_result
+                        reason = f"BROWSER_{browser_reason}"
+                    else:
+                        self.error_logs.append(f"{url}: scraping browser verify failed status={browser_status}")
+                        logger.warning("Keep API result after Scraping Browser verify failure sku=%s status=%s", row.get("retailersku"), browser_status)
             if status_code == 200 and not self.html_dir:
                 s3_status = self.capture_null_screenshot(result, request_url)
             else:
@@ -614,6 +844,7 @@ class FnacZenRowsScraper:
             return result
 
     def collect(self, targets: List[Dict[str, Any]], sleep_seconds: float = 0.2, workers: int = 1) -> List[Dict[str, Any]]:
+        started_at = time.time()
         indexed_targets = []
         for idx, row in enumerate(targets, start=1):
             row_copy = dict(row)
@@ -631,6 +862,7 @@ class FnacZenRowsScraper:
                 self.log_collect_result(idx, len(indexed_targets), row, result)
                 if sleep_seconds and idx < len(indexed_targets):
                     time.sleep(sleep_seconds)
+            self.collection_wall_seconds = time.time() - started_at
             return results
 
         results: List[Optional[Dict[str, Any]]] = [None] * len(indexed_targets)
@@ -654,6 +886,7 @@ class FnacZenRowsScraper:
                     results[result_idx]["_s3_upload"] = "skip"
                 self.log_collect_result(result_idx + 1, len(indexed_targets), indexed_targets[result_idx], results[result_idx])
 
+        self.collection_wall_seconds = time.time() - started_at
         return [result for result in results if result is not None]
 
     def log_collect_result(self, idx: int, total: int, row: Dict[str, Any], result: Dict[str, Any]) -> None:
@@ -661,7 +894,7 @@ class FnacZenRowsScraper:
             "[%s/%s] product_url: %s, price: %s, S3 upload: %s, reason: %s",
             idx,
             total,
-            row.get("url", ""),
+            result.get("producturl") or normalize_product_url(row.get("url", "")),
             result.get("retailprice"),
             result.get("_s3_upload", "skip"),
             result.get("_crawl_reason", ""),
@@ -798,8 +1031,11 @@ class FnacZenRowsScraper:
         logger.info("image_non_null=%s", int(df["imageurl"].notna().sum()) if "imageurl" in df else 0)
         logger.info("zenrows_calls=%s", self.total_zenrows_calls)
         logger.info("screenshot_calls=%s", self.total_screenshot_calls)
+        logger.info("scraping_browser_verify_calls=%s", self.total_browser_calls)
+        logger.info("scraping_browser_seconds_sum=%0.1f", self.total_browser_seconds)
         logger.info("zenrows_cost_sum_usd=%0.10f", self.total_zenrows_cost)
-        logger.info("elapsed_sec=%0.1f", self.total_call_seconds)
+        logger.info("zenrows_request_seconds_sum=%0.1f", self.total_call_seconds)
+        logger.info("elapsed_sec=%0.1f", self.collection_wall_seconds)
 
 
 def main() -> None:
@@ -816,6 +1052,10 @@ def main() -> None:
     parser.add_argument("--wait", type=int, default=150, help="ZenRows js_render wait milliseconds")
     parser.add_argument("--screenshot-timeout", type=int, default=90, help="ZenRows NULL screenshot request timeout seconds")
     parser.add_argument("--screenshot-wait", type=int, default=150, help="ZenRows NULL screenshot wait milliseconds")
+    parser.add_argument("--no-browser-verify", action="store_true", help="Disable Scraping Browser verification for ambiguous FNAC/marketplace buyboxes")
+    parser.add_argument("--browser-timeout", type=int, default=90, help="ZenRows Scraping Browser verification timeout seconds")
+    parser.add_argument("--browser-wait", type=int, default=6000, help="ZenRows Scraping Browser verification wait milliseconds")
+    parser.add_argument("--browser-retries", type=int, default=2, help="ZenRows Scraping Browser verification retries")
     parser.add_argument("--save-html", default=None, help="Override fetched HTML save directory")
     parser.add_argument("--no-save-html", action="store_true", help="Disable default HTML saving to fnac_log/YYYYMMDD")
     parser.add_argument("--html-dir", default=None, help="Parse saved HTML from this directory instead of calling ZenRows")
@@ -861,6 +1101,10 @@ def main() -> None:
         fetch_wait=args.wait,
         screenshot_timeout=args.screenshot_timeout,
         screenshot_wait=args.screenshot_wait,
+        browser_verify_ambiguous=not args.no_browser_verify,
+        browser_timeout=args.browser_timeout,
+        browser_wait=args.browser_wait,
+        browser_retries=args.browser_retries,
     )
     target_count = 0
     results_df = None
