@@ -863,44 +863,59 @@ class FnacZenRowsScraper:
                 pass
 
     def accept_cookie_popup(self, page: Any) -> bool:
+        page.wait_for_timeout(1500)
         selectors = [
             "#onetrust-accept-btn-handler",
             "button:has-text(\"J'accepte\")",
-            "text=J'accepte",
-            "button:has-text(\"Tout accepter\")",
-            "button:has-text(\"Accepter\")",
-            "button:has-text(\"OK\")",
-            "[class*='accept' i]",
-            "[id*='accept' i]",
+            "button:has-text(\"J'ACCEPTE\")",
+            'button:has-text("Tout accepter")',
+            'button:has-text("Accepter")',
+            'button:has-text("Accept")',
             ".didomi-button",
         ]
         for selector in selectors:
             try:
                 locator = page.locator(selector).first
-                if locator.is_visible(timeout=2000):
-                    locator.click(timeout=3000)
+                if locator.count() > 0 and locator.is_visible(timeout=2500):
+                    locator.click(timeout=5000)
                     logger.info("FNAC cookie popup accepted: %s", selector)
-                    page.wait_for_timeout(1000)
+                    page.wait_for_timeout(2000)
                     return True
             except Exception:
                 continue
         try:
             clicked = page.evaluate("""
                 () => {
-                    const wanted = ["J'accepte", "Tout accepter", "Accepter", "OK", "Accept"];
-                    for (const button of Array.from(document.querySelectorAll('button'))) {
-                        const text = (button.innerText || button.textContent || '').trim();
-                        if (wanted.some((value) => text.includes(value))) {
+                    const normalize = (value) => (value || '')
+                        .normalize('NFKD')
+                        .replace(/[\u2018\u2019\u201A\u201B`\u00B4]/g, "'")
+                        .replace(/\\s+/g, ' ')
+                        .trim()
+                        .toLowerCase();
+                    const isVisible = (element) => {
+                        const style = window.getComputedStyle(element);
+                        const rect = element.getBoundingClientRect();
+                        return style && style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+                    };
+                    for (const button of Array.from(document.querySelectorAll('button, [role="button"]'))) {
+                        if (!isVisible(button)) continue;
+                        const text = normalize(button.innerText || button.textContent || button.getAttribute('aria-label'));
+                        const isAccept = text.includes("j'accepte")
+                            || text.includes('tout accepter')
+                            || text === 'accepter'
+                            || text === 'accept'
+                            || (text.includes('accepte') && !text.includes('sans'));
+                        if (isAccept) {
                             button.click();
-                            return true;
+                            return text || true;
                         }
                     }
                     return false;
                 }
             """)
             if clicked:
-                page.wait_for_timeout(1000)
-                logger.info("FNAC cookie popup accepted by JS fallback")
+                page.wait_for_timeout(2000)
+                logger.info("FNAC cookie popup accepted by JS fallback: %s", clicked)
                 return True
         except Exception as exc:
             logger.debug("FNAC cookie JS fallback failed: %s", exc)
@@ -1209,7 +1224,7 @@ def main() -> None:
     parser.add_argument("--no-upload", action="store_true", help="Skip SFTP upload")
     parser.add_argument("--no-capture-null", action="store_true", help="Skip NULL screenshots")
     parser.add_argument("--sleep", type=float, default=0.0, help="Delay between ZenRows request submissions")
-    parser.add_argument("--workers", type=int, default=3, help="Parallel product workers")
+    parser.add_argument("--workers", type=int, default=2, help="Parallel product workers")
     parser.add_argument("--timeout", type=int, default=30, help="ZenRows HTML request timeout seconds")
     parser.add_argument("--wait", type=int, default=150, help="ZenRows js_render wait milliseconds")
     parser.add_argument("--screenshot-timeout", type=int, default=90, help="ZenRows NULL screenshot request timeout seconds")
