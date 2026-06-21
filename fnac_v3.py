@@ -678,6 +678,7 @@ class FnacZenRowsScraper:
             if attempt < self.browser_retries:
                 time.sleep(min(3 * attempt, 10))
         return last_status, last_html, total_elapsed
+
     def base_result(self, row: Dict[str, Any]) -> Dict[str, Any]:
         now_time = datetime.now(self.korea_tz)
         local_time = datetime.now(self.local_tz)
@@ -703,7 +704,7 @@ class FnacZenRowsScraper:
             "retailprice": None,
             "sold_by": "Fnac",
             "imageurl": None,
-            "producturl": normalize_product_url(row.get("url", "")),
+            "producturl": row.get("url", ""),
             "crawl_datetime": crawl_datetime_iso,
             "crawl_strdatetime": local_time.strftime("%Y%m%d%H%M%S") + f"{local_time.microsecond:06d}"[:4],
             "kr_crawl_datetime": now_time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -761,14 +762,75 @@ class FnacZenRowsScraper:
     def capture_null_screenshot(self, result: Dict[str, Any], url: str) -> str:
         if not self.capture_null or not is_null_result(result):
             return "skip"
+        browser = None
+        page = None
         try:
             with self._counter_lock:
                 self.total_screenshot_calls += 1
-            page = ZenRowsScreenshotPage(url, timeout=self.screenshot_timeout, wait=self.screenshot_wait)
-            return "ok" if capture_and_upload(page, "fnac", result.get("retailersku", ""), url) else "fail"
+            from playwright.sync_api import sync_playwright
+
+            start = time.time()
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.connect_over_cdp(
+                    self.scraping_browser_wss(),
+                    timeout=self.screenshot_timeout * 1000,
+                )
+                page = browser.new_page(viewport={"width": 1920, "height": 1080}, device_scale_factor=1)
+                response = page.goto(url, wait_until="domcontentloaded", timeout=self.screenshot_timeout * 1000)
+                page.wait_for_timeout(max(1500, int(self.screenshot_wait or 0)))
+                self.accept_cookie_popup(page)
+                page.wait_for_timeout(500)
+                status = response.status if response else 0
+                if status and status >= 400:
+                    logger.warning("NULL screenshot page loaded with status=%s sku=%s", status, result.get("retailersku"))
+                uploaded = capture_and_upload(page, "fnac", result.get("retailersku", ""), url, result)
+                page.close()
+                page = None
+                browser.close()
+                browser = None
+            elapsed = time.time() - start
+            with self._counter_lock:
+                self.total_browser_calls += 1
+                self.total_browser_seconds += elapsed
+            return "ok" if uploaded else "fail"
         except Exception as exc:
             logger.warning("NULL screenshot failed for sku=%s: %s", result.get("retailersku"), exc)
             return "fail"
+        finally:
+            try:
+                if page is not None:
+                    page.close()
+            except Exception:
+                pass
+            try:
+                if browser is not None:
+                    browser.close()
+            except Exception:
+                pass
+
+    def accept_cookie_popup(self, page: Any) -> bool:
+        selectors = [
+            "#onetrust-accept-btn-handler",
+            "button:has-text(\"J'accepte\")",
+            "text=J'accepte",
+            "button:has-text(\"Tout accepter\")",
+            "button:has-text(\"Accepter\")",
+            "button:has-text(\"OK\")",
+            "[class*='accept' i]",
+            "[id*='accept' i]",
+            ".didomi-button",
+        ]
+        for selector in selectors:
+            try:
+                locator = page.locator(selector).first
+                if locator.is_visible(timeout=2000):
+                    locator.click(timeout=3000)
+                    logger.info("FNAC cookie popup accepted: %s", selector)
+                    page.wait_for_timeout(1000)
+                    return True
+            except Exception:
+                continue
+        return False
 
     def html_cache_path(self, row: Dict[str, Any]) -> Optional[Path]:
         if not self.save_html_dir:
@@ -827,7 +889,8 @@ class FnacZenRowsScraper:
                         self.error_logs.append(f"{url}: scraping browser verify failed status={browser_status}")
                         logger.warning("Keep API result after Scraping Browser verify failure sku=%s status=%s", row.get("retailersku"), browser_status)
             if status_code == 200 and not self.html_dir:
-                s3_status = self.capture_null_screenshot(result, request_url)
+                screenshot_url = result.get("producturl") or url or request_url
+                s3_status = self.capture_null_screenshot(result, screenshot_url)
             else:
                 if status_code != 200:
                     self.error_logs.append(f"{url}: fetch failed {reason}")
@@ -960,9 +1023,10 @@ class FnacZenRowsScraper:
             return False
 
     def save_results(self, df: pd.DataFrame, save_db: bool = True, upload_server: bool = True) -> Dict[str, bool]:
-        local_time = datetime.now(self.local_tz)
-        date_str = local_time.strftime("%Y%m%d")
-        base_filename = f"{date_str}_{local_time.strftime('%H%M%S')}_fr_fnac"
+        now = datetime.now(self.korea_tz)
+        date_str = now.strftime("%Y%m%d")
+        time_str = now.strftime("%H%M%S")
+        base_filename = f"{date_str}_{time_str}_fr_fnac"
         results = {"db_saved": False, "server_uploaded": False}
 
         if save_db:
@@ -973,24 +1037,13 @@ class FnacZenRowsScraper:
             zip_filename = f"{base_filename}.zip"
             md5_filename = f"{base_filename}.md5"
             try:
-                column_order = [
-                    "retailerid", "country_code", "ships_from", "channel_name", "channel",
-                    "retailersku", "brand", "brand_eng", "form_factor",
-                    "segment_lv1", "segment_lv2", "segment_lv3", "capacity", "item",
-                    "retailprice", "sold_by", "imageurl", "producturl",
-                    "crawl_datetime", "crawl_strdatetime", "kr_crawl_datetime", "kr_crawl_strdatetime",
-                    "title", "vat",
-                ]
                 df_csv = df.copy()
-                existing_cols = [col for col in column_order if col in df_csv.columns]
-                df_csv = df_csv[existing_cols]
                 df_csv.columns = df_csv.columns.str.upper()
                 df_csv.to_csv(
                     csv_filename,
                     index=False,
                     encoding="utf-8",
                     lineterminator="\r\n",
-                    float_format="%g",
                 )
 
                 with zipfile.ZipFile(zip_filename, "w", zipfile.ZIP_DEFLATED) as zipf:
