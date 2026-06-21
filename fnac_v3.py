@@ -634,6 +634,22 @@ class FnacZenRowsScraper:
     def should_browser_verify(self, page_html: str, row: Dict[str, Any], result: Dict[str, Any], reason: str) -> bool:
         return False
 
+    def prepare_playwright_page_for_capture(self, page: Any) -> None:
+        try:
+            page.set_viewport_size({"width": 1920, "height": 1080})
+        except Exception as exc:
+            logger.debug("FNAC screenshot viewport setup failed: %s", exc)
+        try:
+            page.evaluate("""
+                () => {
+                    window.scrollTo(0, 0);
+                    document.documentElement.style.overflowX = 'hidden';
+                    if (document.body) document.body.style.overflowX = 'hidden';
+                }
+            """)
+        except Exception as exc:
+            logger.debug("FNAC screenshot page normalization failed: %s", exc)
+
     def scraping_browser_wss(self) -> str:
         country = ZENROWS_SCRAPING_BROWSER_COUNTRY or "fr"
         return f"wss://browser.zenrows.com?apikey={quote(ZENROWS_API_KEY)}&proxy_country={quote(country)}"
@@ -759,10 +775,11 @@ class FnacZenRowsScraper:
 
         return result, "PRICE_NOT_FOUND"
 
-    def capture_null_screenshot(self, result: Dict[str, Any], url: str) -> str:
+    def capture_null_screenshot(self, result: Dict[str, Any], display_url: str, load_url: Optional[str] = None) -> str:
         if not self.capture_null or not is_null_result(result):
             return "skip"
         browser = None
+        context = None
         page = None
         try:
             with self._counter_lock:
@@ -770,22 +787,54 @@ class FnacZenRowsScraper:
             from playwright.sync_api import sync_playwright
 
             start = time.time()
+            target_url = load_url or normalize_product_url(display_url) or display_url
             with sync_playwright() as playwright:
                 browser = playwright.chromium.connect_over_cdp(
                     self.scraping_browser_wss(),
                     timeout=self.screenshot_timeout * 1000,
                 )
-                page = browser.new_page(viewport={"width": 1920, "height": 1080}, device_scale_factor=1)
-                response = page.goto(url, wait_until="domcontentloaded", timeout=self.screenshot_timeout * 1000)
-                page.wait_for_timeout(max(1500, int(self.screenshot_wait or 0)))
+                context = browser.new_context(
+                    viewport={"width": 1920, "height": 1080},
+                    device_scale_factor=1,
+                    locale="fr-FR",
+                    timezone_id="Europe/Paris",
+                )
+                page = context.new_page()
+                self.prepare_playwright_page_for_capture(page)
+                response = page.goto(target_url, wait_until="domcontentloaded", timeout=self.screenshot_timeout * 1000)
+                self.prepare_playwright_page_for_capture(page)
+                page.wait_for_timeout(max(12000, int(self.screenshot_wait or 0)))
                 self.accept_cookie_popup(page)
-                page.wait_for_timeout(500)
-                status = response.status if response else 0
-                if status and status >= 400:
-                    logger.warning("NULL screenshot page loaded with status=%s sku=%s", status, result.get("retailersku"))
-                uploaded = capture_and_upload(page, "fnac", result.get("retailersku", ""), url, result)
+                self.prepare_playwright_page_for_capture(page)
+                try:
+                    page.wait_for_load_state("networkidle", timeout=20000)
+                except Exception:
+                    pass
+                ready = self.wait_for_screenshot_ready(page, result.get("retailersku"), target_url)
+                if not ready:
+                    logger.warning("Reload NULL screenshot page after blank readiness check sku=%s", result.get("retailersku"))
+                    response = page.goto(target_url, wait_until="domcontentloaded", timeout=self.screenshot_timeout * 1000)
+                    self.prepare_playwright_page_for_capture(page)
+                    page.wait_for_timeout(max(8000, int(self.screenshot_wait or 0)))
+                    self.accept_cookie_popup(page)
+                    self.prepare_playwright_page_for_capture(page)
+                    try:
+                        page.wait_for_load_state("networkidle", timeout=20000)
+                    except Exception:
+                        pass
+                    ready = self.wait_for_screenshot_ready(page, result.get("retailersku"), target_url)
+                if not ready:
+                    logger.warning("Skip NULL screenshot upload because rendered page is still blank sku=%s url=%s", result.get("retailersku"), target_url)
+                    uploaded = None
+                else:
+                    status = response.status if response else 0
+                    if status and status >= 400:
+                        logger.warning("NULL screenshot page loaded with status=%s sku=%s", status, result.get("retailersku"))
+                    uploaded = capture_and_upload(page, "fnac", result.get("retailersku", ""), display_url, result)
                 page.close()
                 page = None
+                context.close()
+                context = None
                 browser.close()
                 browser = None
             elapsed = time.time() - start
@@ -800,6 +849,11 @@ class FnacZenRowsScraper:
             try:
                 if page is not None:
                     page.close()
+            except Exception:
+                pass
+            try:
+                if context is not None:
+                    context.close()
             except Exception:
                 pass
             try:
@@ -830,6 +884,61 @@ class FnacZenRowsScraper:
                     return True
             except Exception:
                 continue
+        try:
+            clicked = page.evaluate("""
+                () => {
+                    const wanted = ["J'accepte", "Tout accepter", "Accepter", "OK", "Accept"];
+                    for (const button of Array.from(document.querySelectorAll('button'))) {
+                        const text = (button.innerText || button.textContent || '').trim();
+                        if (wanted.some((value) => text.includes(value))) {
+                            button.click();
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+            """)
+            if clicked:
+                page.wait_for_timeout(1000)
+                logger.info("FNAC cookie popup accepted by JS fallback")
+                return True
+        except Exception as exc:
+            logger.debug("FNAC cookie JS fallback failed: %s", exc)
+        return False
+
+    def wait_for_screenshot_ready(self, page: Any, sku: Any, url: str) -> bool:
+        deadline = time.time() + 20
+        last_state = None
+        while time.time() < deadline:
+            try:
+                state = page.evaluate("""
+                    () => {
+                        const body = document.body;
+                        const text = body ? (body.innerText || '') : '';
+                        const selectors = [
+                            'h1',
+                            '[data-automation-id="product-title-label"]',
+                            '.f-productHeader__heading',
+                            '.f-productMedias__viewItem--main',
+                            '[data-automation-id="product-availability"]',
+                            '.f-faPriceBox__price'
+                        ];
+                        return {
+                            textLength: text.trim().length,
+                            hasProductDom: selectors.some((selector) => !!document.querySelector(selector)),
+                            title: document.title || '',
+                            childCount: body ? body.children.length : 0,
+                            height: document.documentElement ? document.documentElement.scrollHeight : 0
+                        };
+                    }
+                """)
+                last_state = state
+                if state and (state.get("hasProductDom") or state.get("textLength", 0) > 300):
+                    return True
+            except Exception:
+                pass
+            page.wait_for_timeout(1000)
+        logger.warning("NULL screenshot page may be blank sku=%s url=%s state=%s", sku, url, last_state)
         return False
 
     def html_cache_path(self, row: Dict[str, Any]) -> Optional[Path]:
@@ -890,7 +999,7 @@ class FnacZenRowsScraper:
                         logger.warning("Keep API result after Scraping Browser verify failure sku=%s status=%s", row.get("retailersku"), browser_status)
             if status_code == 200 and not self.html_dir:
                 screenshot_url = result.get("producturl") or url or request_url
-                s3_status = self.capture_null_screenshot(result, screenshot_url)
+                s3_status = self.capture_null_screenshot(result, screenshot_url, request_url)
             else:
                 if status_code != 200:
                     self.error_logs.append(f"{url}: fetch failed {reason}")
@@ -1104,7 +1213,7 @@ def main() -> None:
     parser.add_argument("--timeout", type=int, default=30, help="ZenRows HTML request timeout seconds")
     parser.add_argument("--wait", type=int, default=150, help="ZenRows js_render wait milliseconds")
     parser.add_argument("--screenshot-timeout", type=int, default=90, help="ZenRows NULL screenshot request timeout seconds")
-    parser.add_argument("--screenshot-wait", type=int, default=150, help="ZenRows NULL screenshot wait milliseconds")
+    parser.add_argument("--screenshot-wait", type=int, default=12000, help="ZenRows NULL screenshot wait milliseconds")
     parser.add_argument("--no-browser-verify", action="store_true", help="Disable Scraping Browser verification for ambiguous FNAC/marketplace buyboxes")
     parser.add_argument("--browser-timeout", type=int, default=90, help="ZenRows Scraping Browser verification timeout seconds")
     parser.add_argument("--browser-wait", type=int, default=6000, help="ZenRows Scraping Browser verification wait milliseconds")
