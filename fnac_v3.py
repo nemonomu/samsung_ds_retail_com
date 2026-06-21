@@ -634,7 +634,18 @@ class FnacZenRowsScraper:
         return last_status, last_text, last_cost, total_elapsed
 
     def should_browser_verify(self, page_html: str, row: Dict[str, Any], result: Dict[str, Any], reason: str) -> bool:
-        return False
+        if not self.browser_verify_ambiguous:
+            return False
+        if result.get("retailprice") is None:
+            return False
+        if has_oref(row.get("url", "")):
+            return False
+        if reason not in {"CURRENT_OFFER_PRICE", "MARKETPLACE_OFFER_FALLBACK", "VISIBLE_PRICE_BOX"}:
+            return False
+        if has_online_stock_exhausted(page_html):
+            return False
+        digital_data = extract_json_script(page_html, "digitalData") or {}
+        return has_fnac_first_offer_with_marketplace_current_offer(digital_data)
 
     def prepare_playwright_page_for_capture(self, page: Any) -> None:
         try:
@@ -741,25 +752,23 @@ class FnacZenRowsScraper:
         online_oos = has_online_stock_exhausted(page_html)
         condition = current_offer_condition(digital_data)
 
+        if online_oos:
+            return result, "ONLINE_STOCK_EXHAUSTED"
+
         api_price = current_offer_price(digital_data)
         marketplace_fallback_price = first_professional_offer_price(digital_data)
         if api_price is not None:
-            if online_oos or is_click_and_collect_only(digital_data):
+            if is_click_and_collect_only(digital_data):
                 if marketplace_fallback_price is not None:
                     result["retailprice"] = marketplace_fallback_price
                     return result, "MARKETPLACE_OFFER_FALLBACK"
-                return result, "ONLINE_STOCK_EXHAUSTED"
+                return result, "CLICK_AND_COLLECT_ONLY"
             result["retailprice"] = api_price
             return result, "CURRENT_OFFER_PRICE"
 
         if price_texts:
             visible_price = parse_price(price_texts[0])
             if visible_price is not None:
-                if online_oos:
-                    if marketplace_fallback_price is not None:
-                        result["retailprice"] = marketplace_fallback_price
-                        return result, "MARKETPLACE_OFFER_FALLBACK"
-                    return result, "ONLINE_STOCK_EXHAUSTED"
                 result["retailprice"] = visible_price
                 return result, "VISIBLE_PRICE_BOX"
 
@@ -771,9 +780,6 @@ class FnacZenRowsScraper:
 
         if not is_new_condition(condition):
             return result, "NON_NEW_OFFER_IGNORED"
-
-        if online_oos:
-            return result, "ONLINE_STOCK_EXHAUSTED"
 
         return result, "PRICE_NOT_FOUND"
 
