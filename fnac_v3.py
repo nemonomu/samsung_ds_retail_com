@@ -1062,12 +1062,26 @@ class FnacZenRowsScraper:
                 status_code, page_html, cost, elapsed = self.fetch_html(request_url)
                 if status_code == 200:
                     self.save_html(row, page_html)
+                else:
+                    logger.warning("ZenRows HTML fetch exhausted; try Scraping Browser HTML fallback sku=%s status=%s", row.get("retailersku"), status_code)
+                    browser_status, browser_html, _ = self.fetch_browser_html(request_url)
+                    if browser_status == 200 and browser_html:
+                        status_code = browser_status
+                        page_html = browser_html
+                        self.save_html(row, page_html)
+                        reason = "BROWSER_HTML_FALLBACK"
+                    else:
+                        self.error_logs.append(f"{url}: Scraping Browser HTML fallback failed status={browser_status}")
             if status_code != 200:
                 result = self.base_result(row)
                 reason = f"HTTP_{status_code}"
                 logger.warning("Fetch failed sku=%s status=%s cost=%s", row.get("retailersku"), status_code, cost)
             else:
-                result, reason = self.parse_product(page_html, row)
+                result, parse_reason = self.parse_product(page_html, row)
+                if reason == "BROWSER_HTML_FALLBACK":
+                    reason = f"{reason}_{parse_reason}"
+                else:
+                    reason = parse_reason
                 if not self.html_dir and self.should_browser_verify(page_html, row, result, reason):
                     logger.info("Ambiguous FNAC/marketplace buybox; verify final DOM via Scraping Browser sku=%s", row.get("retailersku"))
                     browser_status, browser_html, _ = self.fetch_browser_html(request_url)
