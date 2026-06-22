@@ -535,6 +535,20 @@ class XKomScraper:
             'Target page, context or browser has been closed',
         ])
 
+    def is_scraping_browser_retryable_error(self, error):
+        text = repr(error)
+        retry_markers = [
+            'TargetClosedError',
+            'has been closed',
+            'browser has been closed',
+            'Target page, context or browser has been closed',
+            'is interrupted by another navigation',
+            'net::ERR_ABORTED',
+            'Timeout',
+            'Navigation timeout',
+        ]
+        return any(marker in text for marker in retry_markers)
+
     def close_zenrows_screenshot_browser(self, browser):
         if not browser:
             return
@@ -621,29 +635,43 @@ class XKomScraper:
 
                             if self.capture_one_api_null_screenshot(page, record, wait_ms):
                                 success_count += 1
-                            else:
-                                failure_count += 1
+                                break
+
+                            if attempt <= max_retries:
+                                logger.warning(
+                                    f"x-kom API null screenshot retry after empty upload: sku={sku} "
+                                    f"attempt={attempt + 1}/{max_retries + 1} url={url}"
+                                )
+                                self.close_zenrows_screenshot_browser(browser)
+                                browser = None
+                                page = None
+                                attempt += 1
+                                continue
+
+                            failure_count += 1
+                            logger.warning(f"x-kom API null screenshot failed after empty upload: sku={sku} url={url}")
+                            self.close_zenrows_screenshot_browser(browser)
+                            browser = None
+                            page = None
                             break
                         except Exception as e:
-                            if self.is_scraping_browser_closed_error(e) and attempt <= max_retries:
+                            if self.is_scraping_browser_retryable_error(e) and attempt <= max_retries:
                                 logger.warning(
                                     f"x-kom API null screenshot retry: sku={sku} "
                                     f"attempt={attempt + 1}/{max_retries + 1} reason={e}"
                                 )
                                 self.close_zenrows_screenshot_browser(browser)
-                                browser, page = self.open_zenrows_screenshot_page(p)
+                                browser = None
+                                page = None
                                 attempt += 1
                                 continue
 
                             failure_count += 1
                             logger.warning(f"x-kom API null screenshot failed: sku={sku} url={url} error={e}")
+                            self.close_zenrows_screenshot_browser(browser)
+                            browser = None
+                            page = None
                             break
-                        finally:
-                            try:
-                                if page and not page.is_closed():
-                                    page.goto('about:blank', wait_until='domcontentloaded', timeout=10000)
-                            except Exception:
-                                pass
         except Exception as e:
             logger.warning(f"x-kom API null screenshot batch skipped: {e}")
         finally:
