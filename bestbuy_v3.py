@@ -27,6 +27,12 @@ import requests
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import DBAPIError, OperationalError
 
+try:
+    from DrissionPage import ChromiumOptions, ChromiumPage
+except ImportError:
+    ChromiumOptions = None
+    ChromiumPage = None
+
 # 로깅 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -140,6 +146,16 @@ def chunked(seq, size):
     """리스트를 size 단위로 자름."""
     for i in range(0, len(seq), size):
         yield seq[i:i + size]
+
+
+def with_intl_nosplash(url):
+    if not url:
+        return url
+    parsed = urllib.parse.urlparse(url)
+    qs = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+    qs['intl'] = ['nosplash']
+    query = urllib.parse.urlencode(qs, doseq=True)
+    return urllib.parse.urlunparse(parsed._replace(query=query))
 
 
 # =====================================================================
@@ -302,7 +318,8 @@ class BestBuyGraphQLScraper:
     # -----------------------------------------------------------------
     # Batch fallback orchestrator
     # -----------------------------------------------------------------
-    def collect_with_fallback(self, urls_data, batch_sizes=None, fixed_batch_size=None):
+    def collect_with_fallback(self, urls_data, batch_sizes=None, fixed_batch_size=None,
+                              browser_fallback=True, browser_fallback_batch_size=65):
         """전체 SKU 리스트에 대해 batch fallback 수행.
 
         Args:
@@ -374,12 +391,158 @@ class BestBuyGraphQLScraper:
                 break
 
         # 마지막까지 실패한 chunk는 retailprice=None으로 기록
+        if final_failed and browser_fallback:
+            fallback_results, fallback_failed = self._collect_browser_fallback(
+                final_failed,
+                batch_size=browser_fallback_batch_size,
+            )
+            results.extend(fallback_results)
+            final_failed = fallback_failed
+
         for chunk in final_failed:
             for sku, row in chunk:
                 results.append(self._build_result(row, sku, None, None, error='all batch levels failed'))
-                self.error_logs.append(f"[GraphQL 전체 실패] SKU: {sku} | URL: {row.get('url')}")
+                self.error_logs.append(f"[GraphQL all failed] SKU: {sku} | URL: {row.get('url')}")
 
         return results
+
+
+    def _setup_browser_fallback_page(self):
+        if ChromiumOptions is None or ChromiumPage is None:
+            raise RuntimeError('DrissionPage is not installed')
+        co = ChromiumOptions()
+        co.auto_port()
+        co.set_argument('--disable-blink-features=AutomationControlled')
+        co.no_imgs(True)
+        return ChromiumPage(co)
+
+    def _collect_browser_fallback(self, failed_chunks, batch_size=65):
+        items = [item for chunk in failed_chunks for item in chunk]
+        if not items:
+            return [], []
+
+        logger.info(f"browser GraphQL fallback start: {len(items)} SKUs")
+        page = None
+        results = []
+        still_failed = []
+        try:
+            page = self._setup_browser_fallback_page()
+            for sub_chunk in chunked(items, int(batch_size)):
+                warm_url = with_intl_nosplash(sub_chunk[0][1].get('url'))
+                logger.info(f"browser fallback warm page: {warm_url}")
+                try:
+                    page.get(warm_url)
+                    time.sleep(8)
+                    html = page.html or ''
+                    if 'Best Buy International' in html or 'Choose a country' in html:
+                        logger.warning('browser fallback hit international page')
+                    ok, parsed = self._try_browser_chunk(page, sub_chunk)
+                except Exception as exc:
+                    ok, parsed = False, f'browser fallback exception: {exc}'
+
+                if ok:
+                    results.extend(parsed)
+                else:
+                    logger.warning(f"browser fallback chunk failed (skus={len(sub_chunk)}): {parsed}")
+                    self.error_logs.append(f"[browser fallback failed skus={len(sub_chunk)}] {parsed}")
+                    still_failed.append(sub_chunk)
+        except Exception as exc:
+            logger.warning(f"browser fallback init failed: {exc}")
+            self.error_logs.append(f"[browser fallback init failed] {exc}")
+            still_failed = [items]
+        finally:
+            if page is not None:
+                try:
+                    page.quit()
+                except Exception:
+                    pass
+
+        logger.info(f"browser GraphQL fallback done: success={len(results)}, failed={sum(len(c) for c in still_failed)}")
+        return results, still_failed
+
+    def _try_browser_chunk(self, page, chunk_items):
+        skus = [sku for sku, _ in chunk_items]
+        payload = {
+            'operationName': OPERATION_NAME,
+            'variables': {},
+            'query': build_batch_query(skus),
+            'extensions': {
+                'clientLibrary': {'name': '@apollo/client', 'version': '4.1.6'}
+            },
+        }
+        js = (
+            "return fetch('/gateway/graphql', {"
+            "method:'POST', credentials:'include', "
+            "headers:{'accept':'application/json, text/plain, */*','content-type':'application/json'}, "
+            "body: JSON.stringify(" + json.dumps(payload) + ")"
+            "}).then(async r=>{const t=await r.text(); "
+            "return JSON.stringify({status:r.status, contentType:r.headers.get('content-type'), body:t});"
+            "}).catch(e=>JSON.stringify({error:String(e)}));"
+        )
+        raw = page.run_js(js, timeout=120)
+        try:
+            envelope = json.loads(raw)
+        except Exception:
+            return False, f'invalid browser fetch envelope: {str(raw)[:300]}'
+
+        if envelope.get('error'):
+            return False, envelope.get('error')
+        if envelope.get('status') != 200:
+            return False, f"HTTP {envelope.get('status')}: {(envelope.get('body') or '')[:300]}"
+
+        try:
+            graph = json.loads(envelope.get('body') or '')
+        except Exception as exc:
+            return False, f'browser GraphQL json parse error: {exc}'
+
+        data = graph.get('data')
+        if data is None:
+            return False, f"browser GraphQL no data: {json.dumps(graph.get('errors'))[:300]}"
+        if graph.get('errors'):
+            logger.warning(f"browser GraphQL partial errors: {json.dumps(graph.get('errors'))[:200]}")
+
+        return True, self._parse_graphql_data(chunk_items, data, source='browser')
+
+    def _parse_graphql_data(self, chunk_items, data, source='graphql'):
+        chunk_results = []
+        for sku, row in chunk_items:
+            node = data.get(f'p{sku}')
+            if node is None:
+                chunk_results.append(
+                    self._build_result(row, sku, None, None, error=f'{source} product not found')
+                )
+                continue
+
+            name_short = None
+            image_href = None
+            customer_price = None
+            regular_price = None
+            try:
+                name_short = (node.get('name') or {}).get('short')
+                image_href = (node.get('primaryImage') or {}).get('piscesHref')
+                price_obj = node.get('price') or {}
+                customer_price = price_obj.get('customerPrice')
+                regular_price = price_obj.get('regularPrice')
+            except AttributeError:
+                pass
+
+            try:
+                bsin_obj = node.get('bsinProduct') or {}
+                featured = bsin_obj.get('featuredSKU') or {}
+                featured_product = featured.get('product') or {}
+                fp_price = featured_product.get('price') or {}
+                featured_cprice = fp_price.get('customerPrice')
+                if featured_cprice is not None:
+                    customer_price = featured_cprice
+                    name_short = (featured_product.get('name') or {}).get('short') or name_short
+                    image_href = (featured_product.get('primaryImage') or {}).get('piscesHref') or image_href
+            except AttributeError:
+                pass
+
+            chunk_results.append(
+                self._build_result(row, sku, name_short, image_href, customer_price, regular_price)
+            )
+        return chunk_results
 
     def _try_chunk(self, chunk_items):
         """chunk_items: [(sku, row), ...]
@@ -709,6 +872,12 @@ def main():
                         help='고정 batch size. 미지정 시 65→33→17→9 자동 fallback')
     parser.add_argument('--dry-run', action='store_true',
                         help='GraphQL 호출만 수행, DB/SFTP 저장 안 함')
+    parser.add_argument('--no-browser-fallback', action='store_true',
+                        help='Disable DrissionPage browser fallback after ZenRows GraphQL failures')
+    parser.add_argument('--browser-fallback-batch-size', type=int, default=65,
+                        help='Browser GraphQL fallback batch size')
+    parser.add_argument('--browser-only', action='store_true',
+                        help='Skip ZenRows and use DrissionPage browser GraphQL batches only')
     args = parser.parse_args()
 
     # log_utils 있으면 사용, 없으면 skip
@@ -753,10 +922,30 @@ def main():
             return
         logger.info(f"✅ 크롤링 대상: {len(urls_data)}개")
 
-        results = scraper.collect_with_fallback(
-            urls_data,
-            fixed_batch_size=args.batch_size,
-        )
+        if args.browser_only:
+            items = []
+            results = []
+            for row in urls_data:
+                sku = parse_sku_from_url(row.get('url'))
+                if sku:
+                    items.append((sku, row))
+                else:
+                    results.append(scraper._build_result(row, None, None, None, error='sku parse failed'))
+            fallback_results, fallback_failed = scraper._collect_browser_fallback(
+                [items],
+                batch_size=args.browser_fallback_batch_size,
+            )
+            results.extend(fallback_results)
+            for chunk in fallback_failed:
+                for sku, row in chunk:
+                    results.append(scraper._build_result(row, sku, None, None, error='browser fallback failed'))
+        else:
+            results = scraper.collect_with_fallback(
+                urls_data,
+                fixed_batch_size=args.batch_size,
+                browser_fallback=not args.no_browser_fallback,
+                browser_fallback_batch_size=args.browser_fallback_batch_size,
+            )
         if not results:
             logger.error("결과가 없습니다.")
             _alert(len(urls_data), None, error_message="크롤링 결과가 없습니다")
