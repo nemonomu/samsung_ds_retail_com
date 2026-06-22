@@ -59,6 +59,7 @@ logger = logging.getLogger(__name__)
 
 ZENROWS_API_URL = "https://api.zenrows.com/v1/"
 FNAC_TABLE = "fnac_price_crawl_tbl_fr"
+FNAC_SCREENSHOT_VIEWPORT = {"width": 2560, "height": 1440}
 
 
 def normalize_product_url(url: str) -> str:
@@ -699,7 +700,11 @@ class FnacZenRowsScraper:
         return has_fnac_first_offer_with_marketplace_current_offer(digital_data) or is_click_and_collect_only(digital_data)
     def prepare_playwright_page_for_capture(self, page: Any) -> None:
         try:
-            page.set_viewport_size({"width": 1920, "height": 1080})
+            setattr(page, "_null_screenshot_viewport_size", FNAC_SCREENSHOT_VIEWPORT)
+        except Exception as exc:
+            logger.debug("FNAC screenshot viewport marker setup failed: %s", exc)
+        try:
+            page.set_viewport_size(FNAC_SCREENSHOT_VIEWPORT)
         except Exception as exc:
             logger.debug("FNAC screenshot viewport setup failed: %s", exc)
         try:
@@ -874,7 +879,7 @@ class FnacZenRowsScraper:
                         timeout=self.screenshot_timeout * 1000,
                     )
                     context = browser.new_context(
-                        viewport={"width": 1920, "height": 1080},
+                        viewport=FNAC_SCREENSHOT_VIEWPORT,
                         device_scale_factor=1,
                         locale="fr-FR",
                         timezone_id="Europe/Paris",

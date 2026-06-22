@@ -450,8 +450,9 @@ def _prepare_drission_for_capture(driver):
 
 def _prepare_playwright_for_capture(page):
     """Normalize Playwright viewport before taking evidence screenshots."""
+    viewport = getattr(page, '_null_screenshot_viewport_size', None) or {'width': CAPTURE_WIDTH, 'height': CAPTURE_HEIGHT}
     try:
-        page.set_viewport_size({'width': CAPTURE_WIDTH, 'height': CAPTURE_HEIGHT})
+        page.set_viewport_size(viewport)
     except Exception as e:
         logger.debug(f"Playwright viewport resize failed before screenshot: {e}")
 
