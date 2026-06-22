@@ -909,6 +909,12 @@ class MediaMarktInfiniteScraper:
                     except Exception as e:
                         logger.error(f"중간 저장 실패: {e}")
 
+                if idx < len(urls_data) - 1:
+                    logger.info("10 products processed; restarting Chrome to prevent memory accumulation")
+                    if not self.restart_browser():
+                        self.is_logged_in = False
+                        logger.warning("Chrome restart after 10 products failed; next loop will try session recovery")
+
             # 다음 요청 전 대기
             if idx < len(urls_data) - 1:
                 wait_time = random.uniform(5, 10)
