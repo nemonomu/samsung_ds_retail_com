@@ -877,7 +877,9 @@ def main():
     parser.add_argument('--browser-fallback-batch-size', type=int, default=65,
                         help='Browser GraphQL fallback batch size')
     parser.add_argument('--browser-only', action='store_true',
-                        help='Skip ZenRows and use DrissionPage browser GraphQL batches only')
+                        help='Use DrissionPage browser GraphQL batches only (default behavior)')
+    parser.add_argument('--zenrows-first', action='store_true',
+                        help='Use legacy ZenRows batch fallback first, then browser fallback')
     args = parser.parse_args()
 
     # log_utils 있으면 사용, 없으면 skip
@@ -922,7 +924,9 @@ def main():
             return
         logger.info(f"✅ 크롤링 대상: {len(urls_data)}개")
 
-        if args.browser_only:
+        browser_primary = args.browser_only or not args.zenrows_first
+        if browser_primary:
+            logger.info("collection mode: browser GraphQL primary")
             items = []
             results = []
             for row in urls_data:
@@ -940,6 +944,7 @@ def main():
                 for sku, row in chunk:
                     results.append(scraper._build_result(row, sku, None, None, error='browser fallback failed'))
         else:
+            logger.info("collection mode: ZenRows first, browser fallback")
             results = scraper.collect_with_fallback(
                 urls_data,
                 fixed_batch_size=args.batch_size,
