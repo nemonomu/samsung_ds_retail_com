@@ -45,7 +45,7 @@ RETAILER_NAME_BY_TARGET_KEY = {
     'danawa': 'danawa',
     'fnac': 'fnac',
     'mediamarkt': 'mediamarkt',
-    'centrecom': 'centrecom',
+    'au': 'centrecom',
     'xkom': 'x-kom',
     'bestbuy': 'bestbuy',
 }

@@ -29,7 +29,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-FULL_NULL_FIELD_TARGETS = {'fr', 'gb', 'de', 'es', 'in', 'it', 'jp', 'nl', 'usa'}
+FULL_NULL_FIELD_TARGETS = {'fr', 'gb', 'de', 'es', 'in', 'it', 'jp', 'nl', 'usa', 'au'}
 
 # 설정 임포트
 from config import DB_CONFIG_V2 as DB_CONFIG
