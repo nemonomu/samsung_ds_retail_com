@@ -786,17 +786,6 @@ class CentrecomScraper:
 
                 results.append(result)
 
-                if (idx + 1) % 10 == 0:
-                    interim_df = pd.DataFrame(results[-10:])
-                    if self.db_engine:
-                        try:
-                            table_name = f'centrecom_price_crawl_tbl_{self.country_code}'
-                            interim_df.to_sql(table_name, self.db_engine,
-                                            if_exists='append', index=False)
-                            logger.info("중간 저장: 10개 레코드 DB 저장")
-                        except Exception as e:
-                            logger.error(f"중간 저장 실패: {e}")
-
                 if idx < len(urls_data) - 1:
                     wait_time = random.uniform(5, 10)
                     logger.info(f"{wait_time:.1f}초 대기 중...")
