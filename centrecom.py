@@ -186,63 +186,112 @@ class CentrecomScraper:
                 }
             }
 
-    def setup_driver(self):
-        """Chrome 드라이버 설정"""
-        logger.info("Chrome 드라이버 설정 중...")
+    def _build_chrome_options(self):
+        """Chrome 옵션 생성 - uc.ChromeOptions는 uc.Chrome 호출 간 재사용 불가라 매번 새로 생성"""
+        options = uc.ChromeOptions()
+
+        options.add_argument('--disable-blink-features=AutomationControlled')
+        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-setuid-sandbox')
+        # 메모리 최적화 옵션
+        options.add_argument('--disable-gpu')
+        options.add_argument('--disable-extensions')
+        options.add_argument('--disable-infobars')
+        options.add_argument('--disable-renderer-backgrounding')
+        options.add_argument('--js-flags=--max-old-space-size=512')
+
+        user_agents = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        ]
+        options.add_argument(f'--user-agent={random.choice(user_agents)}')
+
+        # 호주 영어 설정
+        options.add_experimental_option('prefs', {'intl.accept_languages': 'en-AU,en'})
+
+        return options
+
+    def _detect_chrome_version(self):
+        """설치된 Chrome 메이저 버전 감지.
+        레지스트리(BLBeacon)는 Chrome 자동 업데이트 후 옛 버전이 남을 수 있어,
+        디스크의 실제 설치 폴더 버전과 비교해 더 큰 값을 사용한다."""
+        versions = []
 
         try:
-            options = uc.ChromeOptions()
-
-            options.add_argument('--disable-blink-features=AutomationControlled')
-            options.add_argument('--disable-dev-shm-usage')
-            options.add_argument('--no-sandbox')
-            options.add_argument('--disable-setuid-sandbox')
-            # 메모리 최적화 옵션
-            options.add_argument('--disable-gpu')
-            options.add_argument('--disable-extensions')
-            options.add_argument('--disable-infobars')
-            options.add_argument('--disable-renderer-backgrounding')
-            options.add_argument('--js-flags=--max-old-space-size=512')
-
-            user_agents = [
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            ]
-            options.add_argument(f'--user-agent={random.choice(user_agents)}')
-
-            # 호주 영어 설정
-            options.add_experimental_option('prefs', {'intl.accept_languages': 'en-AU,en'})
-
-            # 설치된 Chrome 버전 감지하여 맞는 드라이버 사용
-            chrome_version = None
-            try:
-                import subprocess
-                result = subprocess.run(
-                    ['reg', 'query', 'HKEY_CURRENT_USER\\Software\\Google\\Chrome\\BLBeacon', '/v', 'version'],
-                    capture_output=True, text=True, timeout=5
-                )
-                if result.returncode == 0:
-                    for line in result.stdout.strip().split('\n'):
-                        if 'version' in line.lower():
-                            version_str = line.strip().split()[-1]
-                            chrome_version = int(version_str.split('.')[0])
-                            logger.info(f"감지된 Chrome 버전: {chrome_version}")
-                            break
-            except Exception as e:
-                logger.warning(f"Chrome 버전 감지 실패, 자동 매칭 시도: {e}")
-
-            self.driver = uc.Chrome(options=options, version_main=chrome_version)
-            self.driver.maximize_window()
-
-            self.wait = WebDriverWait(self.driver, 20)
-
-            logger.info("드라이버 설정 완료")
-            return True
-
+            import subprocess
+            result = subprocess.run(
+                ['reg', 'query', 'HKEY_CURRENT_USER\\Software\\Google\\Chrome\\BLBeacon', '/v', 'version'],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                for line in result.stdout.strip().split('\n'):
+                    if 'version' in line.lower():
+                        version_str = line.strip().split()[-1]
+                        versions.append(int(version_str.split('.')[0]))
+                        break
         except Exception as e:
-            logger.error(f"드라이버 설정 실패: {e}")
-            return False
+            logger.warning(f"레지스트리 Chrome 버전 감지 실패: {e}")
+
+        for base_dir in (r'C:\Program Files\Google\Chrome\Application',
+                         r'C:\Program Files (x86)\Google\Chrome\Application'):
+            try:
+                for name in os.listdir(base_dir):
+                    m = re.match(r'^(\d+)\.\d+\.\d+\.\d+$', name)
+                    if m and os.path.isdir(os.path.join(base_dir, name)):
+                        versions.append(int(m.group(1)))
+            except OSError:
+                continue
+
+        if not versions:
+            logger.warning("Chrome 버전 감지 실패, 자동 매칭 시도")
+            return None
+
+        chrome_version = max(versions)
+        logger.info(f"감지된 Chrome 버전: {chrome_version} (후보: {sorted(set(versions))})")
+        return chrome_version
+
+    def _kill_leftover_chrome(self):
+        """실패한 기동이 남긴 Chrome/드라이버 프로세스 정리 (다음 시도의 프로필 잠금 충돌 방지)"""
+        try:
+            import subprocess
+            for image in ('chrome.exe', 'undetected_chromedriver.exe'):
+                subprocess.run(['taskkill', '/f', '/im', image, '/t'],
+                               capture_output=True, timeout=15)
+        except Exception as e:
+            logger.debug(f"잔여 프로세스 정리 중 오류: {e}")
+
+    def setup_driver(self, max_attempts=3):
+        """Chrome 드라이버 설정 - 부팅 직후 등 시스템 부하로 Chrome 기동이 늦을 수 있어 재시도"""
+        logger.info("Chrome 드라이버 설정 중...")
+
+        chrome_version = self._detect_chrome_version()
+        last_error = None
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                options = self._build_chrome_options()
+                self.driver = uc.Chrome(options=options, version_main=chrome_version)
+                self.driver.maximize_window()
+
+                self.wait = WebDriverWait(self.driver, 20)
+
+                logger.info("드라이버 설정 완료")
+                return True
+
+            except Exception as e:
+                last_error = e
+                logger.warning(f"드라이버 기동 실패 (시도 {attempt}/{max_attempts}): {e}")
+                self._kill_leftover_chrome()
+
+                if attempt < max_attempts:
+                    wait_time = 60 * attempt
+                    logger.info(f"{wait_time}초 후 재시도...")
+                    time.sleep(wait_time)
+
+        logger.error(f"드라이버 설정 실패: {last_error}")
+        return False
 
     def wait_for_page_load(self, timeout=10):
         """페이지 로드 대기"""
