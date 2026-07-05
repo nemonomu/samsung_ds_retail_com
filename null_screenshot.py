@@ -493,6 +493,40 @@ def _capture_bytes(driver):
     raise ValueError(f"지원하지 않는 드라이버 타입: {type(driver).__name__}")
 
 
+def _is_blank_or_white_screenshot(screenshot_bytes):
+    """Detect unusable mostly-white captures before watermarking/uploading."""
+    try:
+        from PIL import Image, ImageStat
+
+        image = Image.open(io.BytesIO(screenshot_bytes)).convert('RGB')
+        if image.width < 80 or image.height < 80:
+            return True
+
+        sample = image.resize((64, 64))
+        pixels = list(sample.getdata())
+        if not pixels:
+            return True
+
+        near_white = sum(1 for r, g, b in pixels if r >= 245 and g >= 245 and b >= 245)
+        white_ratio = near_white / len(pixels)
+
+        stat = ImageStat.Stat(sample)
+        mean_brightness = sum(stat.mean) / 3
+        avg_stddev = sum(stat.stddev) / 3
+
+        is_blank = white_ratio >= 0.985 or (mean_brightness >= 248 and avg_stddev <= 3)
+        if is_blank:
+            logger.warning(
+                "Blank/white screenshot detected before upload: "
+                f"size={image.width}x{image.height}, white_ratio={white_ratio:.4f}, "
+                f"mean_brightness={mean_brightness:.1f}, avg_stddev={avg_stddev:.1f}"
+            )
+        return is_blank
+    except Exception as e:
+        logger.debug(f"Blank screenshot detection skipped: {e}")
+        return False
+
+
 def _add_watermark(screenshot_bytes, url):
     """Add DS-style URL and timestamp labels without changing image dimensions."""
     try:
@@ -666,6 +700,10 @@ def capture_and_upload(driver, retailer, retailsku, url, result_data=None):
         screenshot_bytes = _capture_bytes(driver)
         if not screenshot_bytes:
             logger.warning(f"NULL 스크린샷 캡처 결과 비어있음 (url={url})")
+            return None
+
+        if _is_blank_or_white_screenshot(screenshot_bytes):
+            logger.warning(f"NULL screenshot rejected because captured image is blank/white (retailer={retailer}, sku={retailsku}, url={url})")
             return None
 
         # 워터마크: URL 좌상단, KST 시각 우하단
