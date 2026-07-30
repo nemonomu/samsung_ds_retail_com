@@ -302,6 +302,72 @@ class AmazonIndiaScraper:
             logger.debug(f"제외 영역 확인 중 오류: {e}")
             return False
     
+    @staticmethod
+    def get_longest_element_text(element):
+        """Return the most complete visible or DOM text for an element."""
+        texts = []
+
+        try:
+            texts.append(element.text or '')
+        except Exception:
+            pass
+
+        for attribute in ('textContent', 'innerText'):
+            try:
+                texts.append(element.get_attribute(attribute) or '')
+            except Exception:
+                pass
+
+        return max((text.strip() for text in texts), key=len, default='')
+
+    def extract_complete_price_text(self, element):
+        """Restore the full price from the selected element's a-price container."""
+        fallback_text = self.get_longest_element_text(element)
+
+        try:
+            price_containers = element.find_elements(
+                By.XPATH,
+                "ancestor-or-self::*[contains(concat(' ', normalize-space(@class), ' '), ' a-price ')][1]"
+            )
+            if not price_containers:
+                return fallback_text
+
+            price_container = price_containers[0]
+            offscreen_elements = price_container.find_elements(
+                By.XPATH,
+                ".//*[contains(concat(' ', normalize-space(@class), ' '), ' a-offscreen ')]"
+            )
+            for offscreen in offscreen_elements:
+                full_text = self.get_longest_element_text(offscreen)
+                if full_text:
+                    logger.debug(f'Full price found in the same price container: {full_text!r}')
+                    return full_text
+
+            whole_elements = price_container.find_elements(
+                By.XPATH,
+                ".//*[contains(concat(' ', normalize-space(@class), ' '), ' a-price-whole ')]"
+            )
+            fraction_elements = price_container.find_elements(
+                By.XPATH,
+                ".//*[contains(concat(' ', normalize-space(@class), ' '), ' a-price-fraction ')]"
+            )
+
+            if whole_elements and fraction_elements:
+                whole_text = self.get_longest_element_text(whole_elements[0])
+                fraction_text = self.get_longest_element_text(fraction_elements[0])
+                whole_digits = re.sub(r'[^\d]', '', whole_text)
+                fraction_digits = re.sub(r'[^\d]', '', fraction_text)
+
+                if whole_digits and re.fullmatch(r'\d{2}', fraction_digits):
+                    combined_text = f'{whole_digits}.{fraction_digits}'
+                    logger.debug(f'Whole/fraction price restored in the same container: {combined_text!r}')
+                    return combined_text
+
+        except Exception as e:
+            logger.debug(f'Failed to restore full price; using selected text: {e}')
+
+        return fallback_text
+
     def click_blue_link_and_return(self, original_url):
         """파란색 링크 클릭 후 원래 URL로 돌아가기 - 강화된 버전"""
         try:
@@ -575,11 +641,7 @@ class AmazonIndiaScraper:
                                 continue
                             
                             # 여러 방법으로 텍스트 추출
-                            text1 = element.text.strip()
-                            text2 = element.get_attribute('textContent').strip() if element.get_attribute('textContent') else ""
-                            text3 = element.get_attribute('innerText').strip() if element.get_attribute('innerText') else ""
-                            
-                            price_text = max([text1, text2, text3], key=len)
+                            price_text = self.extract_complete_price_text(element)
                             
                             if price_text:
                                 logger.info(f"        텍스트: '{price_text}'")
@@ -671,7 +733,19 @@ class AmazonIndiaScraper:
             price_text = re.sub(r'[₹\s]', '', price_text)
             
             # 콤마 제거
-            price_text = price_text.replace(',', '')
+            # Treat a final two-digit comma group as a decimal separator.
+            if '.' not in price_text and ',' in price_text:
+                comma_parts = price_text.split(',')
+                if (
+                    len(comma_parts) >= 2
+                    and len(comma_parts[-1]) == 2
+                    and all(part.isdigit() for part in comma_parts)
+                ):
+                    price_text = ''.join(comma_parts[:-1]) + '.' + comma_parts[-1]
+                else:
+                    price_text = ''.join(comma_parts)
+            else:
+                price_text = price_text.replace(',', '')
             
             # 숫자만 추출
             match = re.search(r'(\d+\.?\d*)', price_text)
