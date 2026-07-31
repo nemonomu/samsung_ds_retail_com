@@ -529,135 +529,234 @@ class AmazonScraper:
             logger.debug(f"가격 파싱 오류: {price_text} - {e}")
             
         return None
+
+    @staticmethod
+    def get_longest_element_text(element):
+        """Return the most complete visible or DOM text for an element."""
+        texts = []
+
+        try:
+            texts.append(element.text or '')
+        except Exception:
+            pass
+
+        for attribute in ('textContent', 'innerText'):
+            try:
+                texts.append(element.get_attribute(attribute) or '')
+            except Exception:
+                pass
+
+        return max((text.strip() for text in texts), key=len, default='')
+
+    @staticmethod
+    def get_nearest_price_container(element):
+        """Return the nearest a-price container for the selected element."""
+        try:
+            containers = element.find_elements(
+                By.XPATH,
+                "ancestor-or-self::*[contains(concat(' ', normalize-space(@class), ' '), ' a-price ')][1]"
+            )
+            return containers[0] if containers else None
+        except Exception:
+            return None
+
+    def is_main_price_element(self, element):
+        """Allow prices only from the main product purchase area."""
+        trusted_ids = {
+            'coreprice_feature_div',
+            'corepricedisplay_desktop_feature_div',
+            'used_buybox_desktop',
+            'usedbuybox',
+            'usedbuysection',
+            'newaccordionrow',
+            'usedaccordionrow',
+            'qualifiedbuybox',
+            'price_inside_buybox',
+            'newbuyboxprice',
+            'tp_price_block_total_price_ww',
+        }
+        excluded_keywords = (
+            'similarities', 'sp_detail', 'comparison', 'carousel',
+            'similar', 'recommend', 'related', 'sponsored',
+            'also-bought', 'frequently-bought', 'customers-who',
+            'ad-feedback', 'adholder', 'rhf', 'reviewsmedley'
+        )
+
+        current = element
+        trusted_area_found = False
+        price_to_pay_found = False
+
+        for _ in range(25):
+            try:
+                element_id = (current.get_attribute('id') or '').strip().lower()
+                element_class = (current.get_attribute('class') or '').strip()
+                searchable = f'{element_id} {element_class.lower()}'
+
+                if any(keyword in searchable for keyword in excluded_keywords):
+                    return False
+
+                if 'priceToPay' in element_class.split():
+                    price_to_pay_found = True
+
+                if element_id in trusted_ids or element_id.startswith('priceblock_'):
+                    trusted_area_found = True
+
+                if element_id == 'centercol':
+                    return trusted_area_found or price_to_pay_found
+
+                current = current.find_element(By.XPATH, '..')
+            except Exception:
+                break
+
+        return trusted_area_found
+
+    def get_price_text_candidates(self, element):
+        """Build complete price candidates from one a-price container."""
+        fallback_text = self.get_longest_element_text(element)
+        price_container = self.get_nearest_price_container(element)
+
+        if price_container is None:
+            return [fallback_text] if fallback_text else []
+
+        candidates = []
+
+        def add_candidate(text):
+            text = text.strip() if text else ''
+            if text and text not in candidates:
+                candidates.append(text)
+
+        try:
+            offscreen_elements = price_container.find_elements(
+                By.XPATH,
+                ".//*[contains(concat(' ', normalize-space(@class), ' '), ' a-offscreen ')]"
+            )
+            for offscreen in offscreen_elements:
+                add_candidate(self.get_longest_element_text(offscreen))
+
+            whole_elements = price_container.find_elements(
+                By.XPATH,
+                ".//*[contains(concat(' ', normalize-space(@class), ' '), ' a-price-whole ')]"
+            )
+            fraction_elements = price_container.find_elements(
+                By.XPATH,
+                ".//*[contains(concat(' ', normalize-space(@class), ' '), ' a-price-fraction ')]"
+            )
+
+            if whole_elements and fraction_elements:
+                whole_text = self.get_longest_element_text(whole_elements[0])
+                fraction_text = self.get_longest_element_text(fraction_elements[0])
+                whole_digits = re.sub(r'[^\d]', '', whole_text)
+                fraction_digits = re.sub(r'[^\d]', '', fraction_text)
+
+                if whole_digits and re.fullmatch(r'\d{2}', fraction_digits):
+                    add_candidate(f'{whole_digits}.{fraction_digits}')
+            elif whole_elements and not fraction_elements:
+                whole_text = self.get_longest_element_text(whole_elements[0])
+                whole_digits = re.sub(r'[^\d]', '', whole_text)
+                add_candidate(whole_digits)
+            elif not fraction_elements:
+                add_candidate(fallback_text)
+
+        except Exception as e:
+            logger.debug(f'Failed to restore the same-container price: {e}')
+
+        return candidates
+
+    def extract_price_from_element(self, element, country_code):
+        """Parse a complete price from one main-product price element."""
+        price_container = self.get_nearest_price_container(element) or element
+
+        try:
+            container_classes = set(
+                (price_container.get_attribute('class') or '').split()
+            )
+            if (
+                'a-text-price' in container_classes
+                or 'apex-basisprice-value' in container_classes
+                or price_container.get_attribute('data-a-strike') == 'true'
+            ):
+                return None
+
+            if not price_container.is_displayed():
+                return None
+        except Exception:
+            return None
+
+        for price_text in self.get_price_text_candidates(element):
+            price = self.parse_price_by_country(price_text, country_code)
+            if price:
+                logger.info(f"Price extracted: {price} (source: {price_text})")
+                return price
+
+        return None
     
     def extract_price(self, country_code):
         """가격 추출 - 소수점까지 완벽 추출"""
         logger.info(f"가격 추출 시작 - 국가: {country_code}")
-        
-        # 1단계: a-offscreen 우선 시도
-        logger.info("1단계: a-offscreen 요소에서 완전한 가격 추출 시도")
-        offscreen_selectors = [
-            "//*[@id='corePrice_feature_div']//span[@class='a-offscreen']",
-            "//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-offscreen']", 
-            ".a-price .a-offscreen",
-            "//span[@class='a-price']//span[@class='a-offscreen']"
+
+        primary_price_selectors = [
+            "#corePriceDisplay_desktop_feature_div span.a-price.priceToPay",
+            "#corePrice_feature_div span.a-price.priceToPay",
+            "#corePriceDisplay_desktop_feature_div span.a-price:not(.a-text-price)",
+            "#corePrice_feature_div span.a-price:not(.a-text-price)",
+            "#apex_desktop span.a-price.priceToPay",
+            "#used_buybox_desktop .offer-price",
+            "#usedBuySection .offer-price",
+            "#newBuySection .offer-price",
+            "#priceblock_ourprice",
+            "#priceblock_dealprice",
+            "#priceblock_saleprice",
+            "#price_inside_buybox",
+            "#newBuyBoxPrice",
         ]
-        
-        for selector in offscreen_selectors:
+        seen_element_ids = set()
+
+        logger.info("1단계: 메인 상품 가격 컨테이너 시도")
+        for selector in primary_price_selectors:
             try:
-                logger.info(f"시도: {selector}")
-                if selector.startswith('//'):
-                    elements = self.driver.find_elements(By.XPATH, selector)
-                else:
-                    elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                
+                elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
                 for element in elements:
-                    if element.is_displayed():
-                        text_methods = [
-                            element.get_attribute('textContent'),
-                            element.get_attribute('innerText'),
-                            element.text
-                        ]
-                        
-                        for text in text_methods:
-                            if text and text.strip():
-                                price_text = text.strip()
-                                logger.info(f"발견된 텍스트: {price_text}")
-                                
-                                price = self.parse_price_by_country(price_text, country_code)
-                                if price:
-                                    logger.info(f"a-offscreen에서 완전한 가격 추출 성공: {price}")
-                                    return price
-                                    
+                    element_id = getattr(element, 'id', None) or id(element)
+                    if element_id in seen_element_ids:
+                        continue
+                    seen_element_ids.add(element_id)
+
+                    price = self.extract_price_from_element(element, country_code)
+                    if price:
+                        return price
             except Exception as e:
-                logger.debug(f"오류: {e}")
-        
-        # 2단계: whole + fraction 조합 시도
-        logger.info("2단계: whole + fraction 조합으로 가격 구성")
-        
-        combination_attempts = [
-            {
-                'whole': "//*[@id='corePrice_feature_div']//span[@class='a-price-whole']",
-                'fraction': "//*[@id='corePrice_feature_div']/div/div/div/div/span[1]/span[2]"
-            },
-            {
-                'whole': "//*[@id='corePriceDisplay_desktop_feature_div']//span[@class='a-price-whole']",
-                'fraction': "//*[@id='corePriceDisplay_desktop_feature_div']/div[1]/span[3]/span[2]"
-            },
-            {
-                'whole': "//*[@id='corePrice_feature_div']//span[@class='a-price-whole']",
-                'fraction': "//*[@id='corePrice_feature_div']//span[@class='a-price-fraction']"
-            },
-            {
-                'whole': "//span[@class='a-price-whole']",
-                'fraction': "//span[@class='a-price-fraction']"
-            }
-        ]
-        
-        for i, combo in enumerate(combination_attempts, 1):
-            try:
-                logger.info(f"조합 시도 {i}:")
-                logger.info(f"정수부: {combo['whole']}")
-                logger.info(f"소수부: {combo['fraction']}")
-                
-                whole_elem = self.driver.find_element(By.XPATH, combo['whole'])
-                fraction_elem = self.driver.find_element(By.XPATH, combo['fraction'])
-                
-                if whole_elem and fraction_elem and whole_elem.is_displayed() and fraction_elem.is_displayed():
-                    whole_text = whole_elem.text.strip()
-                    fraction_text = fraction_elem.text.strip()
-                    
-                    logger.info(f"정수부 텍스트: {whole_text}")
-                    logger.info(f"소수부 텍스트: {fraction_text}")
-                    
-                    if whole_text and fraction_text:
-                        fraction_clean = re.sub(r'[^\d]', '', fraction_text)
-                        if fraction_clean:
-                            combined_price = f"{whole_text}.{fraction_clean}"
-                            logger.info(f"조합된 가격: {combined_price}")
-                            
-                            price = self.parse_price_by_country(combined_price, country_code)
-                            if price:
-                                logger.info(f"조합 가격 추출 성공: {price}")
-                                return price
-                                
-            except Exception as e:
-                logger.debug(f"조합 {i} 오류: {e}")
-        
-        # 3단계: 개별 선택자로 시도
-        logger.info("3단계: 개별 가격 선택자 시도")
+                logger.debug(f"메인 가격 선택자 오류 ({selector}): {e}")
+
+        # DB selectors remain supported, but only inside trusted product-price areas.
+        logger.info("2단계: DB 가격 선택자 시도")
         price_selectors = self.selectors[country_code].get('price', [])
-        
+
         for idx, selector in enumerate(price_selectors, 1):
             try:
                 logger.info(f"[{idx}/{len(price_selectors)}] 시도: {selector}")
-                
-                if selector.startswith('//'):
+
+                if selector.startswith('//') or selector.startswith('('):
                     elements = self.driver.find_elements(By.XPATH, selector)
                 else:
                     elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                
+
                 for element in elements:
-                    if element.is_displayed():
-                        text_methods = [
-                            element.get_attribute('textContent'),
-                            element.get_attribute('innerText'),
-                            element.text
-                        ]
-                        
-                        for text in text_methods:
-                            if text and text.strip():
-                                price_text = text.strip()
-                                logger.info(f"텍스트: {price_text}")
-                                
-                                price = self.parse_price_by_country(price_text, country_code)
-                                if price:
-                                    logger.info(f"개별 선택자 가격 추출 성공: {price}")
-                                    return price
-                                    
+                    element_id = getattr(element, 'id', None) or id(element)
+                    if element_id in seen_element_ids:
+                        continue
+                    seen_element_ids.add(element_id)
+
+                    if not self.is_main_price_element(element):
+                        logger.debug("메인 상품 영역 밖의 가격 요소 제외")
+                        continue
+
+                    price = self.extract_price_from_element(element, country_code)
+                    if price:
+                        return price
+
             except Exception as e:
                 logger.debug(f"선택자 오류: {e}")
-        
+
         logger.error("모든 방법으로 가격 추출 실패")
         return None
     
