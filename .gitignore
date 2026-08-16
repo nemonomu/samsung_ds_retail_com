@@ -84,3 +84,5 @@ archives/
 # Test files
 test_*.py
 *_test.py
+!tests/
+!tests/test_*.py

@@ -1363,13 +1363,26 @@ def main():
     setup_log('in_amazon')
 
     test_mode = os.getenv('TEST_MODE', 'false').lower() == 'true'
-    max_items = int(os.getenv('MAX_ITEMS', '0')) or None
+    max_items_raw = os.getenv('MAX_ITEMS', '').strip()
+    max_items = None
+    if test_mode and max_items_raw:
+        try:
+            parsed_max_items = int(max_items_raw)
+            if parsed_max_items < 0:
+                logger.error("TEST_MODE의 MAX_ITEMS는 0 이상이어야 합니다.")
+                return
+            max_items = parsed_max_items if parsed_max_items > 0 else None
+        except ValueError:
+            logger.error("TEST_MODE의 MAX_ITEMS는 양의 정수여야 합니다.")
+            return
 
     print(f"\n{'='*80}")
     print("🇮🇳 Amazon India 가격 추출 시스템 v2.0 (완전 강화 버전)")
     print(f"{'='*80}")
     print("📌 국가: India")
     print(f"📌 모드: {'테스트' if test_mode else '실제'}")
+    if max_items_raw and not test_mode:
+        print("📌 MAX_ITEMS: 운영 모드에서는 무시하고 tracking list 전체를 처리합니다.")
     print("📌 강화 기능:")
     print("   - 파란색 링크 우회 시스템")
     print("   - 추천상품/관련상품 필터링")
@@ -1391,19 +1404,27 @@ def main():
     # 테스트 모드
     if test_mode:
         logger.info("🧪 테스트 모드 실행...")
-        test_data = [{
-            'url': 'https://www.amazon.in/dp/B0CTRXBKHP',
-            'brand': 'Crucial',
-            'item': 'T705 1TB',
-            'retailerid': 'TEST001',
-            'retailersku': 'TEST001',
-            'channel': 'Online',
-            'seg_lv1': 'SSD',
-            'seg_lv2': 'Consumer',
-            'seg_lv3': 'NVMe',
-            'capacity': '1TB',
-            'form_factor': 'M.2'
-        }]
+        if max_items:
+            logger.info(f"🧪 active tracking list에서 최대 {max_items}개로 테스트")
+            test_data = scraper.get_crawl_targets(limit=max_items)
+            if not test_data:
+                logger.warning("테스트 대상이 없습니다.")
+                return
+        else:
+            # MAX_ITEMS를 지정하지 않은 기존 테스트 동작은 고정 URL 1건을 유지한다.
+            test_data = [{
+                'url': 'https://www.amazon.in/dp/B0CTRXBKHP',
+                'brand': 'Crucial',
+                'item': 'T705 1TB',
+                'retailerid': 'TEST001',
+                'retailersku': 'TEST001',
+                'channel': 'Online',
+                'seg_lv1': 'SSD',
+                'seg_lv2': 'Consumer',
+                'seg_lv3': 'NVMe',
+                'capacity': '1TB',
+                'form_factor': 'M.2'
+            }]
         
         results_df = scraper.scrape_urls(test_data)
         if results_df is not None and not results_df.empty:
@@ -1413,7 +1434,7 @@ def main():
     
     # 실제 크롤링
     logger.info("📊 인도 전체 크롤링 시작")
-    urls_data = scraper.get_crawl_targets(limit=max_items)
+    urls_data = scraper.get_crawl_targets()
     
     if not urls_data:
         logger.warning("크롤링 대상이 없습니다.")
@@ -1422,7 +1443,7 @@ def main():
     
     logger.info(f"✅ 크롤링 대상: {len(urls_data)}개")
     
-    results_df = scraper.scrape_urls(urls_data, max_items)
+    results_df = scraper.scrape_urls(urls_data)
     
     if results_df is None or results_df.empty:
         logger.error("크롤링 결과가 없습니다.")
@@ -1456,7 +1477,7 @@ if __name__ == "__main__":
     print("pip install undetected-chromedriver selenium pandas pymysql sqlalchemy paramiko openpyxl")
     print("\n⚠️ 환경변수 설정:")
     print("export TEST_MODE=false")
-    print("export MAX_ITEMS=10")
+    print("export MAX_ITEMS=10  # TEST_MODE=true일 때만 tracking list 제한")
     print()
     
     main()

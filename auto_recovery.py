@@ -139,7 +139,16 @@ def auto_recovery_run(
     logger.info(f"\n--- 자동 복구 시작 ---")
 
     # 누락 URL 조회 (BETWEEN 방식)
-    missing_urls = _get_missing_urls_between(manager, target_key, session_start, session_end)
+    missing_urls = _get_missing_urls_between(
+        manager, target_key, session_start, session_end
+    )
+    if target_key == 'in' and missing_urls is None:
+        logger.error("누락 URL 조회 실패 → 불완전 파일 업로드를 중단합니다.")
+        monitor_and_alert(
+            config.get('alert_code', target_key), target_count, results_df,
+            error_message="auto_recovery 누락 URL 조회 실패", error_logs=error_logs
+        )
+        return
 
     # title NULL 레코드 조회 (BETWEEN 방식)
     null_records = _get_null_records_between(manager, target_key, session_start, session_end)
@@ -147,7 +156,16 @@ def auto_recovery_run(
     has_missing = missing_urls is not None and not missing_urls.empty
     has_null = null_records is not None and not null_records.empty
 
+    if target_key == 'in' and len(missing_urls) != max(missing_count, 0):
+        logger.error(
+            f"India 누락 범위 불일치: 결과 기준 {missing_count}개, "
+            f"DB/tracking 기준 {len(missing_urls)}개 - 복구/업로드 중단"
+        )
+        return
+
     if has_missing:
+        if target_key == 'in':
+            missing_urls = missing_urls.drop_duplicates(subset=['url'], keep='last')
         logger.info(f"누락 URL: {len(missing_urls)}개")
     if has_null:
         logger.info(f"NULL 복구 대상: {len(null_records)}개")
@@ -161,6 +179,16 @@ def auto_recovery_run(
                          local_file_prefix=local_file_prefix,
                          audit_context=audit_context)
         return
+
+    # 모든 누락 URL을 먼저 placeholder로 준비한다. 재수집 중단/예외가 발생해도
+    # missing_results에는 tracking 대상별 행이 정확히 하나씩 남는다.
+    missing_results_by_url = {}
+    if target_key == 'in' and has_missing:
+        for _, row in missing_urls.iterrows():
+            url = str(row['url'])
+            missing_results_by_url[url] = manager.build_missing_record(
+                target_key, row, raw_result=None, session_start=session_start
+            )
 
     # 스크래퍼 로드
     if scraper_factory is not None:
@@ -185,7 +213,10 @@ def auto_recovery_run(
 
     # recovery 크롤링 (메모리에만 보관, DB 미반영)
     recovered_results = {}   # url → result dict (NULL 복구)
-    missing_results = []     # result dict 리스트 (누락 URL)
+    missing_results = (
+        list(missing_results_by_url.values()) if target_key == 'in' else []
+    )
+    missing_recovered_count = 0
     MAX_CONSECUTIVE_FAILS = 5  # 연속 실패 N회 시 즉시 중단
 
     try:
@@ -249,18 +280,37 @@ def auto_recovery_run(
             for i, (idx, row) in enumerate(missing_urls.iterrows()):
                 url = row['url']
                 logger.info(f"[누락 {i+1}/{len(missing_urls)}] 크롤링: {url[:60]}...")
-                result = manager.recrawl_url(scraper, url, row, target_key)
-                if result and (result.get('title') is not None or result.get('retailprice') is not None):
-                    result['producturl'] = url
-                    missing_results.append(result)
+                raw_result = manager.recrawl_url(scraper, url, row, target_key)
+                if target_key == 'in':
+                    if manager.has_recovered_content(raw_result):
+                        result = manager.build_missing_record(
+                            target_key, row, raw_result=raw_result,
+                            session_start=session_start
+                        )
+                        missing_results_by_url[str(url)] = result
+                        missing_recovered_count += 1
+                        consecutive_fails = 0
+                        logger.info(f"  -> 성공: title={str(result.get('title', ''))[:30]}, price={result.get('retailprice')}")
+                    else:
+                        consecutive_fails += 1
+                        logger.warning(f"  -> 실패, NULL placeholder 유지 (연속 {consecutive_fails}회)")
+                elif raw_result and (
+                        raw_result.get('title') is not None
+                        or raw_result.get('retailprice') is not None):
+                    raw_result['producturl'] = url
+                    missing_results.append(raw_result)
                     consecutive_fails = 0
-                    logger.info(f"  -> 성공: title={str(result.get('title', ''))[:30]}, price={result.get('retailprice')}")
+                    logger.info(f"  -> 성공: title={str(raw_result.get('title', ''))[:30]}, price={raw_result.get('retailprice')}")
                 else:
                     consecutive_fails += 1
                     logger.warning(f"  -> 실패 (연속 {consecutive_fails}회)")
-                    if consecutive_fails >= MAX_CONSECUTIVE_FAILS:
-                        logger.error(f"연속 {MAX_CONSECUTIVE_FAILS}회 실패 → recovery 중단")
-                        break
+
+                if consecutive_fails >= MAX_CONSECUTIVE_FAILS:
+                    logger.error(f"연속 {MAX_CONSECUTIVE_FAILS}회 실패 → recovery 중단")
+                    break
+
+        if target_key == 'in':
+            missing_results = list(missing_results_by_url.values())
 
     except Exception as e:
         logger.error(f"복구 크롤링 중 오류: {e}")
@@ -284,8 +334,16 @@ def auto_recovery_run(
         target_key, results_df_lower, recovered_results, missing_results
     )
 
-    recovery_success = len(recovered_results) + len(missing_results)
-    total_collected = crawled_count + len(missing_results)
+    recovery_success = len(recovered_results) + (
+        missing_recovered_count if target_key == 'in' else len(missing_results)
+    )
+    if target_key == 'in':
+        merged_preview = _merge_india_recovery_results(
+            results_df_lower, recovered_results, missing_results
+        )
+        total_collected = len(merged_preview)
+    else:
+        total_collected = crawled_count + len(missing_results)
     collection_rate = (total_collected / target_count * 100) if target_count > 0 else 0
 
     logger.info(f"\n복구 결과: 성공 {recovery_success}개")
@@ -315,14 +373,26 @@ def auto_recovery_run(
         # DB UPDATE (NULL 복구)
         for url, result in recovered_results.items():
             original_kr = null_records[null_records['producturl'] == url]['kr_crawl_datetime'].iloc[0]
-            manager.update_db_record(target_key, original_kr, result)
+            if not manager.update_db_record(target_key, original_kr, result) and target_key == 'in':
+                logger.error(f"DB UPDATE 실패, 기존 행 유지: {url}")
 
-        # DB INSERT (누락 URL)
-        for result in missing_results:
-            manager.insert_missing_record(target_key, result)
-
-        # 1차 결과에 복구 결과 merge
-        merged_df = _merge_recovery_results(results_df_lower, recovered_results, missing_results)
+        if target_key == 'in':
+            # India 누락 URL은 성공행과 NULL placeholder를 한 번에 저장한다.
+            if not manager.insert_missing_records(target_key, missing_results):
+                logger.error("누락행 DB batch INSERT 실패 → 파일 업로드 중단")
+                return
+            merged_df = _get_session_records_between(
+                manager, target_key, session_start, session_end
+            )
+            if merged_df is None:
+                logger.error("복구 반영 후 DB 재조회 실패 → 파일 업로드 중단")
+                return
+        else:
+            for result in missing_results:
+                manager.insert_missing_record(target_key, result)
+            merged_df = _merge_recovery_results(
+                results_df_lower, recovered_results, missing_results
+            )
 
         _upload_and_alert(manager, config, target_key, merged_df, target_count,
                          session_start, error_logs=error_logs,
@@ -359,6 +429,8 @@ def _get_missing_urls_between(manager, target_key, session_start, session_end):
                                 params={'country': tracking_country, 'mall_name': tracking_mall_name})
         if master_df.empty:
             return pd.DataFrame()
+        if target_key == 'in':
+            master_df = master_df.drop_duplicates(subset=['url'], keep='last')
 
         # 세션 내 크롤링된 URL
         session_query = f"""
@@ -378,7 +450,7 @@ def _get_missing_urls_between(manager, target_key, session_start, session_end):
 
     except Exception as e:
         logger.error(f"누락 URL 조회 실패: {e}")
-        return pd.DataFrame()
+        return None if target_key == 'in' else pd.DataFrame()
 
 
 def _get_null_records_between(manager, target_key, session_start, session_end):
@@ -405,6 +477,26 @@ def _get_null_records_between(manager, target_key, session_start, session_end):
 
     except Exception as e:
         logger.error(f"NULL 레코드 조회 실패: {e}")
+        return None
+
+
+def _get_session_records_between(manager, target_key, session_start, session_end):
+    """세션 범위의 원시 DB 행을 중복 제거 없이 조회한다."""
+    config = TARGET_CONFIG[target_key]
+    table = config['table']
+
+    try:
+        query = f"""
+        SELECT *
+        FROM {table}
+        WHERE kr_crawl_datetime BETWEEN :start AND :end
+        """
+        return pd.read_sql(
+            text(query), manager.db_engine,
+            params={'start': session_start, 'end': session_end}
+        )
+    except Exception as e:
+        logger.error(f"세션 원시 레코드 조회 실패: {e}")
         return None
 
 
@@ -467,6 +559,42 @@ def _merge_recovery_results(first_crawl_df, recovered_results, missing_results):
     return merged
 
 
+def _merge_india_recovery_results(first_crawl_df, recovered_results,
+                                  missing_results):
+    """India 복구 결과를 URL 기준으로 중복 없이 merge한다."""
+    merged = first_crawl_df.copy()
+    merged.columns = merged.columns.str.lower()
+
+    # NULL 복구 결과 merge
+    for url, result in recovered_results.items():
+        mask = merged['producturl'] == url
+        if mask.any():
+            for col in ['title', 'imageurl', 'retailprice', 'ships_from', 'sold_by']:
+                if col in result and col in merged.columns:
+                    merged.loc[mask, col] = result.get(col)
+
+    # 누락 URL 결과는 URL 기준 upsert한다. DB만 누락되고 1차 메모리에는 이미
+    # 존재하는 경우에도 중복행이 생기지 않는다.
+    for result in missing_results or []:
+        normalized = {str(key).lower(): value for key, value in result.items()}
+        url = normalized.get('producturl')
+        mask = merged['producturl'] == url
+        if mask.any():
+            for col, value in normalized.items():
+                if col in merged.columns and col not in {
+                    'producturl', 'crawl_datetime', 'crawl_strdatetime',
+                    'kr_crawl_datetime', 'kr_crawl_strdatetime'
+                } and value is not None and not pd.isna(value):
+                    merged.loc[mask, col] = value
+        else:
+            merged = pd.concat([merged, pd.DataFrame([normalized])], ignore_index=True)
+
+    if 'producturl' in merged.columns:
+        merged = merged.drop_duplicates(subset=['producturl'], keep='last').reset_index(drop=True)
+
+    return merged
+
+
 def _save_local_final_results(results_df, output_dir, file_prefix):
     if not output_dir:
         return None
@@ -480,6 +608,30 @@ def _save_local_final_results(results_df, output_dir, file_prefix):
     return output_path
 
 
+def _validate_result_invariant(results_df, target_count):
+    """행 수와 product URL 수가 tracking 대상 수와 일치하는지 확인한다."""
+    if results_df is None or results_df.empty:
+        return False, "결과 DataFrame이 비어 있음"
+
+    df = results_df.copy()
+    df.columns = df.columns.str.lower()
+    if 'producturl' not in df.columns:
+        return False, "producturl 컬럼 없음"
+
+    valid_urls = df['producturl'].dropna().astype(str)
+    valid_urls = valid_urls[valid_urls.str.strip() != '']
+    unique_count = valid_urls.nunique()
+    duplicate_count = int(valid_urls.duplicated().sum())
+
+    if (len(df) != target_count or len(valid_urls) != target_count
+            or unique_count != target_count or duplicate_count > 0):
+        return False, (
+            f"rows={len(df)}, valid_urls={len(valid_urls)}, unique_urls={unique_count}, "
+            f"duplicates={duplicate_count}, expected={target_count}"
+        )
+    return True, ""
+
+
 def _upload_and_alert(manager, config, target_key, results_df, target_count,
                       session_start, error_logs=None,
                       recovery_prefix='', recovery_suffix='',
@@ -488,6 +640,56 @@ def _upload_and_alert(manager, config, target_key, results_df, target_count,
                       audit_context=None):
     """파일서버 업로드 + 메일 알림"""
     alert_code = config.get('alert_code', target_key)
+
+    # India 파일은 DB에 실제 저장된 세션을 다시 읽어 76개 tracking과 대조한다.
+    if target_key == 'in':
+        result_columns = {str(column).lower(): column for column in results_df.columns}
+        kr_column = result_columns.get('kr_crawl_datetime')
+        session_end = (
+            str(results_df[kr_column].max())
+            if kr_column and not results_df.empty
+            else session_start
+        )
+        db_results = _get_session_records_between(
+            manager, target_key, session_start, session_end
+        )
+        if db_results is None:
+            invariant_error = "최종 DB 세션 재조회 실패"
+        else:
+            results_df = db_results
+            invariant_ok, invariant_error = _validate_result_invariant(
+                results_df, target_count
+            )
+            if invariant_ok:
+                tracking_records = manager.get_tracking_records(target_key)
+                if tracking_records is None:
+                    invariant_ok = False
+                    invariant_error = "active tracking 대상 조회 실패"
+                else:
+                    expected_urls = set(
+                        tracking_records['url'].dropna().astype(str)
+                    )
+                    actual_urls = set(
+                        results_df['producturl'].dropna().astype(str)
+                    )
+                    if (len(expected_urls) != target_count
+                            or actual_urls != expected_urls):
+                        invariant_ok = False
+                        invariant_error = (
+                            f"tracking URL 불일치: tracking={len(expected_urls)}, "
+                            f"actual={len(actual_urls)}, expected={target_count}"
+                        )
+
+        if db_results is None or not invariant_ok:
+            error_message = f"파일 업로드 행 불변식 실패: {invariant_error}"
+            logger.error(error_message)
+            monitor_and_alert(
+                alert_code, target_count, results_df,
+                error_message=error_message,
+                error_logs=error_logs,
+                out_of_stock_urls=out_of_stock_urls
+            )
+            return False
 
     # 세션 시작 시간을 현지시간으로 변환 (폴더명/파일명 기준)
     korea_tz = pytz.timezone('Asia/Seoul')
@@ -572,3 +774,5 @@ def _upload_and_alert(manager, config, target_key, results_df, target_count,
         out_of_stock_urls=out_of_stock_urls,
         audit_errors=audit_errors
     )
+    if target_key == 'in':
+        return upload_success
