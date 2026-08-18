@@ -50,6 +50,7 @@ ZENROWS_API_URL = "https://api.zenrows.com/v1/"
 
 # Batch fallback 시퀀스
 DEFAULT_BATCH_SIZES = [65, 33, 17, 9]
+ZENROWS_RETRY_BATCH_SIZES = [17, 9, 3, 1]
 
 # GraphQL fragment.
 # 케이스별 시그널:
@@ -405,6 +406,47 @@ class BestBuyGraphQLScraper:
                 self.error_logs.append(f"[GraphQL all failed] SKU: {sku} | URL: {row.get('url')}")
 
         return results
+
+    def _collect_zenrows_retry(self, failed_chunks, batch_sizes=None, fixed_batch_size=None):
+        """Retry failed browser chunks through ZenRows GraphQL batches."""
+        failed_chunks = [chunk for chunk in failed_chunks if chunk]
+        if not failed_chunks:
+            return [], []
+
+        if fixed_batch_size:
+            sizes = [int(fixed_batch_size)]
+            logger.info(f"ZenRows retry batch size fixed: {fixed_batch_size}")
+        else:
+            sizes = list(batch_sizes or ZENROWS_RETRY_BATCH_SIZES)
+            logger.info(f"ZenRows retry batch fallback sequence: {sizes}")
+
+        results = []
+        current_failed = failed_chunks
+        final_failed = failed_chunks
+
+        for level_idx, size in enumerate(sizes):
+            logger.info(f"\n=== ZenRows retry level {level_idx} (batch size={size}) start ===")
+            next_failed = []
+            for chunk in current_failed:
+                for sub_chunk in chunked(chunk, size):
+                    ok, parsed_results = self._try_chunk(sub_chunk)
+                    if ok:
+                        results.extend(parsed_results)
+                    else:
+                        next_failed.append(sub_chunk)
+
+            if not next_failed:
+                logger.info(f"ZenRows retry level {level_idx}: all chunks succeeded")
+                return results, []
+
+            logger.warning(
+                f"ZenRows retry level {level_idx}: failed chunks={len(next_failed)} "
+                f"failed SKUs={sum(len(c) for c in next_failed)}"
+            )
+            current_failed = next_failed
+            final_failed = next_failed
+
+        return results, final_failed
 
 
     def _setup_browser_fallback_page(self):
@@ -880,6 +922,8 @@ def main():
                         help='Use DrissionPage browser GraphQL batches only (default behavior)')
     parser.add_argument('--zenrows-first', action='store_true',
                         help='Use legacy ZenRows batch fallback first, then browser fallback')
+    parser.add_argument('--no-zenrows-retry', action='store_true',
+                        help='Disable ZenRows retry after browser-primary failures')
     args = parser.parse_args()
 
     # log_utils 있으면 사용, 없으면 skip
@@ -940,9 +984,18 @@ def main():
                 batch_size=args.browser_fallback_batch_size,
             )
             results.extend(fallback_results)
+            if fallback_failed and not args.no_zenrows_retry:
+                logger.info("ZenRows retry after browser GraphQL failure")
+                zenrows_results, fallback_failed = scraper._collect_zenrows_retry(
+                    fallback_failed,
+                    fixed_batch_size=args.batch_size,
+                )
+                results.extend(zenrows_results)
+            elif fallback_failed:
+                logger.info("ZenRows retry disabled after browser GraphQL failure")
             for chunk in fallback_failed:
                 for sku, row in chunk:
-                    results.append(scraper._build_result(row, sku, None, None, error='browser fallback failed'))
+                    results.append(scraper._build_result(row, sku, None, None, error='browser and ZenRows retry failed'))
         else:
             logger.info("collection mode: ZenRows first, browser fallback")
             results = scraper.collect_with_fallback(
