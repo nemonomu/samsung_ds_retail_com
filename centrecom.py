@@ -407,46 +407,20 @@ class CentrecomScraper:
     def handle_block_page_with_refresh(self, url, row_data, refresh_count):
         """
         차단 페이지 처리 - title이 수집 안되면 차단으로 인식
-        3회 새로고침 시도, 그래도 안되면 홈페이지 접속 후 첫번째 url 접속하고 현재 URL 재시도
+        최초 실패 시 홈페이지 접속 후 현재 URL 재시도
         """
-        logger.warning(f"차단 페이지 감지 - 처리 시도 {refresh_count + 1}/4")
-
-        if refresh_count < 3:
-            # 새로고침 시도 (0, 1, 2)
-            logger.info(f"새로고침 시도 {refresh_count + 1}/3")
+        logger.warning("차단 페이지 감지 - 홈페이지 접속 후 현재 URL 재시도")
+        try:
+            self.driver.get("https://www.centrecom.com.au/")
             time.sleep(random.uniform(3, 5))
-            self.driver.refresh()
-            time.sleep(random.uniform(2, 4))
             self.wait_for_page_load()
-            return False  # 재시도 필요
-        elif refresh_count == 3:
-            # 3회 실패 후 홈페이지 접속
-            logger.info("3회 새로고침 실패 - 홈페이지 접속 시도")
-            try:
-                self.driver.get("https://www.centrecom.com.au/")
-                time.sleep(random.uniform(3, 5))
-                self.wait_for_page_load()
+            logger.info("홈페이지 접속 완료 - 현재 URL 재시도 예정")
+            return False
+        except Exception as e:
+            logger.error(f"홈페이지 접속 실패: {e}")
+            return True
 
-                # 첫번째 URL 접속
-                if self.urls_data and len(self.urls_data) > 0:
-                    first_url = self.urls_data[0].get('url')
-                    logger.info(f"첫번째 URL 접속: {first_url}")
-                    self.driver.get(first_url)
-                    time.sleep(random.uniform(2, 4))
-                    self.wait_for_page_load()
-
-                # 현재 URL은 재귀 호출에서 접속하게 함
-                logger.info("홈페이지 접속 완료 - 현재 URL 재시도 예정")
-                return False  # 재시도 (extract_product_info가 현재 URL을 다시 접속)
-            except Exception as e:
-                logger.error(f"홈페이지 접속 실패: {e}")
-                return True  # 더 이상 재시도하지 않음
-        else:
-            # refresh_count > 3
-            logger.error("최대 재시도 횟수 초과")
-            return True  # 더 이상 재시도하지 않음
-
-    def extract_product_info(self, url, row_data, retry_count=0, max_retries=4):
+    def extract_product_info(self, url, row_data, retry_count=0, max_retries=4, title_retry_done=False):
         """제품 정보 추출"""
         try:
             logger.info("=" * 60)
@@ -508,21 +482,26 @@ class CentrecomScraper:
             # title이 없으면 차단 페이지로 간주
             if not result['title']:
                 logger.warning("Title 추출 실패 - 차단 페이지로 간주")
-                should_stop = self.handle_block_page_with_refresh(url, row_data, retry_count)
+                if not title_retry_done:
+                    should_stop = self.handle_block_page_with_refresh(url, row_data, retry_count)
+                    if not should_stop:
+                        return self.extract_product_info(
+                            url,
+                            row_data,
+                            retry_count,
+                            max_retries,
+                            title_retry_done=True
+                        )
 
-                if not should_stop and retry_count < max_retries:
-                    # 재시도
-                    return self.extract_product_info(url, row_data, retry_count + 1, max_retries)
-                else:
-                    # 실패 - 빈 결과 반환
-                    logger.error("차단 페이지 해결 실패")
-                    capture_centrecom_null_screenshot(
-                        self.driver,
-                        row_data.get('retailersku', ''),
-                        url,
-                        result
-                    )
-                    return result
+                # 실패 - 빈 결과 반환
+                logger.error("차단 페이지 해결 실패")
+                capture_centrecom_null_screenshot(
+                    self.driver,
+                    row_data.get('retailersku', ''),
+                    url,
+                    result
+                )
+                return result
 
             # 가격 추출
             logger.info("가격 추출 시도")
@@ -571,7 +550,13 @@ class CentrecomScraper:
                     self.driver.quit()
                     self.setup_driver()
 
-                return self.extract_product_info(url, row_data, retry_count + 1, max_retries)
+                return self.extract_product_info(
+                    url,
+                    row_data,
+                    retry_count + 1,
+                    max_retries,
+                    title_retry_done=title_retry_done
+                )
 
             # V2: 타임존 분리
             now_time = datetime.now(self.korea_tz)
@@ -919,7 +904,7 @@ def main():
     print("ships_from: AU (고정)")
     print("sold_by: Centrecom (고정)")
     print("차단 감지: title 수집 실패 시")
-    print("차단 복구: 3회 새로고침 → 홈페이지 접속 → 첫 URL 재접속")
+    print("차단 복구: 홈페이지 접속 → 현재 상품 URL 1회 재시도")
     if max_items:
         print(f"최대 처리 수: {max_items}개")
     print("=" * 80)
