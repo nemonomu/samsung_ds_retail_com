@@ -39,6 +39,11 @@ from config import FILE_SERVER_CONFIG
 from alert_monitor import monitor_and_alert
 from null_screenshot import FULL_NULL_FIELDS, is_null_result, capture_and_upload
 from cookie_consent import accept_cookies
+from amazon_page_guard import (
+    AmazonProductPageError,
+    capture_product_page_snapshot,
+    wait_for_product_page,
+)
 
 class AmazonFRScraper:
     def __init__(self):
@@ -174,12 +179,10 @@ class AmazonFRScraper:
             options.add_argument('--disable-renderer-backgrounding')
             options.add_argument('--js-flags=--max-old-space-size=512')
 
-            # 프랑스 전용 User-Agent
-            user_agents = [
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            ]
-            options.add_argument(f'--user-agent={random.choice(user_agents)}')
+            # 설치된 Chrome의 기본 User-Agent를 사용한다. 실제 브라우저 버전과
+            # Client Hints가 어긋나면 Amazon이 추천 영역만 남긴 soft block PDP를
+            # 반환할 수 있으므로 오래된 UA를 강제하지 않는다.
+            logger.info("User-Agent는 설치된 Chrome 기본값 사용")
             
             # 프랑스어 언어 설정
             options.add_experimental_option('prefs', {'intl.accept_languages': 'fr-FR,fr'})
@@ -205,6 +208,14 @@ class AmazonFRScraper:
             self.driver = uc.Chrome(options=options, version_main=chrome_version)
             self.driver.maximize_window()
             self.wait = WebDriverWait(self.driver, 20)
+
+            try:
+                fingerprint = self.driver.execute_script(
+                    "return {userAgent: navigator.userAgent, webdriver: navigator.webdriver, platform: navigator.platform};"
+                )
+                logger.info(f"브라우저 지문 확인: {fingerprint}")
+            except Exception as e:
+                logger.warning(f"브라우저 지문 확인 실패: {e}")
 
             logger.info("드라이버 설정 완료")
             return True
@@ -457,50 +468,35 @@ class AmazonFRScraper:
             return False
     
     def is_page_blocked(self):
-        """페이지 차단 감지 (정상 페이지는 우선 확인)"""
+        """명시적인 차단 페이지 감지. 제목 없는 PDP shell은 이후 guard가 처리."""
         try:
-            page_title = self.driver.title.lower()
-            page_source = self.driver.page_source.lower()
-            current_url = self.driver.current_url.lower()
-            
-            # 기본 도메인 확인
-            if 'amazon' not in current_url:
-                logger.info("Amazon 도메인이 아닌 페이지")
+            current_url = self.driver.current_url or ""
+            snapshot = capture_product_page_snapshot(
+                self.driver,
+                expected_url=current_url,
+                marketplace_host="amazon.fr",
+                locale_code="fr",
+            )
+            if snapshot.kind in {"hard_block", "invalid_domain"}:
+                logger.info(f"차단 페이지 감지: {snapshot.summary()}")
                 return True
-            
-            # 먼저 정상 제품 페이지인지 확인 (우선순위)
-            try:
-                normal_page_indicators = [
-                    "//span[@id='productTitle']",
-                    "//div[@id='feature-bullets']", 
-                    "//div[@id='centerCol']",
-                    "//div[@id='dp-container']",
-                    "//div[@id='apex_desktop']"
-                ]
-                
-                for selector in normal_page_indicators:
-                    try:
-                        element = self.driver.find_element(By.XPATH, selector)
-                        if element and element.is_displayed():
-                            logger.debug("정상 제품 페이지 요소 발견 - 정상 페이지로 판단")
-                            return False  # 정상 페이지
-                    except:
-                        continue
-                        
-            except Exception as e:
-                logger.debug(f"정상 페이지 확인 중 오류: {e}")
-            
-            # 정상 페이지 요소가 없을 때만 차단 페이지 확인
-            if ('503' in page_title or 'access denied' in page_title or
-                "cliquez sur le bouton ci-dessous pour continuer vos achats" in page_source):
-                logger.info("차단 페이지 감지")
-                return True
-            
-            return False  # 기본적으로 정상으로 판단
-            
+            return False
         except Exception as e:
             logger.error(f"페이지 차단 확인 중 오류: {e}")
-            return False  # 오류 시 정상으로 판단
+            return True
+
+    def restart_driver(self, reason):
+        """Soft block 세션을 폐기하고 일관된 지문의 새 브라우저를 시작."""
+        logger.warning(f"Chrome 세션 재생성: {reason}")
+        old_driver = self.driver
+        self.driver = None
+        self.wait = None
+        if old_driver:
+            try:
+                old_driver.quit()
+            except Exception as e:
+                logger.debug(f"기존 Chrome 종료 중 무시된 오류: {e}")
+        return self.setup_driver()
     
     def wait_for_page_load(self, timeout=10):
         """페이지 로드 대기"""
@@ -857,45 +853,26 @@ class AmazonFRScraper:
                     time.sleep(3)
                     self.wait_for_page_load()
                 else:
-                    raise Exception("차단 페이지 복구 실패")
+                    snapshot = capture_product_page_snapshot(
+                        self.driver,
+                        expected_url=url,
+                        marketplace_host="amazon.fr",
+                        locale_code="fr",
+                    )
+                    raise AmazonProductPageError(snapshot)
             
-            # 복구 후 현재 URL 확인
-            current_url = self.driver.current_url.lower()
-            logger.info(f"현재 페이지 URL: {current_url}")
-            
-            # 정상 Amazon 제품 페이지인지 확인
-            if 'amazon.fr' not in current_url:
-                logger.warning("Amazon 프랑스 도메인이 아닌 페이지")
-                raise Exception("Amazon 프랑스 도메인이 아닌 페이지로 이동됨")
-            
-            # 제품 페이지 요소 존재 확인으로 정상 페이지 판단
-            try:
-                basic_elements = [
-                    "//span[@id='productTitle']",
-                    "//div[@id='feature-bullets']",
-                    "//div[@id='centerCol']",
-                    "//div[@id='dp-container']"
-                ]
-                
-                page_valid = False
-                for selector in basic_elements:
-                    try:
-                        element = self.driver.find_element(By.XPATH, selector)
-                        if element:
-                            page_valid = True
-                            break
-                    except:
-                        continue
-                
-                if not page_valid:
-                    logger.warning("제품 페이지 요소를 찾을 수 없음")
-                    raise Exception("유효한 제품 페이지가 아님")
-                    
-                logger.info("정상 제품 페이지 확인됨")
-                
-            except Exception as e:
-                logger.error(f"제품 페이지 검증 실패: {e}")
-                raise Exception("제품 페이지 접근 실패")
+            snapshot = wait_for_product_page(
+                self.driver,
+                expected_url=url,
+                marketplace_host="amazon.fr",
+                locale_code="fr",
+                timeout_seconds=12,
+            )
+            logger.info(f"현재 페이지 URL: {snapshot.current_url.lower()}")
+            logger.info(f"상품 페이지 진단: {snapshot.summary()}")
+            if not snapshot.is_valid:
+                raise AmazonProductPageError(snapshot)
+            logger.info("정상 제품 페이지 확인됨 (제목/ASIN 검증 완료)")
             
             # V2: 타임존 분리
             now_time = datetime.now(self.korea_tz)
@@ -1003,11 +980,14 @@ class AmazonFRScraper:
 
         except Exception as e:
             logger.error(f"프랑스 페이지 처리 오류: {e}")
+            page_guard_error = isinstance(e, AmazonProductPageError)
             
             if retry_count < max_retries - 1:
                 wait_time = 10  # 고정 10초 대기
                 logger.info(f"{wait_time}초 후 재시도... ({retry_count + 2}/{max_retries})")
                 time.sleep(wait_time)
+                if page_guard_error and e.restart_recommended:
+                    self.restart_driver(e.snapshot.kind)
                 return self.extract_product_info(url, row_data, retry_count + 1, max_retries)
             
             # V2: 타임존 분리
@@ -1053,6 +1033,9 @@ class AmazonFRScraper:
                     capture_and_upload(self.driver, 'amazon_fr', row_data.get('retailersku', ''), url, fail_result)
             except Exception:
                 pass
+
+            if page_guard_error and e.restart_recommended:
+                self.restart_driver(e.snapshot.kind)
 
             return fail_result
 
