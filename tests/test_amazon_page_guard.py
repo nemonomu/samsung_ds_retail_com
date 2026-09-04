@@ -76,6 +76,35 @@ def test_recommendation_only_shell_is_soft_block_not_valid_pdp():
     assert snapshot.restart_recommended
 
 
+def test_amazon_com_home_content_at_requested_dp_url_is_soft_block():
+    driver = FakeDriver(
+        url="https://www.amazon.com/Samsung-Computing-Workstations/dp/B0DX2G349M",
+        title="Amazon.com. Spend less. Smile more.",
+        signals={
+            "productTitle": "",
+            "domAsin": "",
+            "hasDpContainer": False,
+            "hasCenterCol": False,
+            "hasFeatureBullets": False,
+            "hasRecommendations": False,
+            "bodyText": "Today's Deals Amazon Basics Best Sellers",
+        },
+    )
+
+    snapshot = capture_product_page_snapshot(
+        driver,
+        expected_url="https://www.amazon.com/dp/B0DX2G349M",
+        marketplace_host="amazon.com",
+        locale_code="usa",
+    )
+
+    assert not snapshot.is_valid
+    assert snapshot.kind == "soft_block_missing_title"
+    assert snapshot.expected_asin == "B0DX2G349M"
+    assert snapshot.url_asin == "B0DX2G349M"
+    assert snapshot.restart_recommended
+
+
 def test_matching_url_with_conflicting_dom_asin_is_rejected():
     driver = FakeDriver(
         url="https://www.amazon.de/dp/B087DFLF9S",

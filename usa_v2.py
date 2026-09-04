@@ -36,6 +36,11 @@ from config import FILE_SERVER_CONFIG
 from alert_monitor import monitor_and_alert
 from null_screenshot import FULL_NULL_FIELDS, is_null_result, capture_and_upload
 from cookie_consent import accept_cookies
+from amazon_page_guard import (
+    AmazonProductPageError,
+    capture_product_page_snapshot,
+    wait_for_product_page,
+)
 
 class AmazonScraper:
     def __init__(self, country_code='usa'):
@@ -153,12 +158,9 @@ class AmazonScraper:
             options.add_argument('--disable-renderer-backgrounding')
             options.add_argument('--js-flags=--max-old-space-size=512')
 
-            user_agents = [
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            ]
-            options.add_argument(f'--user-agent={random.choice(user_agents)}')
+            # 설치된 Chrome의 기본 User-Agent를 사용한다. Chrome 버전과
+            # Client Hints가 오래된 강제 UA와 어긋나면 soft block 신호가 된다.
+            logger.info("User-Agent는 설치된 Chrome 기본값 사용")
             
             language_map = {
                 'usa': 'en-US,en',
@@ -196,6 +198,14 @@ class AmazonScraper:
 
             self.wait = WebDriverWait(self.driver, 20)
 
+            try:
+                fingerprint = self.driver.execute_script(
+                    "return {userAgent: navigator.userAgent, webdriver: navigator.webdriver, platform: navigator.platform};"
+                )
+                logger.info(f"브라우저 지문 확인: {fingerprint}")
+            except Exception as e:
+                logger.warning(f"브라우저 지문 확인 실패: {e}")
+
             logger.info("드라이버 설정 완료")
             return True
             
@@ -203,7 +213,7 @@ class AmazonScraper:
             logger.error(f"드라이버 설정 실패: {e}")
             return False
     
-    def handle_captcha_or_block_page(self):
+    def handle_captcha_or_block_page(self, original_url=None):
         """차단 페이지나 캡차 처리 - 독일 Weiter shoppen 포함"""
         try:
             logger.info("차단/캡차 페이지 확인 중...")
@@ -267,6 +277,11 @@ class AmazonScraper:
                         
                         time.sleep(3)
                         logger.info("Continue 버튼 클릭 완료")
+
+                        if original_url:
+                            logger.info(f"Continue 처리 후 원래 URL로 재접속: {original_url}")
+                            self.driver.get(original_url)
+                            time.sleep(2)
                         return True
                         
                 except Exception as e:
@@ -316,6 +331,10 @@ class AmazonScraper:
                                         continue
                                 
                                 time.sleep(3)
+                                if original_url:
+                                    logger.info(f"Continue 처리 후 원래 URL로 재접속: {original_url}")
+                                    self.driver.get(original_url)
+                                    time.sleep(2)
                                 return True
                                 
                     except Exception as e:
@@ -327,10 +346,23 @@ class AmazonScraper:
             
             logger.debug("Continue/Weiter 버튼을 찾을 수 없음")
             return False
-            
+
         except Exception as e:
             logger.error(f"차단 페이지 처리 중 오류: {e}")
             return False
+
+    def restart_driver(self, reason):
+        """Soft block 세션을 폐기하고 새 브라우저를 시작."""
+        logger.warning(f"Chrome 세션 재생성: {reason}")
+        old_driver = self.driver
+        self.driver = None
+        self.wait = None
+        if old_driver:
+            try:
+                old_driver.quit()
+            except Exception as e:
+                logger.debug(f"기존 Chrome 종료 중 무시된 오류: {e}")
+        return self.setup_driver()
     
     def is_page_blocked(self):
         """페이지 차단 감지 - 독일 Amazon 패턴 포함"""
@@ -829,17 +861,43 @@ class AmazonScraper:
                 'weiter shoppen' in page_source_lower or
                 'klicke auf die schaltfläche' in page_source_lower):
                 logger.info("차단/캡차 페이지 감지 - Continue/Weiter 버튼 찾는 중...")
-                if self.handle_captcha_or_block_page():
+                if self.handle_captcha_or_block_page(original_url=url):
                     time.sleep(3)
                     self.wait_for_page_load()
                 else:
                     logger.warning("Continue/Weiter 버튼 클릭 실패")
+                    snapshot = capture_product_page_snapshot(
+                        self.driver,
+                        expected_url=url,
+                        marketplace_host="amazon.com",
+                        locale_code="usa",
+                    )
+                    raise AmazonProductPageError(snapshot)
             
             self.wait_for_page_load()
             
             if self.is_page_blocked():
                 logger.error("여전히 차단 페이지임")
-                raise Exception("페이지 차단됨")
+                snapshot = capture_product_page_snapshot(
+                    self.driver,
+                    expected_url=url,
+                    marketplace_host="amazon.com",
+                    locale_code="usa",
+                )
+                raise AmazonProductPageError(snapshot)
+
+            snapshot = wait_for_product_page(
+                self.driver,
+                expected_url=url,
+                marketplace_host="amazon.com",
+                locale_code="usa",
+                timeout_seconds=12,
+            )
+            logger.info(f"현재 페이지 URL: {snapshot.current_url.lower()}")
+            logger.info(f"상품 페이지 진단: {snapshot.summary()}")
+            if not snapshot.is_valid:
+                raise AmazonProductPageError(snapshot)
+            logger.info("정상 제품 페이지 확인됨 (제목/ASIN 검증 완료)")
             
             # V2: 타임존 분리
 
@@ -978,18 +1036,21 @@ class AmazonScraper:
 
         except Exception as e:
             logger.error(f"페이지 처리 오류: {e}")
+            page_guard_error = isinstance(e, AmazonProductPageError)
             
             if retry_count < max_retries:
                 wait_time = (retry_count + 1) * 10
                 logger.info(f"{wait_time}초 후 재시도... ({retry_count + 1}/{max_retries})")
                 time.sleep(wait_time)
                 
-                try:
-                    self.driver.refresh()
-                except:
-                    logger.info("드라이버 재시작 중...")
-                    self.driver.quit()
-                    self.setup_driver()
+                if page_guard_error and e.restart_recommended:
+                    self.restart_driver(e.snapshot.kind)
+                else:
+                    try:
+                        self.driver.refresh()
+                    except Exception:
+                        logger.info("드라이버 재시작 중...")
+                        self.restart_driver("refresh_failed")
                 
                 return self.extract_product_info(url, row_data, retry_count + 1, max_retries)
             
@@ -1040,6 +1101,9 @@ class AmazonScraper:
                     capture_and_upload(self.driver, 'amazon_usa', row_data.get('retailersku', ''), url, fail_result)
             except Exception:
                 pass
+
+            if page_guard_error and e.restart_recommended:
+                self.restart_driver(e.snapshot.kind)
 
             return fail_result
 
