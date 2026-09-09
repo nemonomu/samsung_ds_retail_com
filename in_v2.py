@@ -43,6 +43,11 @@ from config import FILE_SERVER_CONFIG
 from alert_monitor import monitor_and_alert
 from null_screenshot import FULL_NULL_FIELDS, is_null_result, capture_and_upload
 from cookie_consent import accept_cookies
+from amazon_page_guard import (
+    AmazonProductPageError,
+    capture_product_page_snapshot,
+    wait_for_product_page,
+)
 
 class AmazonIndiaScraper:
     def __init__(self):
@@ -216,13 +221,8 @@ class AmazonIndiaScraper:
             options.add_argument('--disable-renderer-backgrounding')
             options.add_argument('--js-flags=--max-old-space-size=512')
 
-            # 인도 전용 User-Agent
-            india_user_agents = [
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            ]
-            options.add_argument(f'--user-agent={random.choice(india_user_agents)}')
+            # 실제 Chrome 버전과 User-Agent가 일치하도록 기본값을 사용한다.
+            logger.info("User-Agent는 설치된 Chrome 기본값 사용")
             
             # 인도 언어 설정
             options.add_experimental_option('prefs', {
@@ -517,6 +517,10 @@ class AmazonIndiaScraper:
                             element.click()
                             time.sleep(3)
                             logger.info("✅ Continue 버튼 클릭 완료")
+                            if original_url:
+                                logger.info(f"원래 URL로 재접속: {original_url}")
+                                self.driver.get(original_url)
+                                time.sleep(2)
                             return True
                         
                 except Exception as e:
@@ -531,86 +535,28 @@ class AmazonIndiaScraper:
             return False
     
     def is_page_blocked(self):
-        """페이지 차단 감지 - 개선된 로직"""
-        try:
-            page_title = self.driver.title.lower()
-            page_source = self.driver.page_source.lower()
-            current_url = self.driver.current_url.lower()
-            
-            # 1. 정상 페이지 확인 (우선 체크)
-            normal_indicators = [
-                'add to cart',
-                'buy now',
-                'product title',
-                'price',
-                'availability',
-                'customer reviews',
-                'product details',
-                'ships from',
-                'sold by'
-            ]
-            
-            normal_count = sum(1 for indicator in normal_indicators if indicator in page_source)
-            
-            # 정상 지표가 3개 이상이면 정상 페이지
-            if normal_count >= 3:
-                logger.info(f"✅ 정상 페이지 확인: {normal_count}개 지표 발견")
-                return False
-            
-            # 2. 명확한 차단 징후만 체크
-            serious_blocked_indicators = [
-                'enter the characters you see below',
-                'to continue shopping, please type the characters',
-                'verify you are human',
-                'access denied',
-                'automated access',
-                'suspicious activity',
-                '503 service unavailable',
-                'sorry, we just need to make sure you',
-                'are you a robot',
-                'the web address you entered is not a functioning page on our site',
-                "we're sorry. the web address"
-            ]
-            
-            for pattern in serious_blocked_indicators:
-                if pattern in page_source:
-                    logger.warning(f"🚫 명확한 차단 감지: '{pattern}'")
-                    return True
-            
-            # 3. Amazon India 도메인 확인
-            if 'amazon.in' not in current_url:
-                logger.warning(f"Amazon India 페이지가 아님: {current_url}")
-                return True
-            
-            # 4. 페이지 제목 확인
-            if 'sorry' in page_title or 'error' in page_title:
-                logger.warning(f"🚫 오류 페이지 제목: {page_title}")
-                return True
-            
-            # 5. 기본적인 Amazon 요소 확인
-            essential_elements = ['productTitle', 'price', 'availability', 'add-to-cart']
-            found_elements = 0
-            
-            for element_id in essential_elements:
-                try:
-                    self.driver.find_element(By.ID, element_id)
-                    found_elements += 1
-                except:
-                    pass
-            
-            # 필수 요소가 하나도 없으면 차단 가능성
-            if found_elements == 0:
-                logger.warning("⚠️ 필수 요소 없음 - 차단 가능성 있음")
-                # 하지만 바로 차단으로 판단하지 말고 다른 방법으로 확인
-                return False
-            
-            logger.info(f"✅ 정상 페이지로 판단 (필수 요소: {found_elements}개)")
-            return False
-            
-        except Exception as e:
-            logger.error(f"페이지 차단 확인 중 오류: {e}")
-            return False
-    
+        """Detect explicit blocks; the product guard checks missing titles next."""
+        snapshot = capture_product_page_snapshot(
+            self.driver,
+            expected_url=self.driver.current_url or "",
+            marketplace_host="amazon.in",
+            locale_code="in",
+        )
+        return snapshot.kind in {"hard_block", "invalid_domain"}
+
+    def restart_driver(self, reason):
+        """Discard a blocked session before retrying the original product URL."""
+        logger.warning(f"Chrome session restart: {reason}")
+        old_driver = self.driver
+        self.driver = None
+        self.wait = None
+        if old_driver:
+            try:
+                old_driver.quit()
+            except Exception as e:
+                logger.debug(f"Chrome quit failed: {e}")
+        return self.setup_driver()
+
     def extract_price_india(self):
         """인도 루피 가격 추출 - centerCol 타겟팅 및 추천상품 필터링 강화"""
         price_selectors = self.selectors['in']['price']
@@ -900,7 +846,25 @@ class AmazonIndiaScraper:
             # 차단 확인
             if self.is_page_blocked():
                 logger.error("❌ 페이지 차단됨")
-                raise Exception("페이지 차단됨")
+                snapshot = capture_product_page_snapshot(
+                    self.driver,
+                    expected_url=url,
+                    marketplace_host="amazon.in",
+                    locale_code="in",
+                )
+                raise AmazonProductPageError(snapshot)
+
+            snapshot = wait_for_product_page(
+                self.driver,
+                expected_url=url,
+                marketplace_host="amazon.in",
+                locale_code="in",
+                timeout_seconds=12,
+            )
+            logger.info(f"상품 페이지 진단: {snapshot.summary()}")
+            if not snapshot.is_valid:
+                raise AmazonProductPageError(snapshot)
+            logger.info("정상 제품 페이지 확인됨 (제목/ASIN 검증 완료)")
             
             # 현재 시간
             # V2: 타임존 분리
@@ -1015,18 +979,21 @@ class AmazonIndiaScraper:
 
         except Exception as e:
             logger.error(f"❌ 페이지 처리 오류: {e}")
+            page_guard_error = isinstance(e, AmazonProductPageError)
             
             if retry_count < max_retries:
                 wait_time = (retry_count + 1) * 10
                 logger.info(f"🔄 {wait_time}초 후 재시도... ({retry_count + 1}/{max_retries})")
                 time.sleep(wait_time)
                 
-                try:
-                    self.driver.refresh()
-                except:
-                    logger.info("🔧 드라이버 재시작")
-                    self.driver.quit()
-                    self.setup_driver()
+                if page_guard_error and e.restart_recommended:
+                    self.restart_driver(e.snapshot.kind)
+                else:
+                    try:
+                        self.driver.refresh()
+                    except Exception:
+                        logger.info("🔧 드라이버 재시작")
+                        self.restart_driver("refresh_failed")
                 
                 return self.extract_product_info(url, row_data, retry_count + 1, max_retries)
             
@@ -1074,6 +1041,9 @@ class AmazonIndiaScraper:
                     capture_and_upload(self.driver, 'amazon_in', row_data.get('retailersku', ''), url, fail_result)
             except Exception:
                 pass
+
+            if page_guard_error and e.restart_recommended:
+                self.restart_driver(e.snapshot.kind)
 
             return fail_result
 
