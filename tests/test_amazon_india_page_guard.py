@@ -101,11 +101,41 @@ def test_blocked_session_is_replaced_and_original_url_retried(scraper, signals):
 @pytest.mark.parametrize("redirect,dom_asin", [
     ("https://www.amazon.in/dp/B0GJF1GQFX", "B0GJF1GQFX"),
     (None, "B0GJF1GQFX"),
-    ("https://www.amazon.com/dp/B087DFLF9S", "B087DFLF9S"),
 ])
-def test_wrong_product_or_marketplace_is_never_extracted(scraper, redirect, dom_asin):
+def test_asin_mismatch_collects_destination_and_logs_original_identity(
+    scraper, caplog, redirect, dom_asin,
+):
     obj, _ = scraper
-    obj.driver = Driver({"productTitle": "Wrong product", "domAsin": dom_asin}, redirect)
+    obj.driver = Driver({"productTitle": "Destination SSD", "domAsin": dom_asin}, redirect)
+    obj.extract_element_text.side_effect = ["Destination SSD", "Amazon", "Destination seller"]
+    obj.check_stock_availability.return_value = True
+    obj.extract_price_india = Mock(return_value=31999)
+    obj.selectors["in"].update(ships_from=[], sold_by=[])
+
+    with caplog.at_level(logging.WARNING):
+        result = obj.extract_product_info(URL, {"retailersku": "B087DFLF9S"}, max_retries=1)
+
+    assert result["title"] == "Destination SSD"
+    assert result["retailprice"] == 31999
+    assert result["ships_from"] == "Amazon"
+    assert result["sold_by"] == "Destination seller"
+    assert result["producturl"] == URL
+    assert result["retailersku"] == "B087DFLF9S"
+    assert obj.driver.visits == [URL]
+    obj.driver.refresh.assert_not_called()
+    assert "ASIN mismatch accepted" in caplog.text
+    assert "expected_asin=B087DFLF9S" in caplog.text
+    assert "dom_asin=B0GJF1GQFX" in caplog.text
+    assert f"final_url={redirect or URL}" in caplog.text
+    assert f"requested_url={URL}" in caplog.text
+
+
+def test_wrong_marketplace_is_never_extracted(scraper):
+    obj, _ = scraper
+    obj.driver = Driver(
+        {"productTitle": "Wrong product", "domAsin": "B087DFLF9S"},
+        "https://www.amazon.com/dp/B087DFLF9S",
+    )
     result = obj.extract_product_info(URL, {"retailersku": "B087DFLF9S"}, max_retries=0)
 
     obj.extract_element_text.assert_not_called()

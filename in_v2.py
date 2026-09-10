@@ -862,9 +862,19 @@ class AmazonIndiaScraper:
                 timeout_seconds=12,
             )
             logger.info(f"상품 페이지 진단: {snapshot.summary()}")
-            if not snapshot.is_valid:
+            if snapshot.kind == "asin_mismatch":
+                logger.warning(
+                    "ASIN mismatch accepted: collecting destination product; "
+                    "retailersku=%s, requested_url=%s, expected_asin=%s, "
+                    "url_asin=%s, dom_asin=%s, final_url=%s; "
+                    "original retailersku/producturl preserved",
+                    row_data.get('retailersku', ''), url, snapshot.expected_asin,
+                    snapshot.url_asin, snapshot.dom_asin, snapshot.current_url,
+                )
+            elif not snapshot.is_valid:
                 raise AmazonProductPageError(snapshot)
-            logger.info("정상 제품 페이지 확인됨 (제목/ASIN 검증 완료)")
+            else:
+                logger.info("정상 제품 페이지 확인됨 (제목/ASIN 검증 완료)")
             
             # 현재 시간
             # V2: 타임존 분리
