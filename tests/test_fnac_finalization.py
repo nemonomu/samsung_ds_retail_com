@@ -58,16 +58,17 @@ class FinalizationTests(unittest.TestCase):
                     self.assertEqual(row['_s3_upload'], 'ok' if capture else 'skip')
                     self.assertNotIn('_browser_reparse_html', row)
 
-    def test_out_of_stock_uses_visible_screenshot_price_and_replays_it(self):
+    def test_out_of_stock_policy_outranks_visible_screenshot_price_and_replays_it(self):
         self.configure_verification(OOS)
         self.scraper.save_html_dir = self.directory
         fake, _, page, *_ = self.case.screenshot_context('ready')
         page.content.return_value = OOS
         with patch.dict(sys.modules, {'playwright.sync_api': fake}):
             row = self.scraper.collect_one(ROW)
-        self.assertEqual(row['retailprice'], 123.45)
-        self.assertEqual(row['_crawl_reason'], 'BROWSER_RECOVERED_SCREENSHOT_VISIBLE_PRICE')
-        self.assertEqual(self.replay()['retailprice'], 123.45)
+        self.assertIsNone(row['retailprice'])
+        self.assertEqual(row['_crawl_reason'], 'BROWSER_ONLINE_STOCK_EXHAUSTED')
+        self.assertIsNone(self.replay()['retailprice'])
+        self.assertEqual(self.replay()['_crawl_reason'], row['_crawl_reason'])
 
     def test_out_of_stock_without_visible_price_stays_null(self):
         self.configure_verification(OOS)
@@ -77,8 +78,18 @@ class FinalizationTests(unittest.TestCase):
         with patch.dict(sys.modules, {'playwright.sync_api': fake}):
             row = self.scraper.collect_one(ROW)
         self.assertIsNone(row['retailprice'])
-        self.assertEqual(row['_crawl_reason'], 'BROWSER_RECOVERED_ONLINE_STOCK_EXHAUSTED')
+        self.assertEqual(row['_crawl_reason'], 'BROWSER_ONLINE_STOCK_EXHAUSTED')
         self.assertEqual(row['_s3_upload'], 'ok')
+
+    def test_replay_of_retired_screenshot_override_restores_policy_without_fetch(self):
+        self.scraper.save_html_dir = self.directory
+        row = self.scraper.base_result(ROW)
+        row.update(title='Samsung SSD', imageurl='image', retailprice=123.45,
+                   _crawl_reason='BROWSER_RECOVERED_SCREENSHOT_VISIBLE_PRICE')
+        self.scraper.save_final_snapshot(ROW, OOS, row)
+        replay = self.replay()
+        self.assertIsNone(replay['retailprice'])
+        self.assertEqual(replay['_crawl_reason'], 'ONLINE_STOCK_EXHAUSTED')
 
     def test_out_of_stock_blocked_screenshot_does_not_invent_a_price(self):
         self.configure_verification(OOS)
@@ -209,7 +220,7 @@ class FinalizationTests(unittest.TestCase):
         self.scraper.product_time_budget = 10
         session = Mock()
         def timeout(*args, **kwargs):
-            self.assertEqual(kwargs['timeout'], 10)
+            self.assertAlmostEqual(kwargs['timeout'], 10 - 10 / 3)
             clock[0] = 10
             raise self.m.requests.ReadTimeout()
         session.get.side_effect = timeout
@@ -244,7 +255,7 @@ class FinalizationTests(unittest.TestCase):
         self.scraper.capture_null = False
         barrier = threading.Barrier(2)
         observed = {}
-        def fetch(url):
+        def fetch(url, **kwargs):
             self.scraper._product_clock.deadline = time.monotonic() + (2 if url.endswith('short') else 60)
             barrier.wait(timeout=5)
             observed[url] = self.scraper.operation_timeout(30)

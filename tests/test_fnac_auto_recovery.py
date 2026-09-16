@@ -140,7 +140,7 @@ class FnacRecoveryTests(unittest.TestCase):
         self.scraper.fetch_html = Mock(return_value=(200, rendered, None, 1.0))
         self.scraper.fetch_browser_html = Mock()
         self.assertEqual(self.scraper.fetch_verified_html(URL), (200, rendered, 1.0))
-        self.scraper.fetch_html.assert_called_once_with(URL, max_attempts=1, rendered_verification=True)
+        self.scraper.fetch_html.assert_called_once_with(URL, max_attempts=1, rendered_verification=True, reserve_seconds=90)
         self.scraper.fetch_browser_html.assert_not_called()
 
     def test_unrendered_auto_response_uses_browser_fallback(self):
@@ -234,6 +234,7 @@ class FnacRecoveryTests(unittest.TestCase):
         playwright = Mock()
         playwright.chromium.connect_over_cdp.return_value = browser
         manager = Mock()
+        manager.start = Mock(return_value=playwright)
         manager.__enter__ = Mock(return_value=playwright)
         manager.__exit__ = Mock(return_value=False)
         fake = types.ModuleType('playwright.sync_api')
@@ -279,6 +280,7 @@ class FnacRecoveryTests(unittest.TestCase):
         self.assertEqual(captured['timeout'], self.scraper.fetch_timeout)
         self.assertIsNone(captured['wait'])
         self.assertEqual(captured['screenshot_max_attempts'], 2)
+        self.assertEqual(captured['screenshot_wait'], self.scraper.screenshot_wait)
 
     def test_browser_connection_errors_stop_at_attempt_limit(self):
         fake, playwright, *_ = self.screenshot_context()
