@@ -225,7 +225,105 @@ def extract_json_ld_products(page_html: str) -> List[Dict[str, Any]]:
     return products
 
 
+def visible_buybox_script(snapshot: bool = False) -> str:
+    """Annotate computed visibility in the existing browser; snapshots leave its DOM intact."""
+    return r"""() => {
+        const snapshot = __SNAPSHOT__;
+        const root = snapshot ? document.documentElement.cloneNode(true) : document.documentElement;
+        const selector = '[class*="buyBoxMainContainer"], [class*="buyBoxMainContainer"] [class*="pricingLabelMain"], [class*="buyBoxMainContainer"] [class*="ProductAvailability-"]';
+        const originals = Array.from(document.querySelectorAll(selector));
+        const copies = Array.from(root.querySelectorAll(selector));
+        const visible = node => {
+            const rect = node.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return false;
+            for (let parent = node; parent; parent = parent.parentElement) {
+                const style = getComputedStyle(parent);
+                if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return false;
+            }
+            return true;
+        };
+        originals.forEach((node, index) => {
+            copies[index].setAttribute('data-fnac-not-visible', String(!visible(node)));
+        });
+        root.setAttribute('data-fnac-rendered-verification', 'complete');
+        root.setAttribute('data-fnac-visibility-filtered', 'true');
+        return snapshot ? root.outerHTML : 'complete';
+    }""".replace("__SNAPSHOT__", "true" if snapshot else "false")
+
+
+def product_dom_nodes(page_html: str) -> List[Dict[str, Any]]:
+    """Parse actual DOM text, excluding scripts, templates and explicitly hidden content."""
+    from html.parser import HTMLParser
+
+    class ProductParser(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.nodes = []
+            self.stack = []
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            parent = self.stack[-1] if self.stack else None
+            style = re.sub(r"\s+", "", attrs.get("style", "").lower())
+            hidden = (tag in {"script", "style", "template", "noscript"}
+                      or "hidden" in attrs or attrs.get("aria-hidden", "").lower() == "true"
+                      or attrs.get("data-fnac-not-visible") == "true"
+                      or "display:none" in style or "visibility:hidden" in style
+                      or bool(parent and parent["hidden"]))
+            node = {"tag": tag, "attrs": attrs, "parent": parent, "hidden": hidden, "parts": []}
+            self.nodes.append(node)
+            if tag not in {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}:
+                self.stack.append(node)
+
+        def handle_startendtag(self, tag, attrs):
+            self.handle_starttag(tag, attrs)
+            if self.stack and self.stack[-1]["tag"] == tag:
+                self.stack.pop()
+
+        def handle_endtag(self, tag):
+            for index in range(len(self.stack) - 1, -1, -1):
+                if self.stack[index]["tag"] == tag:
+                    del self.stack[index:]
+                    break
+
+        def handle_data(self, text):
+            if self.stack and not self.stack[-1]["hidden"]:
+                for node in self.stack:
+                    node["parts"].append(text)
+
+    parser = ProductParser()
+    parser.feed(page_html or "")
+    return parser.nodes
+
+
+def next_buybox_nodes(page_html: str) -> List[Dict[str, Any]]:
+    if "buyBoxMainContainer" not in (page_html or ""):
+        return []
+    return [node for node in product_dom_nodes(page_html)
+            if not node["hidden"] and "buyBoxMainContainer" in node["attrs"].get("class", "")]
+
+
+def next_buybox_price_texts(page_html: str) -> List[str]:
+    prices = []
+    for node in product_dom_nodes(page_html):
+        if node["hidden"] or "pricingLabelMain" not in node["attrs"].get("class", ""):
+            continue
+        parent = node["parent"]
+        while parent and "buyBoxMainContainer" not in parent["attrs"].get("class", ""):
+            parent = parent["parent"]
+        if parent is None:
+            continue  # Recommendations and other offers are not the main buybox.
+        text = normalize_text(" ".join(node["parts"]))
+        if text and parse_price(text) is not None and text not in prices:
+            prices.append(text)
+    # Desktop/mobile copies must agree. A mismatch needs rendered verification.
+    return prices[:1] if len({parse_price(text) for text in prices}) == 1 else []
+
+
 def extract_visible_price_texts(page_html: str) -> List[str]:
+    if next_buybox_nodes(page_html):
+        return next_buybox_price_texts(page_html)
+    page_html = re.sub(r"<(script|style|template)\b[^>]*>.*?</\1>", " ", page_html or "", flags=re.I | re.S)
     patterns = [
         r"<[^>]+class=[\"'][^\"']*f-faPriceBox__price[^\"']*[\"'][^>]*>(.*?)</[^>]+>",
     ]
@@ -280,39 +378,44 @@ def extract_first_dom_attribute(page_html: str, pattern: str, attribute: str) ->
 
 
 def first_availability_text(page_html: str) -> Optional[str]:
-    match = re.search(
-        r"<[^>]+data-automation-id=[\"']product-availability[\"'][^>]*>",
-        page_html or "",
-        re.IGNORECASE,
-    )
-    if not match:
-        return None
-    snippet = (page_html or "")[match.start():match.start() + 1600]
-    next_match = re.search(
-        r"<[^>]+data-automation-id=[\"']product-availability[\"'][^>]*>",
-        snippet[1:],
-        re.IGNORECASE,
-    )
-    if next_match:
-        snippet = snippet[: next_match.start() + 1]
-    return normalize_text(snippet)
+    for node in product_dom_nodes(page_html):
+        if not node["hidden"] and node["attrs"].get("data-automation-id") == "product-availability":
+            return normalize_text(" ".join(node["parts"]))
+    return None
 
 
 def has_v2_availability_stock_exhausted(page_html: str) -> bool:
     context = normalize_for_match(first_availability_text(page_html))
-    return "stock en ligne" in context and ("epuis" in context or "puis" in context)
+    return bool(re.search(r"\bstock en ligne\s+epuise\b", context))
+
+
+def next_buybox_availability(page_html: str) -> str:
+    if "buyBoxMainContainer" not in (page_html or ""):
+        return "unknown"
+    states = []
+    for node in product_dom_nodes(page_html):
+        if node["hidden"] or "ProductAvailability-" not in node["attrs"].get("class", ""):
+            continue
+        parent = node["parent"]
+        while parent and "buyBoxMainContainer" not in parent["attrs"].get("class", ""):
+            parent = parent["parent"]
+        if parent:
+            states.append(normalize_for_match(" ".join(node["parts"])))
+    exhausted = any(re.search(r"\bstock en ligne\s+epuise\b", text) for text in states)
+    available = any(re.search(r"\ben stock (?:en ligne|vendeur partenaire)\b", text) for text in states)
+    if exhausted and available:
+        return "conflicting"
+    return "exhausted" if exhausted else "available" if available else "unknown"
 
 
 def has_next_pdp_stock_exhausted(page_html: str) -> bool:
-    raw_html = page_html or ""
-    if "ProductInformations-module" not in raw_html and "/app/pdp/_next/" not in raw_html:
-        return False
-    context = normalize_for_match(raw_html)
-    return "stock en ligne" in context and ("epuis" in context or "puis" in context)
+    return next_buybox_availability(page_html) == "exhausted"
 
 
 def has_online_stock_exhausted(page_html: str) -> bool:
-    return has_v2_availability_stock_exhausted(page_html) or has_next_pdp_stock_exhausted(page_html)
+    if next_buybox_nodes(page_html):
+        return has_next_pdp_stock_exhausted(page_html)
+    return has_v2_availability_stock_exhausted(page_html)
 
 def current_offer_condition(digital_data: Dict[str, Any]) -> Optional[str]:
     product = first_dict(digital_data.get("product"))
@@ -735,7 +838,7 @@ class FnacZenRowsScraper:
                 # A marker written by page JavaScript proves that a browser ran.
                 params["js_instructions"] = json.dumps([
                     {"wait": min(10000, max(0, int(self.browser_wait)))},
-                    {"evaluate": "document.documentElement.setAttribute('data-fnac-rendered-verification', 'complete')"},
+                    {"evaluate": "(" + visible_buybox_script() + ")()"},
                 ])
             timed_out = False
             start = time.time()
@@ -832,6 +935,18 @@ class FnacZenRowsScraper:
         return is_confirmed_null_reason(reason) or (
             parsed.get("retailprice") is not None and bool(extract_visible_price_texts(page_html)))
 
+    def browser_product_html(self, page: Any, body: Optional[str] = None) -> str:
+        body = page.content() if body is None else body
+        if "buyBoxMainContainer" not in (body or ""):
+            return body
+        try:
+            filtered = page.evaluate(visible_buybox_script(snapshot=True))
+            if isinstance(filtered, str) and 'data-fnac-visibility-filtered="true"' in filtered:
+                return filtered
+        except Exception as exc:
+            logger.debug("FNAC visible buybox snapshot unavailable: %s", type(exc).__name__)
+        return body  # Keep unresolved conflicts; never guess on evaluation failure.
+
     def fetch_verified_html(self, url: str) -> Tuple[int, str, float]:
         """Keep final-DOM verification while using the working automatic route first."""
         elapsed = 0.0
@@ -898,6 +1013,8 @@ class FnacZenRowsScraper:
                         status = 200
                 elif status == 200:
                     body = self.wait_for_product_html(page, url, self.browser_wait / 1000)
+                if 'data-fnac-visibility-filtered="true"' not in body:
+                    body = self.browser_product_html(page, body)
                 if is_waiting_room(body):
                     status = 429
                 elif status == 200 and not self.product_html_ready(body, url):
@@ -952,10 +1069,10 @@ class FnacZenRowsScraper:
         # Compare the product decision, not advertisements or tracking requests.
         deadline = time.monotonic() + self.operation_timeout(max(1, timeout))
         previous = None
-        body = page.content()
+        body = self.browser_product_html(page)
         while time.monotonic() < deadline:
             if is_waiting_room(body):
-                return self.wait_for_queue_exit(page, self.browser_timeout)
+                return self.browser_product_html(page, self.wait_for_queue_exit(page, self.browser_timeout))
             if self.product_html_ready(body, url):
                 result, reason = self.parse_product(body, {"url": url})
                 decision = (result.get("title"), result.get("retailprice"), reason)
@@ -965,7 +1082,7 @@ class FnacZenRowsScraper:
             else:
                 previous = None
             self.pause(min(1, max(0, deadline - time.monotonic())), page)
-            body = page.content()
+            body = self.browser_product_html(page)
         return body
 
     def base_result(self, row: Dict[str, Any]) -> Dict[str, Any]:
@@ -1023,6 +1140,9 @@ class FnacZenRowsScraper:
         if not has_oref(row.get("url", "")) and is_base_click_collect_first_marketplace_case(digital_data):
             return result, "BASE_CLICK_COLLECT_FIRST_MARKETPLACE"
 
+        if next_buybox_availability(page_html) == "conflicting":
+            return result, "PRICE_NOT_FOUND"
+
         api_price = current_offer_price(digital_data)
 
         if online_oos:
@@ -1036,6 +1156,9 @@ class FnacZenRowsScraper:
             if visible_price is not None:
                 result["retailprice"] = visible_price
                 return result, "VISIBLE_PRICE_BOX"
+
+        if next_buybox_nodes(page_html):
+            return result, "PRICE_NOT_FOUND"
 
         if api_price is not None:
             result["retailprice"] = api_price
@@ -1057,7 +1180,7 @@ class FnacZenRowsScraper:
                 }
                 return true;
             };
-            return {visiblePriceTexts: Array.from(document.querySelectorAll('.f-faPriceBox__price'))
+            return {visiblePriceTexts: Array.from(document.querySelectorAll('.f-faPriceBox__price, [class*="buyBoxMainContainer"] [class*="pricingLabelMain"]'))
                 .filter(node => visible(node) && (!otherOffers || !(otherOffers.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING)))
                 .map(node => (node.innerText || '').trim())};
         }""")
@@ -1071,13 +1194,15 @@ class FnacZenRowsScraper:
     def capture_null_screenshot(self, result: Dict[str, Any], display_url: str, load_url: Optional[str] = None) -> str:
         if not self.capture_null or not is_null_result(result):
             return "skip"
+        result["_screenshot_reason"] = "pending"
         with self._counter_lock:
             self.total_screenshot_calls += 1
 
         try:
             from playwright.sync_api import sync_playwright
         except Exception as exc:
-            logger.warning("NULL screenshot skipped because Playwright import failed sku=%s: %s", result.get("retailersku"), exc)
+            result["_screenshot_reason"] = "playwright_import_failed"
+            logger.warning("NULL screenshot skipped because Playwright import failed sku=%s: %s", result.get("retailersku"), type(exc).__name__)
             with self._counter_lock:
                 self.total_screenshot_fail += 1
             return "fail"
@@ -1107,10 +1232,15 @@ class FnacZenRowsScraper:
                     if ready == "ready":
                         reuse_status = self.capture_ready_page(page, result, display_url, load_url)
                         if reuse_status in {"ok", "skip"}:
+                            result["_screenshot_reason"] = "registered" if reuse_status == "ok" else "fields_recovered"
                             with self._counter_lock:
                                 self.total_screenshot_success += int(reuse_status == "ok")
                             logger.info("FNAC reused verification browser for NULL evidence sku=%s status=%s", result.get("retailersku"), reuse_status)
                             return reuse_status
+                        if result.get("_screenshot_reason") == "monitoring_link_failed":
+                            with self._counter_lock:
+                                self.total_screenshot_fail += 1
+                            return "fail"
                     if ready == "waiting_room":
                         browser_attempt = max_browser_attempts
                     last_retry_reason = "reused_page_not_captured"
@@ -1144,8 +1274,7 @@ class FnacZenRowsScraper:
                     )
                     page = context.new_page()
                     self.prepare_playwright_page_for_capture(page)
-                    if browser_attempt > 1:
-                        self.warmup_fnac_screenshot_session(page)
+                    self.warmup_fnac_screenshot_session(page)
 
                     for url_attempt, target_url in enumerate(target_urls, start=1):
                         response = self.load_screenshot_page(page, target_url, max(0, int(self.screenshot_wait or 0)))
@@ -1217,13 +1346,17 @@ class FnacZenRowsScraper:
 
                         capture_status = self.capture_ready_page(page, result, display_url, load_url)
                         if capture_status == "skip":
+                            result["_screenshot_reason"] = "fields_recovered"
                             return "skip"
                         uploaded = capture_status == "ok"
                         if uploaded:
                             break
                         last_retry_reason = "upload_not_confirmed"
+                        if result.get("_screenshot_reason") == "monitoring_link_failed":
+                            last_retry_reason = "monitoring_link_failed"
+                            break
 
-                    if uploaded or last_retry_reason == "waiting_room":
+                    if uploaded or last_retry_reason in {"waiting_room", "monitoring_link_failed"}:
                         break
                     if browser_attempt < max_browser_attempts:
                         logger.warning(
@@ -1275,6 +1408,9 @@ class FnacZenRowsScraper:
                     self.pause(min(2 + browser_attempt, 10))
 
         status = "ok" if uploaded else "fail"
+        result["_screenshot_reason"] = "registered" if uploaded else last_retry_reason
+        if last_error:
+            result["_screenshot_error"] = last_error
         if not uploaded:
             logger.warning(
                 "NULL screenshot upload failed after browser retries sku=%s urls=%s attempts=%s last_reason=%s last_error=%s elapsed=%0.1f",
@@ -1295,7 +1431,7 @@ class FnacZenRowsScraper:
     def capture_ready_page(self, page: Any, result: Dict[str, Any], display_url: str, load_url: str) -> str:
         initial_reason = result.get("_crawl_reason", "")
         protect_null = result.get("retailprice") is None and is_confirmed_null_reason(initial_reason)
-        browser_html = page.content()
+        browser_html = self.browser_product_html(page)
         if not self.product_html_ready(browser_html, load_url or display_url, require_decision=False):
             return "fail"
         try:
@@ -1328,17 +1464,20 @@ class FnacZenRowsScraper:
             logger.warning("Browser reparse before NULL screenshot failed sku=%s: %s", result.get("retailersku"), type(exc).__name__)
 
         self.operation_timeout(1)
-        uploaded = capture_and_upload(page, "fnac", result.get("retailersku", ""), display_url, result)
+        uploaded = capture_and_upload(page, "fnac", result.get("retailersku", ""), display_url, result,
+                                      require_monitoring_link=True)
         return "ok" if uploaded else "fail"
 
     def warmup_fnac_screenshot_session(self, page: Any) -> None:
         try:
-            page.goto("https://www.fnac.com", wait_until="domcontentloaded", timeout=self.operation_timeout(self.screenshot_timeout) * 1000)
+            page.goto("https://www.fnac.com", wait_until="domcontentloaded", timeout=self.operation_timeout(min(20, self.screenshot_timeout)) * 1000)
             self.prepare_playwright_page_for_capture(page)
             self.pause(3, page)
             self.accept_cookie_popup(page)
+        except ProductTimeBudgetExceeded:
+            raise
         except Exception as exc:
-            logger.debug("FNAC screenshot warmup failed: %s", exc)
+            logger.debug("FNAC screenshot warmup failed: %s", type(exc).__name__)
 
     def load_screenshot_page(self, page: Any, url: str, wait_ms: int) -> Any:
         response = page.goto(url, wait_until="domcontentloaded", timeout=self.operation_timeout(self.screenshot_timeout) * 1000)
@@ -1505,6 +1644,8 @@ class FnacZenRowsScraper:
                         const productContentVisible = isVisible('.f-productMedias__viewItem--main')
                             || isVisible('[data-automation-id="product-availability"]')
                             || isVisible('.f-faPriceBox__price')
+                            || isVisible('[class*="buyBoxMainContainer"] [class*="pricingLabelMain"]')
+                            || isVisible('[class*="buyBoxMainContainer"] [class*="ProductAvailability-"]')
                             || isVisible('[data-automation-id="add-to-cart"]')
                             || Array.from(document.querySelectorAll('button')).some((element) => {
                                 const style = window.getComputedStyle(element);
@@ -1594,7 +1735,9 @@ class FnacZenRowsScraper:
         body = (page_html or "").encode("utf-8")
         snapshot = {"version": 1, "url": row.get("url", ""), "sku": str(row.get("retailersku", "")),
                     "html_sha256": hashlib.sha256(body).hexdigest(),
-                    "result": {key: result.get(key) for key in ("title", "imageurl", "retailprice", "_crawl_reason")}}
+                    "result": {key: result.get(key) for key in ("title", "imageurl", "retailprice", "_crawl_reason")},
+                    "diagnostics": {key: result.get(key) for key in
+                                    ("_s3_upload", "_screenshot_reason", "_screenshot_error", "_collection_status")}}
         try:
             # Publish metadata first: a crash cannot leave a new HTML file looking like a legacy cache.
             metadata = path.with_suffix(".result.json")
@@ -1737,6 +1880,7 @@ class FnacZenRowsScraper:
                 # A fresh screenshot session would restart the same timed-out queue.
                 if reason == "WAITING_ROOM_TIMEOUT":
                     s3_status = "fail" if self.capture_null else "skip"
+                    result["_screenshot_reason"] = "waiting_room"
                 else:
                     s3_status = self.capture_null_screenshot(result, screenshot_url, request_url)
                 recovered_reason = result.pop("_browser_reparse_reason", None)
@@ -1760,6 +1904,7 @@ class FnacZenRowsScraper:
                 reason = "TIME_BUDGET_EXHAUSTED"
             result["_crawl_reason"] = reason
             result["_s3_upload"] = "fail" if self.capture_null and is_null_result(result) else s3_status
+            result["_screenshot_reason"] = "time_budget_exhausted"
             logger.warning("FNAC product time budget exhausted sku=%s reason=%s", row.get("retailersku"), reason)
             return result
         except Exception as exc:
@@ -1777,6 +1922,12 @@ class FnacZenRowsScraper:
                 if recovered_reason:
                     result["_crawl_reason"] = f"BROWSER_RECOVERED_{recovered_reason}"
                     decision_html = recovered_html or decision_html
+                result["_collection_status"] = (
+                    "complete" if not is_null_result(result) else
+                    "policy_null" if is_confirmed_null_reason(result.get("_crawl_reason", ""))
+                    and result.get("title") and result.get("imageurl") else "collection_failed")
+                if result["_collection_status"] == "collection_failed":
+                    self.error_logs.append(f"FNAC collection incomplete sku={row.get('retailersku')} reason={result.get('_crawl_reason')}")
                 try:
                     self.save_final_snapshot(row, decision_html, result)
                 finally:
@@ -1846,6 +1997,9 @@ class FnacZenRowsScraper:
             result.get("_s3_upload", "skip"),
             result.get("_crawl_reason", ""),
         )
+        logger.info("FNAC outcome sku=%s collection=%s screenshot=%s detail=%s",
+                    row.get("retailersku"), result.get("_collection_status", "unknown"),
+                    result.get("_s3_upload", "skip"), result.get("_screenshot_reason", "not_required"))
 
     def save_to_db(self, df: pd.DataFrame) -> bool:
         if self.db_engine is None:
@@ -2083,6 +2237,11 @@ def main() -> None:
             return
 
         results = scraper.collect(targets, sleep_seconds=args.sleep, workers=max(1, args.workers))
+        logger.info("FNAC outcome summary complete=%s policy_null=%s collection_failed=%s evidence_missing=%s",
+                    sum(r.get("_collection_status") == "complete" for r in results),
+                    sum(r.get("_collection_status") == "policy_null" for r in results),
+                    sum(r.get("_collection_status") == "collection_failed" for r in results),
+                    sum(r.get("_s3_upload") == "fail" for r in results))
         results_df = pd.DataFrame(results)
         results_df = results_df[[col for col in results_df.columns if not str(col).startswith("_")]]
         scraper.analyze_results(results_df)

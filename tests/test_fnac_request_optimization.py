@@ -150,12 +150,12 @@ class RequestOptimizationTests(unittest.TestCase):
         self.assertFalse(self.s.accept_cookie_popup(page))
         self.s.pause.assert_not_called()
 
-    def test_new_screenshot_session_does_not_visit_homepage_first(self):
+    def test_new_screenshot_session_prepares_homepage_before_product(self):
         fake, pw, page, *_ = self.case.screenshot_context('ready')
         row = dict(ROW, retailprice=None, _crawl_reason='ONLINE_STOCK_EXHAUSTED')
         with patch.dict(sys.modules, {'playwright.sync_api': fake}):
             self.assertEqual(self.s.capture_null_screenshot(row, URL), 'ok')
-        self.s.warmup_fnac_screenshot_session.assert_not_called()
+        self.s.warmup_fnac_screenshot_session.assert_called_once_with(page)
 
     def test_wrong_product_cannot_be_uploaded_as_evidence(self):
         page = Mock()
