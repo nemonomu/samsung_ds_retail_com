@@ -188,14 +188,21 @@ def _insert_monitoring_file_and_anomaly(retailer, retailsku, url, file_name, fil
             file_id = cursor.lastrowid
 
             if existing:
+                # FNAC results are authoritative, including explicit NULLs.
+                # Screenshot-only calls omit fields and must keep saved data.
+                refresh_fields = {
+                    field: (_normalize_retailer(retailer) == 'fnac'
+                            and hasattr(result_data, 'get') and field in result_data)
+                    for field in ('title', 'retailprice', 'ships_from', 'sold_by', 'imageurl')
+                }
                 cursor.execute("""
                     UPDATE ssd_crawl_db.ds_monitoring_report_anomaly
                     SET screenshot_id = %s,
-                        title = COALESCE(%s, title),
-                        retailprice = COALESCE(%s, retailprice),
-                        ships_from = COALESCE(%s, ships_from),
-                        sold_by = COALESCE(%s, sold_by),
-                        imageurl = COALESCE(%s, imageurl),
+                        title = CASE WHEN %s THEN %s ELSE COALESCE(%s, title) END,
+                        retailprice = CASE WHEN %s THEN %s ELSE COALESCE(%s, retailprice) END,
+                        ships_from = CASE WHEN %s THEN %s ELSE COALESCE(%s, ships_from) END,
+                        sold_by = CASE WHEN %s THEN %s ELSE COALESCE(%s, sold_by) END,
+                        imageurl = CASE WHEN %s THEN %s ELSE COALESCE(%s, imageurl) END,
                         producturl = COALESCE(NULLIF(producturl, ''), %s),
                         country_code = COALESCE(NULLIF(country_code, ''), %s),
                         updated_at = %s,
@@ -203,11 +210,11 @@ def _insert_monitoring_file_and_anomaly(retailer, retailsku, url, file_name, fil
                     WHERE id = %s
                 """, (
                     file_id,
-                    title,
-                    retailprice,
-                    ships_from,
-                    sold_by,
-                    imageurl,
+                    refresh_fields['title'], title, title,
+                    refresh_fields['retailprice'], retailprice, retailprice,
+                    refresh_fields['ships_from'], ships_from, ships_from,
+                    refresh_fields['sold_by'], sold_by, sold_by,
+                    refresh_fields['imageurl'], imageurl, imageurl,
                     url,
                     country,
                     now,
@@ -678,7 +685,7 @@ def delete_screenshots_for_sku(retailer, retailsku, date_yyyymmdd):
         return 0
 
 
-def capture_and_upload(driver, retailer, retailsku, url, result_data=None, *, require_monitoring_link=False):
+def capture_and_upload(driver, retailer, retailsku, url, result_data=None, *, require_monitoring_link=False, screenshot_bytes=None):
     """스크린샷 캡처 후 S3 업로드
 
     동일 (retailer, retailsku, 날짜) 의 기존 스크린샷이 있으면 삭제 후 새로 업로드.
@@ -691,6 +698,7 @@ def capture_and_upload(driver, retailer, retailsku, url, result_data=None, *, re
         url: 현재 페이지 URL (로깅용)
         result_data: 크롤링 결과 dict/Series. 전달되면 모니터링 anomaly row에 가능한 값을 함께 저장.
         require_monitoring_link: True이면 모니터링 DB 연결까지 성공해야 완료로 반환.
+        screenshot_bytes: 최종 판정 화면에서 미리 확보한 PNG. 제공 시 재촬영하지 않음.
 
     Returns:
         S3 key 문자열 (성공 시) / None (실패 시)
@@ -700,7 +708,8 @@ def capture_and_upload(driver, retailer, retailsku, url, result_data=None, *, re
             logger.warning(f"NULL screenshot skipped because retailersku is empty (retailer={retailer}, url={url})")
             return None
 
-        screenshot_bytes = _capture_bytes(driver)
+        if screenshot_bytes is None:
+            screenshot_bytes = _capture_bytes(driver)
         if not screenshot_bytes:
             logger.warning(f"NULL 스크린샷 캡처 결과 비어있음 (url={url})")
             return None

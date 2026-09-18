@@ -37,12 +37,13 @@ class PolicyStabilityTests(unittest.TestCase):
                 self.assertEqual(actual, reason)
                 self.assertIsNone(row['retailprice'])
                 row['_crawl_reason'] = reason
-                fake, _, *_ = self.case.screenshot_context('ready')
+                fake, _, page, *_ = self.case.screenshot_context('ready')
+                page.content.return_value = body
                 with patch.dict(sys.modules, {'playwright.sync_api': fake}):
                     self.assertEqual(self.scraper.capture_null_screenshot(row, URL), 'ok')
                 self.assertIsNone(row['retailprice'])
                 self.assertEqual(row['_crawl_reason'], reason)
-                self.assertNotIn('_browser_reparse_reason', row)
+                self.assertEqual(row['_browser_reparse_reason'], reason)
 
     def test_new_marketplace_offer_is_allowed_without_exclusion(self):
         body = self.product({'offer': [{'sellerType': 'professional', 'seller': 'Example'}],

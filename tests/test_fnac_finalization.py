@@ -44,19 +44,17 @@ class FinalizationTests(unittest.TestCase):
         replay.fetch_html.assert_not_called()
         return result
 
-    def test_store_only_rule_is_preserved_with_capture_on_or_off(self):
-        for verified, reason in [(STORE_ONLY, 'BROWSER_BASE_CLICK_COLLECT_FIRST_MARKETPLACE')]:
-            for capture in (False, True):
-                with self.subTest(reason=reason, capture=capture):
-                    self.configure_verification(verified)
-                    self.scraper.capture_null = capture
-                    fake, _, *_ = self.case.screenshot_context('ready')  # evidence page contains a price
-                    with patch.dict(sys.modules, {'playwright.sync_api': fake}):
-                        row = self.scraper.collect_one(ROW)
-                    self.assertIsNone(row['retailprice'])
-                    self.assertEqual(row['_crawl_reason'], reason)
-                    self.assertEqual(row['_s3_upload'], 'ok' if capture else 'skip')
-                    self.assertNotIn('_browser_reparse_html', row)
+    def test_final_browser_replaces_initial_store_exclusion_only_when_capture_enabled(self):
+        for capture in (False, True):
+            self.configure_verification(STORE_ONLY)
+            self.scraper.capture_null = capture
+            fake, _, *_ = self.case.screenshot_context('ready')
+            with patch.dict(sys.modules, {'playwright.sync_api': fake}):
+                row = self.scraper.collect_one(ROW)
+            self.assertEqual(row['retailprice'], 123.45 if capture else None)
+            self.assertEqual(row['_crawl_reason'], 'BROWSER_RECOVERED_VISIBLE_PRICE_BOX' if capture
+                             else 'BROWSER_BASE_CLICK_COLLECT_FIRST_MARKETPLACE')
+            self.assertEqual(row['_s3_upload'], 'skip')
 
     def test_out_of_stock_policy_outranks_visible_screenshot_price_and_replays_it(self):
         self.configure_verification(OOS)
@@ -66,7 +64,7 @@ class FinalizationTests(unittest.TestCase):
         with patch.dict(sys.modules, {'playwright.sync_api': fake}):
             row = self.scraper.collect_one(ROW)
         self.assertIsNone(row['retailprice'])
-        self.assertEqual(row['_crawl_reason'], 'BROWSER_ONLINE_STOCK_EXHAUSTED')
+        self.assertEqual(row['_crawl_reason'], 'BROWSER_RECOVERED_ONLINE_STOCK_EXHAUSTED')
         self.assertIsNone(self.replay()['retailprice'])
         self.assertEqual(self.replay()['_crawl_reason'], row['_crawl_reason'])
 
@@ -78,7 +76,7 @@ class FinalizationTests(unittest.TestCase):
         with patch.dict(sys.modules, {'playwright.sync_api': fake}):
             row = self.scraper.collect_one(ROW)
         self.assertIsNone(row['retailprice'])
-        self.assertEqual(row['_crawl_reason'], 'BROWSER_ONLINE_STOCK_EXHAUSTED')
+        self.assertEqual(row['_crawl_reason'], 'BROWSER_RECOVERED_ONLINE_STOCK_EXHAUSTED')
         self.assertEqual(row['_s3_upload'], 'ok')
 
     def test_replay_of_retired_screenshot_override_restores_policy_without_fetch(self):

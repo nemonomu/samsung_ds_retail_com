@@ -152,6 +152,7 @@ class RequestOptimizationTests(unittest.TestCase):
 
     def test_new_screenshot_session_prepares_homepage_before_product(self):
         fake, pw, page, *_ = self.case.screenshot_context('ready')
+        page.content.return_value = OOS
         row = dict(ROW, retailprice=None, _crawl_reason='ONLINE_STOCK_EXHAUSTED')
         with patch.dict(sys.modules, {'playwright.sync_api': fake}):
             self.assertEqual(self.s.capture_null_screenshot(row, URL), 'ok')

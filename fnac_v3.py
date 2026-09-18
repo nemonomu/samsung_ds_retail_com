@@ -8,8 +8,9 @@ Collection target:
 
 Main rule aligned with fnac_v2.py:
   - Confirmed non-new, store-only, discontinued and online-stock exclusions
-    yield NULL before price selection. An evidence screenshot cannot override
-    those exclusions with a different offer's price.
+    yield NULL before price selection on the final accepted product page.
+  - NULL candidates are re-evaluated on the capture browser. Its accepted
+    HTML and screenshot must describe the same offer and decision.
   - Otherwise, collect the visible representative price from
     .f-faPriceBox__price. Marketplace representative prices are accepted when
     they are the buybox price.
@@ -62,7 +63,7 @@ ZENROWS_API_URL = "https://api.zenrows.com/v1/"
 FNAC_TABLE = "fnac_price_crawl_tbl_fr"
 FNAC_SCREENSHOT_VIEWPORT = {"width": 2560, "height": 1440}
 DEFAULT_FETCH_TIMEOUT = 180
-DEFAULT_SCREENSHOT_MAX_ATTEMPTS = 2
+DEFAULT_SCREENSHOT_MAX_ATTEMPTS = 3
 DEFAULT_PRODUCT_TIME_BUDGET = 360
 
 
@@ -1254,6 +1255,13 @@ class FnacZenRowsScraper:
 
         with sync_playwright() as playwright:
             while not uploaded and browser_attempt < max_browser_attempts:
+                # A reused verification page counts as the first attempt too.
+                # Wait after closing the failed session, before buying a new one.
+                if browser_attempt:
+                    delay = min(5 * browser_attempt, 10)
+                    logger.info("FNAC screenshot retry wait sku=%s next_attempt=%s/%s seconds=%s",
+                                result.get("retailersku"), browser_attempt + 1, max_attempt_label, delay)
+                    self.pause(delay)
                 browser_attempt += 1
 
                 browser = None
@@ -1404,9 +1412,6 @@ class FnacZenRowsScraper:
                     if stats is not None:
                         stats["browser_sessions"] += 1
 
-                if not uploaded and browser_attempt < max_browser_attempts:
-                    self.pause(min(2 + browser_attempt, 10))
-
         status = "ok" if uploaded else "fail"
         result["_screenshot_reason"] = "registered" if uploaded else last_retry_reason
         if last_error:
@@ -1429,44 +1434,73 @@ class FnacZenRowsScraper:
         return status
 
     def capture_ready_page(self, page: Any, result: Dict[str, Any], display_url: str, load_url: str) -> str:
-        initial_reason = result.get("_crawl_reason", "")
-        protect_null = result.get("retailprice") is None and is_confirmed_null_reason(initial_reason)
         browser_html = self.browser_product_html(page)
         if not self.product_html_ready(browser_html, load_url or display_url, require_decision=False):
             return "fail"
         try:
+            # Every initial NULL candidate gets evidence first, including products
+            # that turn out to have a valid price on this final browser page.
+            screenshot_bytes = page.screenshot(full_page=False,
+                timeout=self.operation_timeout(self.screenshot_timeout) * 1000)
+            if not screenshot_bytes:
+                return "fail"
             browser_row = dict(result)
             browser_row["url"] = display_url
             browser_result, browser_reason = self.parse_product(browser_html, browser_row)
-            if protect_null:
-                logger.info("Keep FNAC policy NULL sku=%s reason=%s evidence_reason=%s",
-                            result.get("retailersku"), initial_reason, browser_reason)
-            if not protect_null and self.product_html_ready(browser_html, load_url or display_url):
-                for field in ("title", "imageurl"):
-                    browser_result[field] = browser_result.get(field) or result.get(field)
-                if browser_reason in {"VISIBLE_PRICE_BOX", "CURRENT_OFFER_PRICE"}:
-                    screen_price = self.screenshot_visible_price(page, browser_html)
-                    browser_result["retailprice"] = screen_price
-                    if screen_price is None:
-                        browser_reason = "SCREENSHOT_PRICE_NOT_VISIBLE"
-                result.update({
-                    "title": browser_result.get("title"),
-                    "imageurl": browser_result.get("imageurl"),
-                    "retailprice": browser_result.get("retailprice"),
-                })
-                result["_browser_reparse_reason"] = browser_reason
-                result["_browser_reparse_html"] = browser_html
-                if not is_null_result(result):
-                    logger.info("NULL screenshot skipped after visible page price recovery sku=%s reason=%s price=%s",
-                                result.get("retailersku"), browser_reason, result.get("retailprice"))
-                    return "skip"
+            for field in ("title", "imageurl"):
+                browser_result[field] = browser_result.get(field) or result.get(field)
+            if browser_reason in {"VISIBLE_PRICE_BOX", "CURRENT_OFFER_PRICE"}:
+                browser_result["retailprice"] = self.screenshot_visible_price(page, browser_html)
+                if browser_result["retailprice"] is None:
+                    browser_reason = "SCREENSHOT_PRICE_NOT_VISIBLE"
+
+            # Refuse a page that changed seller/stock/price while reading/capturing.
+            after_html = self.browser_product_html(page)
+            if (not self.product_html_ready(after_html, load_url or display_url, require_decision=False)
+                    or self.capture_decision_signature(browser_html, browser_row)
+                    != self.capture_decision_signature(after_html, browser_row)):
+                logger.warning("FNAC capture page changed; keep previous result and retry sku=%s",
+                               result.get("retailersku"))
+                return "fail"
+
+            result.update({field: browser_result.get(field) for field in ("title", "imageurl", "retailprice")})
+            result["_browser_reparse_reason"] = browser_reason
+            result["_browser_reparse_html"] = browser_html
+            logger.info("FNAC final browser decision sku=%s initial_reason=%s final_reason=%s price=%s",
+                        result.get("retailersku"), result.get("_crawl_reason"), browser_reason,
+                        result.get("retailprice"))
+            if not is_null_result(result):
+                logger.info("NULL screenshot skipped after visible page price recovery sku=%s reason=%s price=%s",
+                            result.get("retailersku"), browser_reason, result.get("retailprice"))
+                return "skip"
+        except ProductTimeBudgetExceeded:
+            raise
         except Exception as exc:
             logger.warning("Browser reparse before NULL screenshot failed sku=%s: %s", result.get("retailersku"), type(exc).__name__)
+            return "fail"
 
         self.operation_timeout(1)
         uploaded = capture_and_upload(page, "fnac", result.get("retailersku", ""), display_url, result,
-                                      require_monitoring_link=True)
+                                      require_monitoring_link=True, screenshot_bytes=screenshot_bytes)
         return "ok" if uploaded else "fail"
+
+    def capture_decision_signature(self, body: str, row: Dict[str, Any]) -> str:
+        """Compare product data only; ignore ads and unrelated page changes."""
+        parsed, reason = self.parse_product(body, row)
+        digital_data = extract_json_script(body, "digitalData") or {}
+        product = first_dict(digital_data.get("product"))
+        attributes = first_dict(product.get("attributes"))
+        offers = attributes.get("offer")
+        return json.dumps({
+            "fields": [parsed.get(k) for k in ("title", "imageurl", "retailprice")],
+            "reason": reason,
+            "current_offer": attributes.get("currentOffer"),
+            "first_offer": offers[0] if isinstance(offers, list) and offers else None,
+            "availability": attributes.get("availabilityType"),
+            "sales_category": attributes.get("salesCategory"),
+            "visible_prices": extract_visible_price_texts(body),
+            "stock": [first_availability_text(body), next_buybox_availability(body)],
+        }, sort_keys=True, ensure_ascii=False)
 
     def warmup_fnac_screenshot_session(self, page: Any) -> None:
         try:
@@ -2009,6 +2043,22 @@ class FnacZenRowsScraper:
             df.to_sql(FNAC_TABLE, self.db_engine, if_exists="append", index=False)
             logger.info("DB saved: %s rows to %s", len(df), FNAC_TABLE)
 
+            # Report data must follow the committed crawl, even without a photo.
+            # A report error must not misreport the successful crawl insert.
+            try:
+                from fnac_monitoring import sync_saved_fnac_results
+                sync = sync_saved_fnac_results(df.to_dict("records"))
+                if not sync["success"]:
+                    self.error_logs.append("FNAC monitoring report sync failed")
+                    logger.warning("FNAC monitoring report sync failed; crawl DB already saved")
+                else:
+                    logger.info("FNAC monitoring report synced rows=%s closed_dates=%s",
+                                sync["updated"], sync["closed_dates"])
+            except Exception as exc:
+                self.error_logs.append("FNAC monitoring report sync failed")
+                logger.warning("FNAC monitoring report sync failed error=%s; crawl DB already saved",
+                               type(exc).__name__)
+
             avg_time = self.total_call_seconds / max(1, self.total_zenrows_calls)
             log_records = []
             for _, row in df.iterrows():
@@ -2147,7 +2197,7 @@ def main() -> None:
     parser.add_argument("--wait", type=int, default=None, help="Optional render wait milliseconds; manual mode defaults to 150")
     parser.add_argument("--screenshot-timeout", type=int, default=90, help="ZenRows NULL screenshot request timeout seconds")
     parser.add_argument("--screenshot-wait", type=int, default=150, help="Optional minimum screenshot wait milliseconds; product readiness is checked separately")
-    parser.add_argument("--screenshot-max-attempts", type=int, default=DEFAULT_SCREENSHOT_MAX_ATTEMPTS, help="NULL screenshot fresh browser attempts; 0 uses the finite default (2)")
+    parser.add_argument("--screenshot-max-attempts", type=int, default=DEFAULT_SCREENSHOT_MAX_ATTEMPTS, help="NULL screenshot total attempts including a reused page; 0 uses default 3; retry waits 5s then 10s")
     parser.add_argument("--no-browser-verify", action="store_true", help="Disable Scraping Browser verification for ambiguous FNAC/marketplace buyboxes")
     parser.add_argument("--browser-timeout", type=int, default=90, help="ZenRows Scraping Browser verification timeout seconds")
     parser.add_argument("--browser-wait", type=int, default=6000, help="ZenRows Scraping Browser verification wait milliseconds")

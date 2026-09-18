@@ -140,6 +140,7 @@ class BuyboxReliabilityTests(unittest.TestCase):
 
     def test_monitoring_link_failure_does_not_buy_another_browser(self):
         fake, pw, page, *_ = self.case.screenshot_context('ready')
+        page.content.return_value = OOS
         result = dict(ROW, title='SSD', imageurl='image', retailprice=None, _crawl_reason='ONLINE_STOCK_EXHAUSTED')
         def upload(*args, **kwargs):
             self.assertTrue(kwargs['require_monitoring_link'])
@@ -184,16 +185,16 @@ class BuyboxReliabilityTests(unittest.TestCase):
         self.assertIsNone(row['retailprice'])
         self.assertEqual(reason, 'ONLINE_STOCK_EXHAUSTED')
 
-    def test_visible_recovery_does_not_override_confirmed_null_policy(self):
+    def test_final_visible_page_replaces_initial_store_null(self):
         raw, filtered = self.visibility_case()
         row = dict(ROW, title='SSD', imageurl='image', retailprice=None,
                    _crawl_reason='BASE_CLICK_COLLECT_FIRST_MARKETPLACE')
         page = Mock()
         page.content.return_value = raw
-        page.evaluate.return_value = filtered
-        self.assertEqual(self.s.capture_ready_page(page, row, URL, URL), 'ok')
-        self.assertIsNone(row['retailprice'])
-        self.m.capture_and_upload.assert_called_once()
+        page.evaluate.side_effect = lambda script: filtered if 'const snapshot =' in script else {'visiblePriceTexts': ['181,99']}
+        self.assertEqual(self.s.capture_ready_page(page, row, URL, URL), 'skip')
+        self.assertEqual(row['retailprice'], 181.99)
+        self.m.capture_and_upload.assert_not_called()
 
     def test_auto_verification_resolves_conflict_without_another_browser(self):
         raw, filtered = self.visibility_case()

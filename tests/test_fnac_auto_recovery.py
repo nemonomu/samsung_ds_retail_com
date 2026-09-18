@@ -74,6 +74,7 @@ class Page:
         self.wait_for_timeout = Mock()
         self.close = Mock()
         self.content = Mock(return_value=PRODUCT)
+        self.screenshot = Mock(return_value=b"synthetic PNG")
 
     def evaluate(self, _script):
         return self.state
@@ -247,20 +248,20 @@ class FnacRecoveryTests(unittest.TestCase):
             self.scraper.parse_product = Mock(return_value=parse_result)
         return fake, playwright, page, context, browser
 
-    def test_blocked_capture_finishes_after_two_sessions_and_no_extra_sleep(self):
+    def test_blocked_capture_finishes_after_three_sessions_with_five_ten_second_waits(self):
         fake, playwright, page, context, browser = self.screenshot_context()
         with patch.dict(sys.modules, {'playwright.sync_api': fake}), patch.object(self.m.time, 'sleep') as sleep:
             self.assertEqual(self.scraper.capture_null_screenshot({'retailersku': 'example'}, URL), 'fail')
-        self.assertEqual(playwright.chromium.connect_over_cdp.call_count, 2)
-        self.assertEqual(self.scraper.load_screenshot_page.call_count, 2)  # no reload on a confirmed block
-        self.assertEqual(page.close.call_count, 2)
-        self.assertEqual(context.close.call_count, 2)
-        self.assertEqual(browser.close.call_count, 2)
-        sleep.assert_called_once()
+        self.assertEqual(playwright.chromium.connect_over_cdp.call_count, 3)
+        self.assertEqual(self.scraper.load_screenshot_page.call_count, 3)  # no reload on a confirmed block
+        self.assertEqual(page.close.call_count, 3)
+        self.assertEqual(context.close.call_count, 3)
+        self.assertEqual(browser.close.call_count, 3)
+        self.assertEqual([c.args[0] for c in sleep.call_args_list], [5, 10])
         self.m.capture_and_upload.assert_not_called()
 
     def test_old_zero_attempt_option_is_finite(self):
-        self.assertEqual(self.m.FnacZenRowsScraper(screenshot_max_attempts=0).screenshot_max_attempts, 2)
+        self.assertEqual(self.m.FnacZenRowsScraper(screenshot_max_attempts=0).screenshot_max_attempts, 3)
 
     def test_cli_defaults_match_constructor(self):
         class ArgumentsCaptured(Exception):
@@ -279,7 +280,7 @@ class FnacRecoveryTests(unittest.TestCase):
         self.assertEqual(captured['fetch_mode'], self.scraper.fetch_mode)
         self.assertEqual(captured['timeout'], self.scraper.fetch_timeout)
         self.assertIsNone(captured['wait'])
-        self.assertEqual(captured['screenshot_max_attempts'], 2)
+        self.assertEqual(captured['screenshot_max_attempts'], 3)
         self.assertEqual(captured['screenshot_wait'], self.scraper.screenshot_wait)
 
     def test_browser_connection_errors_stop_at_attempt_limit(self):
@@ -287,7 +288,7 @@ class FnacRecoveryTests(unittest.TestCase):
         playwright.chromium.connect_over_cdp.side_effect = RuntimeError('private-connection-placeholder')
         with patch.dict(sys.modules, {'playwright.sync_api': fake}), patch.object(self.m.time, 'sleep'), self.assertLogs(self.m.logger, level='WARNING') as logs:
             self.assertEqual(self.scraper.capture_null_screenshot({'retailersku': 'example'}, URL), 'fail')
-        self.assertEqual(playwright.chromium.connect_over_cdp.call_count, 2)
+        self.assertEqual(playwright.chromium.connect_over_cdp.call_count, 3)
         self.assertNotIn('private-connection-placeholder', ' '.join(logs.output))
 
     def test_capture_returns_on_success_without_retrying(self):
