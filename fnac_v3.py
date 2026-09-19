@@ -1192,7 +1192,7 @@ class FnacZenRowsScraper:
                 return price
         return None
 
-    def capture_null_screenshot(self, result: Dict[str, Any], display_url: str, load_url: Optional[str] = None) -> str:
+    def capture_null_screenshot(self, result: Dict[str, Any], display_url: str, load_url: Optional[str] = None, *, max_attempts: Optional[int] = None) -> str:
         if not self.capture_null or not is_null_result(result):
             return "skip"
         result["_screenshot_reason"] = "pending"
@@ -1213,7 +1213,7 @@ class FnacZenRowsScraper:
             if candidate and candidate not in target_urls:
                 target_urls.append(candidate)
 
-        max_browser_attempts = max(1, int(self.screenshot_max_attempts or DEFAULT_SCREENSHOT_MAX_ATTEMPTS))
+        max_browser_attempts = max(1, int(max_attempts if max_attempts is not None else (self.screenshot_max_attempts or DEFAULT_SCREENSHOT_MAX_ATTEMPTS)))
         max_attempt_label = str(max_browser_attempts)
         uploaded = None
         last_error = None
@@ -1238,7 +1238,7 @@ class FnacZenRowsScraper:
                                 self.total_screenshot_success += int(reuse_status == "ok")
                             logger.info("FNAC reused verification browser for NULL evidence sku=%s status=%s", result.get("retailersku"), reuse_status)
                             return reuse_status
-                        if result.get("_screenshot_reason") == "monitoring_link_failed":
+                        if result.get("_pending_screenshot_bytes") or result.get("_screenshot_reason") == "monitoring_link_failed":
                             with self._counter_lock:
                                 self.total_screenshot_fail += 1
                             return "fail"
@@ -1360,11 +1360,11 @@ class FnacZenRowsScraper:
                         if uploaded:
                             break
                         last_retry_reason = "upload_not_confirmed"
-                        if result.get("_screenshot_reason") == "monitoring_link_failed":
-                            last_retry_reason = "monitoring_link_failed"
+                        if result.get("_pending_screenshot_bytes") or result.get("_screenshot_reason") == "monitoring_link_failed":
+                            last_retry_reason = result.get("_screenshot_reason", "upload_failed")
                             break
 
-                    if uploaded or last_retry_reason in {"waiting_room", "monitoring_link_failed"}:
+                    if uploaded or result.get("_pending_screenshot_bytes") or last_retry_reason in {"waiting_room", "monitoring_link_failed"}:
                         break
                     if browser_attempt < max_browser_attempts:
                         logger.warning(
@@ -1440,6 +1440,7 @@ class FnacZenRowsScraper:
         try:
             # Every initial NULL candidate gets evidence first, including products
             # that turn out to have a valid price on this final browser page.
+            captured_at = datetime.now(self.korea_tz)
             screenshot_bytes = page.screenshot(full_page=False,
                 timeout=self.operation_timeout(self.screenshot_timeout) * 1000)
             if not screenshot_bytes:
@@ -1463,6 +1464,8 @@ class FnacZenRowsScraper:
                                result.get("retailersku"))
                 return "fail"
 
+            result.pop("_pending_screenshot_bytes", None)
+            result.pop("_pending_screenshot_at", None)
             result.update({field: browser_result.get(field) for field in ("title", "imageurl", "retailprice")})
             result["_browser_reparse_reason"] = browser_reason
             result["_browser_reparse_html"] = browser_html
@@ -1480,8 +1483,16 @@ class FnacZenRowsScraper:
             return "fail"
 
         self.operation_timeout(1)
+        result["_screenshot_reason"] = "pending"
         uploaded = capture_and_upload(page, "fnac", result.get("retailersku", ""), display_url, result,
-                                      require_monitoring_link=True, screenshot_bytes=screenshot_bytes)
+                                      require_monitoring_link=True, screenshot_bytes=screenshot_bytes,
+                                      captured_at=captured_at)
+        if not uploaded and result.get("_screenshot_reason") != "blank_image":
+            # Keep the accepted page's PNG in memory for registration-only recovery.
+            result["_pending_screenshot_bytes"] = screenshot_bytes
+            result["_pending_screenshot_at"] = captured_at
+            if result.get("_screenshot_reason") != "monitoring_link_failed":
+                result["_screenshot_reason"] = "upload_failed"
         return "ok" if uploaded else "fail"
 
     def capture_decision_signature(self, body: str, row: Dict[str, Any]) -> str:
@@ -1823,6 +1834,12 @@ class FnacZenRowsScraper:
         result = self.base_result(row)
         decision_html = ""
         verification_pending = False
+        collection_errors = []
+
+        def record_error(message):
+            self.error_logs.append(message)
+            collection_errors.append(message)
+
         if not self.html_dir:
             self._product_clock.deadline = time.monotonic() + self.product_time_budget
             self._product_clock.stats = {"started": time.monotonic(), "api_calls": 0, "browser_sessions": 0}
@@ -1856,7 +1873,7 @@ class FnacZenRowsScraper:
                     else:
                         if is_waiting_room(browser_html):
                             page_html = browser_html
-                        self.error_logs.append(f"{url}: Scraping Browser HTML fallback failed status={browser_status}")
+                        record_error(f"{url}: Scraping Browser HTML fallback failed status={browser_status}")
             if status_code != 200:
                 result = self.base_result(row)
                 reason = row.get("_replay_error") or ("WAITING_ROOM_TIMEOUT" if is_waiting_room(page_html) else f"HTTP_{status_code}")
@@ -1896,7 +1913,7 @@ class FnacZenRowsScraper:
                             decision_html = browser_html
                             reason = f"BROWSER_{browser_reason}"
                     else:
-                        self.error_logs.append(f"{url}: rendered page verify failed status={browser_status}")
+                        record_error(f"{url}: rendered page verify failed status={browser_status}")
                         result["retailprice"] = None
                         reason = "WAITING_ROOM_TIMEOUT" if is_waiting_room(browser_html) else f"BROWSER_VERIFY_FAILED_{reason}"
                         logger.warning(
@@ -1907,7 +1924,7 @@ class FnacZenRowsScraper:
                     verification_pending = False
             if not self.html_dir:
                 if status_code != 200 and reason != "WAITING_ROOM_TIMEOUT":
-                    self.error_logs.append(f"{url}: fetch failed {reason}")
+                    record_error(f"{url}: fetch failed {reason}")
                     logger.warning("Fetch failed; try NULL screenshot evidence sku=%s reason=%s", row.get("retailersku"), reason)
                 screenshot_url = result.get("producturl") or url or request_url
                 result["_crawl_reason"] = reason
@@ -1923,10 +1940,10 @@ class FnacZenRowsScraper:
                     reason = f"BROWSER_RECOVERED_{recovered_reason}"
                     decision_html = recovered_html or decision_html
                 if s3_status == "fail":
-                    self.error_logs.append(f"{url}: NULL screenshot upload failed")
+                    record_error(f"{url}: NULL screenshot upload failed")
             else:
                 if status_code != 200:
-                    self.error_logs.append(f"{url}: fetch failed {reason}")
+                    record_error(f"{url}: fetch failed {reason}")
             result["_crawl_reason"] = reason
             result["_s3_upload"] = s3_status
             return result
@@ -1943,10 +1960,11 @@ class FnacZenRowsScraper:
             return result
         except Exception as exc:
             logger.error("Product collection failed url=%s: %s", url, type(exc).__name__)
-            self.error_logs.append(f"{url}: {type(exc).__name__}")
+            record_error(f"{url}: {type(exc).__name__}")
             result = self.base_result(row)
             result["_crawl_reason"] = f"EXCEPTION_{type(exc).__name__}"
-            result["_s3_upload"] = s3_status
+            result["_s3_upload"] = "fail" if self.capture_null and not self.html_dir else "skip"
+            result["_screenshot_reason"] = "collection_exception"
             return result
         finally:
             if not self.html_dir:
@@ -1961,7 +1979,12 @@ class FnacZenRowsScraper:
                     "policy_null" if is_confirmed_null_reason(result.get("_crawl_reason", ""))
                     and result.get("title") and result.get("imageurl") else "collection_failed")
                 if result["_collection_status"] == "collection_failed":
-                    self.error_logs.append(f"FNAC collection incomplete sku={row.get('retailersku')} reason={result.get('_crawl_reason')}")
+                    record_error(f"FNAC collection incomplete sku={row.get('retailersku')} reason={result.get('_crawl_reason')}")
+                if result.get("retailprice") is None and result.get("_s3_upload") == "fail":
+                    # Preserve the exact decision and original cache path for the late pass.
+                    result["_evidence_recovery_html"] = decision_html
+                    result["_evidence_recovery_row"] = dict(row)
+                result["_collection_errors"] = collection_errors
                 try:
                     self.save_final_snapshot(row, decision_html, result)
                 finally:
@@ -1974,6 +1997,78 @@ class FnacZenRowsScraper:
                         del self._product_clock.stats
                     if hasattr(self._product_clock, "deadline"):
                         del self._product_clock.deadline
+
+    def recover_null_evidence(self, previous: Dict[str, Any], max_attempts: int = 2) -> Dict[str, Any]:
+        """One bounded late pass; no repeat HTML API request or legacy v2 scraper."""
+        if (not self.capture_null or self.html_dir or previous.get("retailprice") is not None
+                or previous.get("_s3_upload") != "fail"):
+            return previous
+        result = dict(previous)
+        row = result.pop("_evidence_recovery_row", None) or dict(result, url=result.get("producturl", ""))
+        decision_html = result.pop("_evidence_recovery_html", "")
+        display_url = result.get("producturl") or row.get("url", "")
+        result.pop("_screenshot_error", None)
+        self._product_clock.deadline = time.monotonic() + self.product_time_budget
+        self._product_clock.stats = {"started": time.monotonic(), "api_calls": 0, "browser_sessions": 0}
+        try:
+            png = result.get("_pending_screenshot_bytes")
+            if png:
+                # Upload/link errors do not require another paid browser session.
+                uploaded = capture_and_upload(None, "fnac", result.get("retailersku", ""),
+                    display_url, result, require_monitoring_link=True, screenshot_bytes=png,
+                    captured_at=result.get("_pending_screenshot_at"))
+                result["_s3_upload"] = "ok" if uploaded else "fail"
+                result["_screenshot_reason"] = "registered" if uploaded else result.get("_screenshot_reason", "upload_failed")
+                if uploaded:
+                    result.pop("_pending_screenshot_bytes", None)
+                    result.pop("_pending_screenshot_at", None)
+            else:
+                result["_s3_upload"] = self.capture_null_screenshot(
+                    result, display_url, normalize_product_url(row.get("url") or display_url),
+                    max_attempts=max_attempts)
+        except ProductTimeBudgetExceeded:
+            result["_s3_upload"] = "fail"
+            result["_screenshot_reason"] = "time_budget_exhausted"
+        except Exception as exc:
+            result["_s3_upload"] = "fail"
+            result["_screenshot_reason"] = "recovery_exception"
+            result["_screenshot_error"] = type(exc).__name__
+        finally:
+            reason = result.pop("_browser_reparse_reason", None)
+            html = result.pop("_browser_reparse_html", None)
+            if reason:
+                result["_crawl_reason"] = f"BROWSER_RECOVERED_{reason}"
+                decision_html = html or decision_html
+            result["_collection_status"] = (
+                "complete" if not is_null_result(result) else
+                "policy_null" if is_confirmed_null_reason(result.get("_crawl_reason", ""))
+                and result.get("title") and result.get("imageurl") else "collection_failed")
+            try:
+                self.save_final_snapshot(row, decision_html, result)
+            finally:
+                self.close_product_browser()
+                stats = self._product_clock.stats
+                logger.info("FNAC evidence recovery completed sku=%s elapsed=%.1fs browser_sessions=%s price=%s screenshot=%s reason=%s",
+                            result.get("retailersku"), time.monotonic() - stats["started"],
+                            stats["browser_sessions"], result.get("retailprice"),
+                            result.get("_s3_upload"), result.get("_screenshot_reason"))
+                del self._product_clock.stats
+                del self._product_clock.deadline
+        resolved_errors = []
+        if (result["_collection_status"] == "complete" or
+                (result["_collection_status"] == "policy_null" and result.get("_s3_upload") == "ok")):
+            # Keep the log history, but do not send resolved collection errors as final failures.
+            resolved_errors.extend(result.get("_collection_errors", []))
+            screenshot_error = f"{row.get('url', '')}: NULL screenshot upload failed"
+            if screenshot_error not in resolved_errors:
+                resolved_errors.append(screenshot_error)
+        elif result.get("_s3_upload") == "ok":
+            resolved_errors.append(f"{row.get('url', '')}: NULL screenshot upload failed")
+        for error in resolved_errors:
+            if error in self.error_logs:
+                self.error_logs.remove(error)
+        result.pop("_collection_errors", None)
+        return result
 
     def collect(self, targets: List[Dict[str, Any]], sleep_seconds: float = 0.2, workers: int = 1) -> List[Dict[str, Any]]:
         started_at = time.time()
@@ -2012,10 +2107,15 @@ class FnacZenRowsScraper:
                 except Exception as exc:
                     row = indexed_targets[result_idx]
                     logger.error("Parallel collection failed url=%s: %s", row.get("url"), exc)
-                    self.error_logs.append(f"{row.get('url')}: {exc}")
+                    error = f"{row.get('url')}: {type(exc).__name__}"
+                    self.error_logs.append(error)
                     results[result_idx] = self.base_result(row)
-                    results[result_idx]["_crawl_reason"] = f"EXCEPTION: {exc}"
-                    results[result_idx]["_s3_upload"] = "skip"
+                    results[result_idx].update(
+                        _crawl_reason=f"EXCEPTION_{type(exc).__name__}",
+                        _s3_upload="fail" if self.capture_null and not self.html_dir else "skip",
+                        _screenshot_reason="collection_exception",
+                        _collection_status="collection_failed", _collection_errors=[error],
+                        _evidence_recovery_row=dict(row), _evidence_recovery_html="")
                 self.log_collect_result(result_idx + 1, len(indexed_targets), indexed_targets[result_idx], results[result_idx])
 
         self.collection_wall_seconds = time.time() - started_at
@@ -2198,6 +2298,9 @@ def main() -> None:
     parser.add_argument("--screenshot-timeout", type=int, default=90, help="ZenRows NULL screenshot request timeout seconds")
     parser.add_argument("--screenshot-wait", type=int, default=150, help="Optional minimum screenshot wait milliseconds; product readiness is checked separately")
     parser.add_argument("--screenshot-max-attempts", type=int, default=DEFAULT_SCREENSHOT_MAX_ATTEMPTS, help="NULL screenshot total attempts including a reused page; 0 uses default 3; retry waits 5s then 10s")
+    parser.add_argument("--no-evidence-recovery", action="store_true", help="Disable the post-collection missing-photo recovery pass")
+    parser.add_argument("--evidence-recovery-wait", type=float, default=120, help="Seconds before the missing-photo recovery pass; no wait without candidates")
+    parser.add_argument("--evidence-recovery-attempts", type=int, default=2, help="Maximum additional browser sessions per missing-photo product")
     parser.add_argument("--no-browser-verify", action="store_true", help="Disable Scraping Browser verification for ambiguous FNAC/marketplace buyboxes")
     parser.add_argument("--browser-timeout", type=int, default=90, help="ZenRows Scraping Browser verification timeout seconds")
     parser.add_argument("--browser-wait", type=int, default=6000, help="ZenRows Scraping Browser verification wait milliseconds")
@@ -2287,6 +2390,14 @@ def main() -> None:
             return
 
         results = scraper.collect(targets, sleep_seconds=args.sleep, workers=max(1, args.workers))
+        if capture_null and not args.no_evidence_recovery:
+            try:
+                from auto_recovery import auto_recovery_fnac_v3
+                results = auto_recovery_fnac_v3(scraper, results,
+                    wait_seconds=args.evidence_recovery_wait, max_attempts=args.evidence_recovery_attempts)
+            except Exception as exc:
+                logger.warning("FNAC evidence recovery unavailable error=%s; save initial results", type(exc).__name__)
+                scraper.error_logs.append("FNAC evidence recovery unavailable")
         logger.info("FNAC outcome summary complete=%s policy_null=%s collection_failed=%s evidence_missing=%s",
                     sum(r.get("_collection_status") == "complete" for r in results),
                     sum(r.get("_collection_status") == "policy_null" for r in results),

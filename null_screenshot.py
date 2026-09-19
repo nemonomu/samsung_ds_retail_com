@@ -534,7 +534,7 @@ def _is_blank_or_white_screenshot(screenshot_bytes):
         return False
 
 
-def _add_watermark(screenshot_bytes, url):
+def _add_watermark(screenshot_bytes, url, *, captured_at=None):
     """Add DS-style URL and timestamp labels without changing image dimensions."""
     try:
         from PIL import Image, ImageDraw, ImageFont
@@ -560,7 +560,7 @@ def _add_watermark(screenshot_bytes, url):
             url_width = url_bbox[2] - url_bbox[0]
         url_height = url_bbox[3] - url_bbox[1]
 
-        timestamp_text = datetime.now(KST).strftime('%Y-%m-%d %H:%M:%S KST')
+        timestamp_text = (captured_at or datetime.now(KST)).astimezone(KST).strftime('%Y-%m-%d %H:%M:%S KST')
         ts_bbox = draw.textbbox((0, 0), timestamp_text, font=font)
         ts_width = ts_bbox[2] - ts_bbox[0]
         ts_height = ts_bbox[3] - ts_bbox[1]
@@ -685,7 +685,7 @@ def delete_screenshots_for_sku(retailer, retailsku, date_yyyymmdd):
         return 0
 
 
-def capture_and_upload(driver, retailer, retailsku, url, result_data=None, *, require_monitoring_link=False, screenshot_bytes=None):
+def capture_and_upload(driver, retailer, retailsku, url, result_data=None, *, require_monitoring_link=False, screenshot_bytes=None, captured_at=None):
     """스크린샷 캡처 후 S3 업로드
 
     동일 (retailer, retailsku, 날짜) 의 기존 스크린샷이 있으면 삭제 후 새로 업로드.
@@ -699,6 +699,7 @@ def capture_and_upload(driver, retailer, retailsku, url, result_data=None, *, re
         result_data: 크롤링 결과 dict/Series. 전달되면 모니터링 anomaly row에 가능한 값을 함께 저장.
         require_monitoring_link: True이면 모니터링 DB 연결까지 성공해야 완료로 반환.
         screenshot_bytes: 최종 판정 화면에서 미리 확보한 PNG. 제공 시 재촬영하지 않음.
+        captured_at: 실제 촬영 시각. 재등록 시에도 사진의 시각 표시를 유지.
 
     Returns:
         S3 key 문자열 (성공 시) / None (실패 시)
@@ -715,11 +716,16 @@ def capture_and_upload(driver, retailer, retailsku, url, result_data=None, *, re
             return None
 
         if _is_blank_or_white_screenshot(screenshot_bytes):
+            if require_monitoring_link and isinstance(result_data, dict):
+                result_data['_screenshot_reason'] = 'blank_image'
             logger.warning(f"NULL screenshot rejected because captured image is blank/white (retailer={retailer}, sku={retailsku}, url={url})")
             return None
 
         # 워터마크: URL 좌상단, KST 시각 우하단
-        screenshot_bytes = _add_watermark(screenshot_bytes, url)
+        if captured_at is None:
+            screenshot_bytes = _add_watermark(screenshot_bytes, url)
+        else:
+            screenshot_bytes = _add_watermark(screenshot_bytes, url, captured_at=captured_at)
 
         now_kst = datetime.now(KST)
         year_month_day = now_kst.strftime('%Y%m%d')

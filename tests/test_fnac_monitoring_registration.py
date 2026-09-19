@@ -16,7 +16,7 @@ def load_uploader():
     module = types.ModuleType('offline_uploader')
     module.__dict__.update(datetime=datetime, KST=timezone.utc, logger=logging.getLogger('test.uploader'),
         _capture_bytes=Mock(return_value=b'image'), _is_blank_or_white_screenshot=Mock(return_value=False),
-        _add_watermark=Mock(side_effect=lambda data, url: data), _normalize_retailer=lambda value: value,
+        _add_watermark=Mock(side_effect=lambda data, url, **kwargs: data), _normalize_retailer=lambda value: value,
         _file_sku=lambda value: value, _monitoring_file_path=lambda retailer, date: f'{date}/{retailer}/',
         _get_s3_client=Mock(return_value=Mock()), _get_s3_config=lambda: {'bucket_name': 'test'},
         _insert_monitoring_file_and_anomaly=Mock(return_value=123),
