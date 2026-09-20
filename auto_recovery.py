@@ -28,6 +28,43 @@ logger = logging.getLogger(__name__)
 SHIPS_FROM_TARGETS = {'de', 'es', 'fr', 'in', 'it', 'jp', 'gb', 'nl', 'usa'}
 
 
+def auto_recovery_fnac_v3(scraper, results, *, wait_seconds=120, max_attempts=2):
+    """Recover only missing price-NULL evidence with the active FNAC v3 instance.
+
+    Keep legacy recovery loaders, DB updates and screenshot deletion out of this
+    path. The caller saves the merged final results once using the v3 pipeline.
+    """
+    if not scraper.capture_null or scraper.html_dir:
+        return results
+    candidates = [index for index, row in enumerate(results)
+                  if row.get('retailprice') is None and row.get('_s3_upload') == 'fail']
+    if not candidates:
+        return results
+    delay = max(0, float(wait_seconds))
+    attempts = max(1, int(max_attempts))
+    logger.info("FNAC evidence recovery queued candidates=%s wait_seconds=%s max_attempts=%s",
+                len(candidates), delay, attempts)
+    if delay:
+        time.sleep(delay)
+    # After all collection workers finish, reuse the v3 scraper serially.
+    for index in candidates:
+        try:
+            results[index] = scraper.recover_null_evidence(results[index], max_attempts=attempts)
+        except Exception as exc:
+            logger.warning("FNAC evidence recovery failed sku=%s error=%s",
+                           results[index].get('retailersku'), type(exc).__name__)
+            scraper.error_logs.append("FNAC evidence recovery failed")
+        finally:
+            # PNGs and HTML are transient only; snapshots contain safe metadata.
+            for key in ('_pending_screenshot_bytes', '_pending_screenshot_at', '_evidence_recovery_html', '_evidence_recovery_row', '_collection_errors'):
+                results[index].pop(key, None)
+    remaining = sum(results[index].get('retailprice') is None
+                    and results[index].get('_s3_upload') != 'ok' for index in candidates)
+    logger.info("FNAC evidence recovery summary candidates=%s resolved=%s remaining=%s",
+                len(candidates), len(candidates) - remaining, remaining)
+    return results
+
+
 def _load_title_null_thresholds(db_engine):
     """DB에서 title NULL 임계값 로드"""
     try:

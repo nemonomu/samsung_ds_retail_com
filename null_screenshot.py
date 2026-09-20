@@ -188,14 +188,21 @@ def _insert_monitoring_file_and_anomaly(retailer, retailsku, url, file_name, fil
             file_id = cursor.lastrowid
 
             if existing:
+                # FNAC results are authoritative, including explicit NULLs.
+                # Screenshot-only calls omit fields and must keep saved data.
+                refresh_fields = {
+                    field: (_normalize_retailer(retailer) == 'fnac'
+                            and hasattr(result_data, 'get') and field in result_data)
+                    for field in ('title', 'retailprice', 'ships_from', 'sold_by', 'imageurl')
+                }
                 cursor.execute("""
                     UPDATE ssd_crawl_db.ds_monitoring_report_anomaly
                     SET screenshot_id = %s,
-                        title = COALESCE(%s, title),
-                        retailprice = COALESCE(%s, retailprice),
-                        ships_from = COALESCE(%s, ships_from),
-                        sold_by = COALESCE(%s, sold_by),
-                        imageurl = COALESCE(%s, imageurl),
+                        title = CASE WHEN %s THEN %s ELSE COALESCE(%s, title) END,
+                        retailprice = CASE WHEN %s THEN %s ELSE COALESCE(%s, retailprice) END,
+                        ships_from = CASE WHEN %s THEN %s ELSE COALESCE(%s, ships_from) END,
+                        sold_by = CASE WHEN %s THEN %s ELSE COALESCE(%s, sold_by) END,
+                        imageurl = CASE WHEN %s THEN %s ELSE COALESCE(%s, imageurl) END,
                         producturl = COALESCE(NULLIF(producturl, ''), %s),
                         country_code = COALESCE(NULLIF(country_code, ''), %s),
                         updated_at = %s,
@@ -203,11 +210,11 @@ def _insert_monitoring_file_and_anomaly(retailer, retailsku, url, file_name, fil
                     WHERE id = %s
                 """, (
                     file_id,
-                    title,
-                    retailprice,
-                    ships_from,
-                    sold_by,
-                    imageurl,
+                    refresh_fields['title'], title, title,
+                    refresh_fields['retailprice'], retailprice, retailprice,
+                    refresh_fields['ships_from'], ships_from, ships_from,
+                    refresh_fields['sold_by'], sold_by, sold_by,
+                    refresh_fields['imageurl'], imageurl, imageurl,
                     url,
                     country,
                     now,
@@ -527,7 +534,7 @@ def _is_blank_or_white_screenshot(screenshot_bytes):
         return False
 
 
-def _add_watermark(screenshot_bytes, url):
+def _add_watermark(screenshot_bytes, url, *, captured_at=None):
     """Add DS-style URL and timestamp labels without changing image dimensions."""
     try:
         from PIL import Image, ImageDraw, ImageFont
@@ -553,7 +560,7 @@ def _add_watermark(screenshot_bytes, url):
             url_width = url_bbox[2] - url_bbox[0]
         url_height = url_bbox[3] - url_bbox[1]
 
-        timestamp_text = datetime.now(KST).strftime('%Y-%m-%d %H:%M:%S KST')
+        timestamp_text = (captured_at or datetime.now(KST)).astimezone(KST).strftime('%Y-%m-%d %H:%M:%S KST')
         ts_bbox = draw.textbbox((0, 0), timestamp_text, font=font)
         ts_width = ts_bbox[2] - ts_bbox[0]
         ts_height = ts_bbox[3] - ts_bbox[1]
@@ -583,7 +590,7 @@ def _add_watermark(screenshot_bytes, url):
         return screenshot_bytes
 
 
-def _delete_existing_screenshots(s3_client, bucket, prefix):
+def _delete_existing_screenshots(s3_client, bucket, prefix, *, keep_key=None):
     """기존 (retailer, sku, 날짜) 패턴과 일치하는 S3 객체 모두 삭제.
     초기 수집 후 auto_recovery 재크롤링 시 동일 SKU의 이전 스크린샷을 교체하기 위함.
     """
@@ -596,7 +603,9 @@ def _delete_existing_screenshots(s3_client, bucket, prefix):
         contents = resp.get('Contents') or []
         if not contents:
             return 0
-        objects = [{'Key': obj['Key']} for obj in contents]
+        objects = [{'Key': obj['Key']} for obj in contents if obj['Key'] != keep_key]
+        if not objects:
+            return 0
         s3_client.delete_objects(Bucket=bucket, Delete={'Objects': objects})
         logger.info(f"기존 NULL 스크린샷 {len(objects)}개 삭제 (prefix={prefix})")
         return len(objects)
@@ -676,7 +685,7 @@ def delete_screenshots_for_sku(retailer, retailsku, date_yyyymmdd):
         return 0
 
 
-def capture_and_upload(driver, retailer, retailsku, url, result_data=None):
+def capture_and_upload(driver, retailer, retailsku, url, result_data=None, *, require_monitoring_link=False, screenshot_bytes=None, captured_at=None):
     """스크린샷 캡처 후 S3 업로드
 
     동일 (retailer, retailsku, 날짜) 의 기존 스크린샷이 있으면 삭제 후 새로 업로드.
@@ -688,6 +697,9 @@ def capture_and_upload(driver, retailer, retailsku, url, result_data=None):
         retailsku: 제품 SKU (파일명에 포함)
         url: 현재 페이지 URL (로깅용)
         result_data: 크롤링 결과 dict/Series. 전달되면 모니터링 anomaly row에 가능한 값을 함께 저장.
+        require_monitoring_link: True이면 모니터링 DB 연결까지 성공해야 완료로 반환.
+        screenshot_bytes: 최종 판정 화면에서 미리 확보한 PNG. 제공 시 재촬영하지 않음.
+        captured_at: 실제 촬영 시각. 재등록 시에도 사진의 시각 표시를 유지.
 
     Returns:
         S3 key 문자열 (성공 시) / None (실패 시)
@@ -697,22 +709,30 @@ def capture_and_upload(driver, retailer, retailsku, url, result_data=None):
             logger.warning(f"NULL screenshot skipped because retailersku is empty (retailer={retailer}, url={url})")
             return None
 
-        screenshot_bytes = _capture_bytes(driver)
+        if screenshot_bytes is None:
+            screenshot_bytes = _capture_bytes(driver)
         if not screenshot_bytes:
             logger.warning(f"NULL 스크린샷 캡처 결과 비어있음 (url={url})")
             return None
 
         if _is_blank_or_white_screenshot(screenshot_bytes):
+            if require_monitoring_link and isinstance(result_data, dict):
+                result_data['_screenshot_reason'] = 'blank_image'
             logger.warning(f"NULL screenshot rejected because captured image is blank/white (retailer={retailer}, sku={retailsku}, url={url})")
             return None
 
         # 워터마크: URL 좌상단, KST 시각 우하단
-        screenshot_bytes = _add_watermark(screenshot_bytes, url)
+        if captured_at is None:
+            screenshot_bytes = _add_watermark(screenshot_bytes, url)
+        else:
+            screenshot_bytes = _add_watermark(screenshot_bytes, url, captured_at=captured_at)
 
         now_kst = datetime.now(KST)
         year_month_day = now_kst.strftime('%Y%m%d')
         crawl_date = now_kst.strftime('%Y-%m-%d')
         timestamp = now_kst.strftime('%Y%m%d%H%M%S')
+        if require_monitoring_link:
+            timestamp += f"{now_kst.microsecond:06d}"
 
         retailer_key = _normalize_retailer(retailer)
         sku = _file_sku(retailsku)
@@ -725,7 +745,8 @@ def capture_and_upload(driver, retailer, retailsku, url, result_data=None):
         bucket_name = _get_s3_config()['bucket_name']
 
         # 동일 SKU의 같은 날짜 기존 스크린샷 제거 (auto_recovery 시 파일 교체)
-        _delete_existing_screenshots(s3_client, bucket_name, delete_prefix)
+        if not require_monitoring_link:
+            _delete_existing_screenshots(s3_client, bucket_name, delete_prefix)
 
         s3_client.put_object(
             Bucket=bucket_name,
@@ -733,16 +754,22 @@ def capture_and_upload(driver, retailer, retailsku, url, result_data=None):
             Body=screenshot_bytes,
             ContentType='image/png'
         )
-        file_id = _insert_monitoring_file_and_anomaly(
-            retailer_key,
-            retailsku,
-            url,
-            file_name,
-            file_path,
-            len(screenshot_bytes),
-            crawl_date,
-            result_data
-        )
+        file_id = None
+        for _ in range(2 if require_monitoring_link else 1):
+            file_id = _insert_monitoring_file_and_anomaly(
+                retailer_key, retailsku, url, file_name, file_path,
+                len(screenshot_bytes), crawl_date, result_data
+            )
+            if file_id:
+                break
+        if require_monitoring_link and not file_id:
+            if isinstance(result_data, dict):
+                result_data['_screenshot_reason'] = 'monitoring_link_failed'
+            logger.warning("NULL screenshot monitoring link failed retailer=%s sku=%s", retailer_key, retailsku)
+            return None
+        if require_monitoring_link:
+            # Keep the previously registered evidence until its replacement is linked.
+            _delete_existing_screenshots(s3_client, bucket_name, delete_prefix, keep_key=s3_key)
         logger.info(f"NULL 스크린샷 S3 업로드 완료: s3://{bucket_name}/{s3_key}, file_id={file_id}")
         return s3_key
     except Exception as e:
