@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
 Amazon 이탈리아 가격 추출 시스템 V2 (타임존 분리 버전)
-원본 it.py 기반 - DB/타임존/파일서버 설정만 V2로 변경
+원본 it.py 기반 - V2 저장 형식 및 상품 페이지 검증 적용
 - 현지시간(이탈리아)과 한국시간 분리 저장
 - 새 데이터베이스 사용 (DB_CONFIG_V2)
-- 핵심 로직은 원본과 동일
+- 가격/판매자 추출 유지, 페이지 검증과 제한된 브라우저 복구 적용
 """
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
@@ -39,6 +39,12 @@ from config import FILE_SERVER_CONFIG
 from alert_monitor import monitor_and_alert
 from null_screenshot import FULL_NULL_FIELDS, is_null_result, capture_and_upload
 from cookie_consent import accept_cookies
+from amazon_page_guard import (
+    AmazonProductPageError,
+    capture_product_page_snapshot,
+    extract_asin,
+    wait_for_product_page,
+)
 
 class AmazonITScraper:
     def __init__(self):
@@ -46,6 +52,9 @@ class AmazonITScraper:
         self.db_engine = None
         self.country_code = 'it'
         self.wait = None
+        self.page_timeout_seconds = max(1, float(os.getenv('IT_PAGE_TIMEOUT_SECONDS', '12')))
+        self.browser_needs_restart = False
+        self.last_failure_reason = None
         # V2: 타임존 분리 (현지시간 + 한국시간)
         self.korea_tz = pytz.timezone('Asia/Seoul')
         self.local_tz = pytz.timezone('Europe/Rome')  # 이탈리아 현지 시간
@@ -206,15 +215,9 @@ class AmazonITScraper:
             options.add_argument('--disable-renderer-backgrounding')
             options.add_argument('--js-flags=--max-old-space-size=512')
 
-            # 이탈리아 사용자 에이전트
-            italian_user_agents = [
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            ]
-            
-            options.add_argument(f'--user-agent={random.choice(italian_user_agents)}')
-            
+            # Keep User-Agent consistent with the installed Chrome and platform.
+            logger.info("User-Agent는 설치된 Chrome 기본값 사용")
+
             # 이탈리아 언어 설정
             options.add_experimental_option('prefs', {
                 'intl.accept_languages': 'it-IT,it,en-US,en'
@@ -239,6 +242,7 @@ class AmazonITScraper:
                 logger.warning(f"Chrome 버전 감지 실패, 자동 매칭 시도: {e}")
 
             self.driver = uc.Chrome(options=options, version_main=chrome_version)
+            self.driver.set_page_load_timeout(45)
             self.driver.maximize_window()
             self.wait = WebDriverWait(self.driver, 20)
 
@@ -389,246 +393,44 @@ class AmazonITScraper:
             return False
     
     def is_page_blocked(self):
-        """이탈리아 페이지 차단 감지"""
-        try:
-            page_title = self.driver.title.lower()
-            page_source = self.driver.page_source.lower()
-            current_url = self.driver.current_url.lower()
-            
-            # 기본 도메인 확인
-            if 'amazon' not in current_url:
-                logger.info("Amazon 도메인이 아닌 페이지")
-                return True
-            
-            # 먼저 정상 제품 페이지인지 확인 (우선순위)
-            try:
-                normal_page_indicators = [
-                    "//span[@id='productTitle']",
-                    "//div[@id='feature-bullets']", 
-                    "//div[@id='centerCol']",
-                    "//div[@id='dp-container']",
-                    "//div[@id='apex_desktop']"
-                ]
-                
-                for selector in normal_page_indicators:
-                    try:
-                        element = self.driver.find_element(By.XPATH, selector)
-                        if element and element.is_displayed():
-                            logger.debug("정상 제품 페이지 요소 발견 - 정상 페이지로 판단")
-                            return False  # 정상 페이지
-                    except:
-                        continue
-                        
-            except Exception as e:
-                logger.debug(f"정상 페이지 확인 중 오류: {e}")
-            
-            # 정상 페이지 요소가 없을 때만 차단 페이지 확인
-            # 이탈리아 심각한 차단 지표
-            serious_blocked_indicators = {
-                'title': [
-                    '503',
-                    'access denied',
-                    'accesso negato',
-                    'error has occurred',
-                    'errore',
-                    'ci dispiace'
-                ],
-                'content': [
-                    'enter the characters',
-                    'inserisci i caratteri',
-                    'verify you are human',
-                    'controlla di essere umano',
-                    'access denied',
-                    'accesso negato',
-                    'automated access',
-                    'suspicious activity',
-                    'attività sospetta',
-                    'si è verificato un errore',
-                    'ci dispiace'
-                ]
-            }
-            
-            for pattern in serious_blocked_indicators['title']:
-                if pattern in page_title:
-                    logger.warning(f"이탈리아 심각한 차단 감지 (제목): {pattern}")
-                    return True
-            
-            # "Ci dispiace" 오류는 차단이 아닌 처리 가능한 오류로 분류
-            if ('ci dispiace' in page_source and 
-                'continua lo shopping' not in page_source and 
-                'continue shopping' not in page_source and
-                'clicca qui per tornare' not in page_source):
-                # 홈페이지 링크도 없으면 심각한 차단
-                for pattern in serious_blocked_indicators['content']:
-                    if pattern in page_source and pattern not in ['ci dispiace', 'si è verificato un errore']:
-                        logger.warning(f"이탈리아 심각한 차단 감지 (본문): {pattern}")
-                        return True
-            
-            return False  # 기본적으로 정상으로 판단
-            
-        except Exception as e:
-            logger.error(f"이탈리아 페이지 차단 확인 중 오류: {e}")
-            return False  # 오류 시 정상으로 판단
+        """Broad containers are not evidence of a usable product page."""
+        snapshot = capture_product_page_snapshot(
+            self.driver, expected_url=self.driver.current_url,
+            marketplace_host='amazon.it', locale_code='it',
+        )
+        return not snapshot.is_valid
     
     def wait_for_page_load(self, timeout=10):
-        """이탈리아 페이지 로드 대기"""
         try:
-            self.wait.until(
-                lambda driver: driver.execute_script("return document.readyState") == "complete"
+            WebDriverWait(self.driver, timeout).until(
+                lambda driver: driver.execute_script('return document.readyState') == 'complete'
             )
-            
-            # 이탈리아 페이지 요소 확인
-            possible_elements = [
-                (By.ID, "productTitle"),
-                (By.ID, "priceblock_ourprice"),
-                (By.CLASS_NAME, "a-price-whole"),
-                (By.ID, "availability"),
-                (By.ID, "imageBlock"),
-                (By.ID, "corePrice_feature_div"),
-                (By.ID, "corePriceDisplay_desktop_feature_div")
-            ]
-            
-            for by, value in possible_elements:
-                try:
-                    WebDriverWait(self.driver, 3).until(
-                        EC.presence_of_element_located((by, value))
-                    )
-                    logger.debug(f"이탈리아 요소 발견: {by}={value}")
-                    return True
-                except:
-                    continue
-            
             return True
-            
-        except Exception as e:
-            logger.warning(f"이탈리아 페이지 로드 대기 중 오류: {e}")
+        except Exception:
             return False
 
     def handle_captcha_or_block_page(self, original_url=None):
-        """이탈리아 차단 페이지나 캡차 처리"""
+        """Try a labelled continue button once; navigation retries belong to the caller."""
+        snapshot = capture_product_page_snapshot(
+            self.driver, expected_url=original_url or self.driver.current_url,
+            marketplace_host='amazon.it', locale_code='it',
+        )
+        if snapshot.is_valid or not snapshot.domain_matches or snapshot.kind == 'asin_mismatch':
+            return False
+        selector = (
+            "//*[self::button or self::a or self::input]"
+            "[normalize-space(.)='Continua lo shopping' or @value='Continua lo shopping' "
+            "or normalize-space(.)='Continue shopping' or @value='Continue shopping']"
+        )
         try:
-            logger.info("이탈리아 차단/캡차 페이지 확인 중...")
-            
-            # 먼저 정상 페이지인지 확인 (불필요한 처리 방지)
-            try:
-                normal_check = self.driver.find_element(By.XPATH, "//span[@id='productTitle']")
-                if normal_check and normal_check.is_displayed():
-                    logger.info("정상 제품 페이지 확인됨 - 처리 불필요")
-                    return True
-            except:
-                pass
-            
-            page_source = self.driver.page_source.lower()
-            page_title = self.driver.title.lower()
-            
-            # 1. "Ci dispiace" 오류 페이지 정확한 감지
-            ci_dispiace_indicators = [
-                'ci dispiace' in page_title,
-                'si è verificato un errore quando abbiamo tentato di elaborare la richiesta' in page_source,
-                'stiamo lavorando al problema' in page_source,
-                'clicca qui per tornare alla home page di amazon.it' in page_source,
-                'non sarà stato elaborato per il momento' in page_source
-            ]
-            
-            if sum(ci_dispiace_indicators) >= 2:
-                logger.info("이탈리아 'Ci dispiace' 오류 페이지 확인됨")
-                
-                # "Clicca qui per tornare alla home page di Amazon.it" 링크 찾기
-                home_link_selectors = [
-                    "//a[contains(text(), 'Clicca qui per tornare alla home page')]",
-                    "//a[contains(text(), 'tornare alla home page')]",
-                    "//a[contains(text(), 'home page di Amazon')]",
-                    "//a[contains(@href, 'amazon.it') and contains(text(), 'home')]",
-                    "//a[contains(text(), 'Amazon.it') and contains(text(), 'home')]"
-                ]
-                
-                for selector in home_link_selectors:
-                    try:
-                        logger.info(f"이탈리아 홈페이지 링크 찾기 시도: {selector}")
-                        
-                        link = self.driver.find_element(By.XPATH, selector)
-                        
-                        if link and link.is_displayed():
-                            link_text = link.text
-                            logger.info(f"이탈리아 홈페이지 링크 발견: '{link_text}'")
-                            
-                            # 홈페이지 링크 클릭
-                            self.driver.execute_script("arguments[0].scrollIntoView();", link)
-                            time.sleep(1)
-                            
-                            try:
-                                link.click()
-                                logger.info("이탈리아 홈페이지 링크 클릭 성공")
-                            except:
-                                self.driver.execute_script("arguments[0].click();", link)
-                                logger.info("이탈리아 홈페이지 링크 JavaScript 클릭 성공")
-                            
-                            time.sleep(3)
-                            
-                            # 원래 URL로 다시 이동
-                            if original_url:
-                                logger.info(f"원래 URL로 재접속: {original_url}")
-                                self.driver.get(original_url)
-                                time.sleep(3)
-                                return True
-                            else:
-                                logger.info("이탈리아 홈페이지 이동 완료")
-                                return True
-                                
-                    except Exception as e:
-                        logger.debug(f"이탈리아 홈페이지 링크 오류: {e}")
-                        continue
-                
-                # 홈페이지 링크를 찾지 못했으면 직접 홈페이지로 이동
-                logger.info("이탈리아 홈페이지 링크를 찾지 못함, 직접 이동")
-                self.driver.get("https://www.amazon.it/")
-                time.sleep(3)
-                
-                if original_url:
-                    logger.info(f"원래 URL로 재접속: {original_url}")
-                    self.driver.get(original_url)
+            for button in self.driver.find_elements(By.XPATH, selector):
+                if button.is_displayed() and button.is_enabled():
+                    button.click()
                     time.sleep(3)
-                
-                return True
-            
-            # 2. 일반 Continue 버튼 처리 (Ci dispiace가 아닌 경우에만)
-            if 'ci dispiace' not in page_title and 'ci dispiace' not in page_source:
-                for selector in self.selectors['continue_buttons']:
-                    try:
-                        logger.info(f"이탈리아 Continue 버튼 찾기 시도: {selector}")
-                        
-                        if selector.startswith('//'):
-                            button = self.driver.find_element(By.XPATH, selector)
-                        else:
-                            button = self.driver.find_element(By.CSS_SELECTOR, selector)
-                        
-                        if button and button.is_displayed():
-                            button_text = button.text
-                            logger.info(f"이탈리아 Continue 버튼 발견: {selector} (텍스트: '{button_text}')")
-                            
-                            self.driver.execute_script("arguments[0].scrollIntoView();", button)
-                            time.sleep(1)
-                            
-                            try:
-                                button.click()
-                                logger.info("이탈리아 Continue 버튼 클릭 성공")
-                            except:
-                                self.driver.execute_script("arguments[0].click();", button)
-                                logger.info("이탈리아 Continue 버튼 JavaScript 클릭 성공")
-                            
-                            time.sleep(3)
-                            return True
-                            
-                    except Exception as e:
-                        logger.debug(f"이탈리아 Continue 버튼 오류: {e}")
-                        continue
-            
-            logger.debug("이탈리아 처리 가능한 버튼을 찾을 수 없음")
-            return False
-            
-        except Exception as e:
-            logger.error(f"이탈리아 차단 페이지 처리 중 오류: {e}")
-            return False
+                    return True
+        except Exception as exc:
+            logger.debug("IT continue button unavailable: %s", type(exc).__name__)
+        return False
     
     def extract_clean_text_from_element(self, element, element_name="요소"):
         """요소에서 깨끗한 텍스트 추출"""
@@ -963,75 +765,107 @@ class AmazonITScraper:
             logger.warning(f"이탈리아 재고 확인 중 오류: {e}")
             return True
 
-    def extract_product_info(self, url, row_data, retry_count=0, max_retries=10):
-        """이탈리아 제품 정보 추출"""
+    def close_driver(self):
+        old_driver = self.driver
+        self.driver = None
+        self.wait = None
+        if old_driver is not None:
+            try:
+                old_driver.quit()
+            except Exception:
+                logger.warning("이탈리아 브라우저 종료 실패")
+
+    def restart_driver(self, reason):
+        """Replace a failed browser; per-product attempts bound retries."""
+        self.close_driver()
+        self.browser_needs_restart = True
+        logger.warning("이탈리아 브라우저 재시작: %s", reason)
+        if not self.setup_driver() or self.driver is None:
+            self.close_driver()
+            self.last_failure_reason = 'browser_start_failed'
+            return False
+        self.browser_needs_restart = False
+        return True
+
+    def capture_missing_evidence(self, result, url, row_data):
+        # Evidence upload failure must not cause a successful product to be fetched again.
+        if self.driver is None:
+            return
         try:
-            logger.info("=" * 60)
-            logger.info(f"이탈리아 제품 정보 추출 시작 (시도 {retry_count + 1}/{max_retries})")
-            logger.info(f"URL: {url}")
-            logger.info(f"브랜드: {row_data.get('brand', 'N/A')}")
-            logger.info(f"제품: {row_data.get('item', 'N/A')}")
-            
+            if is_null_result(result, FULL_NULL_FIELDS):
+                capture_and_upload(self.driver, 'amazon_it', row_data.get('retailersku', ''), url, result)
+        except Exception as exc:
+            logger.warning("이탈리아 누락 증거 저장 실패: %s", type(exc).__name__)
+
+    def build_failed_result(self, url, row_data):
+        # 실패 시 기본 결과 반환
+        # V2: 타임존 분리
+        now_time = datetime.now(self.korea_tz)
+        local_time = datetime.now(self.local_tz)
+
+        # ISO 8601 형식
+        crawl_dt = local_time.strftime("%Y-%m-%dT%H:%M:%S")
+        tz_offset = local_time.strftime("%z")
+        tz_formatted = f"{tz_offset[:3]}:{tz_offset[3:]}" if tz_offset else "+00:00"
+        crawl_datetime_iso = f"{crawl_dt}{tz_formatted}"
+
+        return {
+            'retailerid': row_data.get('retailerid', ''),
+            'country_code': 'it',
+            'ships_from': None,
+            'channel_name': 'amazon.it',
+            'channel': row_data.get('channel', 'Online'),
+            'retailersku': row_data.get('retailersku', ''),
+            'brand': row_data.get('brand', ''),
+            'brand_eng': row_data.get('brand_eng', row_data.get('brand', '')),
+            'form_factor': row_data.get('form_factor', ''),
+            'segment_lv1': row_data.get('seg_lv1', ''),
+            'segment_lv2': row_data.get('seg_lv2', ''),
+            'segment_lv3': row_data.get('seg_lv3', ''),
+            'capacity': row_data.get('capacity', ''),
+            'item': row_data.get('item', ''),
+            'retailprice': None,
+            'sold_by': None,
+            'imageurl': None,
+            'producturl': url,
+            'crawl_datetime': crawl_datetime_iso,
+            'crawl_strdatetime': local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4],
+            'kr_crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),  # V2: 한국시간
+            'kr_crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4],  # V2: 한국시간 문자열
+            'title': None,
+            'vat': row_data.get('vat', 'o')
+        }
+
+
+    def extract_product_info(self, url, row_data, retry_count=0, max_retries=2):
+        """이탈리아 제품 정보 추출"""
+        max_retries = min(2, max(1, int(max_retries)))
+        self.last_failure_reason = None
+        if self.browser_needs_restart or self.driver is None:
+            if not self.restart_driver('previous_page_failure'):
+                return self.build_failed_result(url, row_data)
+        try:
+            logger.info("이탈리아 제품 조회: asin=%s, 시도=%s/%s",
+                        extract_asin(url), retry_count + 1, max_retries)
             self.driver.get(url)
             time.sleep(random.uniform(3, 5))
-
-            # 쿠키 동의 팝업 자동 수락 (있으면 클릭)
             accept_cookies(self.driver, 'amazon_it')
+            self.handle_captcha_or_block_page(url)
 
-            # 차단 페이지 확인 및 처리
-            if self.is_page_blocked():
-                logger.info("이탈리아 차단 페이지 감지 - 복구 시도")
-                if self.handle_captcha_or_block_page(original_url=url):
-                    logger.info("이탈리아 차단 페이지 복구 완료")
-                    time.sleep(3)
-                    self.wait_for_page_load()
-                else:
-                    raise Exception("이탈리아 차단 페이지 복구 실패")
-            
-            # 복구 후 현재 URL 확인
-            current_url = self.driver.current_url.lower()
-            logger.info(f"현재 페이지 URL: {current_url}")
-            
-            # 정상 Amazon 제품 페이지인지 확인
-            if 'amazon.it' not in current_url:
-                logger.warning("Amazon 이탈리아 도메인이 아닌 페이지")
-                raise Exception("Amazon 이탈리아 도메인이 아닌 페이지로 이동됨")
-            
-            # 제품 페이지 요소 존재 확인으로 정상 페이지 판단
-            try:
-                basic_elements = [
-                    "//span[@id='productTitle']",
-                    "//div[@id='feature-bullets']",
-                    "//div[@id='centerCol']",
-                    "//div[@id='dp-container']"
-                ]
-                
-                page_valid = False
-                for selector in basic_elements:
-                    try:
-                        element = self.driver.find_element(By.XPATH, selector)
-                        if element:
-                            page_valid = True
-                            break
-                    except:
-                        continue
-                
-                if not page_valid:
-                    logger.warning("제품 페이지 요소를 찾을 수 없음")
-                    raise Exception("유효한 제품 페이지가 아님")
-                    
-                logger.info("정상 제품 페이지 확인됨")
-                
-            except Exception as e:
-                logger.error(f"제품 페이지 검증 실패: {e}")
-                raise Exception("제품 페이지 접근 실패")
-            
+            snapshot = wait_for_product_page(
+                self.driver, expected_url=url, marketplace_host='amazon.it',
+                locale_code='it', timeout_seconds=self.page_timeout_seconds,
+            )
+            logger.info("이탈리아 상품 페이지 판정: %s", snapshot.kind)
+            if not snapshot.is_valid:
+                raise AmazonProductPageError(snapshot)
+
             # V2: 타임존 분리
 
-            
+
             now_time = datetime.now(self.korea_tz)
 
-            
+
             local_time = datetime.now(self.local_tz)
 
             # ISO 8601 형식
@@ -1071,8 +905,8 @@ class AmazonITScraper:
             result['title'] = self.extract_element_text(
                 self.selectors['title'],
                 "제목"
-            )
-            
+            ) or snapshot.product_title
+
             # 재고 확인
             has_stock = self.check_stock_availability()
 
@@ -1095,7 +929,7 @@ class AmazonITScraper:
                 # 가격 추출 (개선된 메서드 사용 - 메인 영역만)
                 logger.info("이탈리아 가격 추출 시도")
                 result['retailprice'] = self.extract_price()
-                
+
                 # 가격 범위 검증
                 if result['retailprice']:
                     try:
@@ -1105,11 +939,11 @@ class AmazonITScraper:
                             result['retailprice'] = None
                     except:
                         result['retailprice'] = None
-                
+
                 # 재고 없을 때 가격 처리
                 if not has_stock and result['retailprice'] is None:
                     result['retailprice'] = None
-            
+
             # 이미지 URL 추출
             for selector in self.selectors['imageurl']:
                 try:
@@ -1117,14 +951,14 @@ class AmazonITScraper:
                         element = self.driver.find_element(By.XPATH, selector)
                     else:
                         element = self.driver.find_element(By.CSS_SELECTOR, selector)
-                    
+
                     result['imageurl'] = element.get_attribute('src')
                     if result['imageurl']:
                         logger.debug("이탈리아 이미지 URL 추출 성공")
                         break
                 except:
                     continue
-            
+
             logger.info("이탈리아 추출 결과:")
             logger.info(f"제목: {result['title'][:50] + '...' if result['title'] and len(result['title']) > 50 else result['title']}")
             logger.info(f"가격: {result['retailprice']}")
@@ -1132,75 +966,26 @@ class AmazonITScraper:
             logger.info(f"판매자: {result['sold_by']}")
             logger.info(f"배송지: {result['ships_from']}")
 
-            # NULL 필드 발견 시 스크린샷 + S3 업로드
-            if is_null_result(result, FULL_NULL_FIELDS):
-                capture_and_upload(self.driver, 'amazon_it', row_data.get('retailersku', ''), url, result)
-
+            self.capture_missing_evidence(result, url, row_data)
             return result
 
-        except Exception as e:
-            logger.error(f"이탈리아 페이지 처리 오류: {e}")
-            
-            if retry_count < max_retries - 1:
-                wait_time = 10  # 고정 10초 대기
-                logger.info(f"이탈리아 {wait_time}초 후 재시도... ({retry_count + 2}/{max_retries})")
-                time.sleep(wait_time)
+        except Exception as exc:
+            page_error = isinstance(exc, AmazonProductPageError)
+            reason = exc.snapshot.kind if page_error else type(exc).__name__
+            self.last_failure_reason = reason
+            logger.warning("이탈리아 제품 조회 실패: %s", reason)
+            # Identity/domain mismatch is not repaired by restarting Chrome.
+            restart_needed = exc.restart_recommended if page_error else True
+            if restart_needed:
+                self.browser_needs_restart = True
+                if retry_count < max_retries - 1:
+                    time.sleep(10)
+                    if self.restart_driver(reason):
+                        return self.extract_product_info(url, row_data, retry_count + 1, max_retries)
 
-                try:
-                    self.driver.refresh()
-                except:
-                    logger.info("이탈리아 드라이버 재시작 중...")
-                    self.driver.quit()
-                    self.setup_driver()
-
-                return self.extract_product_info(url, row_data, retry_count + 1, max_retries)
-            
-            # 실패 시 기본 결과 반환
-            # V2: 타임존 분리
-            now_time = datetime.now(self.korea_tz)
-            local_time = datetime.now(self.local_tz)
-
-            # ISO 8601 형식
-            crawl_dt = local_time.strftime("%Y-%m-%dT%H:%M:%S")
-            tz_offset = local_time.strftime("%z")
-            tz_formatted = f"{tz_offset[:3]}:{tz_offset[3:]}" if tz_offset else "+00:00"
-            crawl_datetime_iso = f"{crawl_dt}{tz_formatted}"
-
-            fail_result = {
-                'retailerid': row_data.get('retailerid', ''),
-                'country_code': 'it',
-                'ships_from': None,
-                'channel_name': 'amazon.it',
-                'channel': row_data.get('channel', 'Online'),
-                'retailersku': row_data.get('retailersku', ''),
-                'brand': row_data.get('brand', ''),
-                'brand_eng': row_data.get('brand_eng', row_data.get('brand', '')),
-                'form_factor': row_data.get('form_factor', ''),
-                'segment_lv1': row_data.get('seg_lv1', ''),
-                'segment_lv2': row_data.get('seg_lv2', ''),
-                'segment_lv3': row_data.get('seg_lv3', ''),
-                'capacity': row_data.get('capacity', ''),
-                'item': row_data.get('item', ''),
-                'retailprice': None,
-                'sold_by': None,
-                'imageurl': None,
-                'producturl': url,
-                'crawl_datetime': crawl_datetime_iso,
-                'crawl_strdatetime': local_time.strftime('%Y%m%d%H%M%S') + f"{local_time.microsecond:06d}"[:4],
-                'kr_crawl_datetime': now_time.strftime('%Y-%m-%d %H:%M:%S'),  # V2: 한국시간
-                'kr_crawl_strdatetime': now_time.strftime('%Y%m%d%H%M%S') + f"{now_time.microsecond:06d}"[:4],  # V2: 한국시간 문자열
-                'title': None,
-                'vat': row_data.get('vat', 'o')
-            }
-
-            # NULL 필드 발견 시 스크린샷 + S3 업로드 (best-effort)
-            try:
-                if is_null_result(fail_result, FULL_NULL_FIELDS):
-                    capture_and_upload(self.driver, 'amazon_it', row_data.get('retailersku', ''), url, fail_result)
-            except Exception:
-                pass
-
-            return fail_result
+            result = self.build_failed_result(url, row_data)
+            self.capture_missing_evidence(result, url, row_data)
+            return result
 
     def get_crawl_targets(self, limit=None):
         """이탈리아 크롤링 대상 URL 목록 조회"""
@@ -1345,143 +1130,87 @@ class AmazonITScraper:
 
         return results
     def scrape_urls(self, urls_data, max_items=None):
-        """이탈리아 URL 스크래핑"""
+        """Collect all targets, then revisit failed product pages once, as in FR/DE."""
         if max_items:
             urls_data = urls_data[:max_items]
 
-        logger.info("=" * 80)
-        logger.info("이탈리아 Amazon 크롤링 시작")
-        logger.info(f"대상: {len(urls_data)}개 제품")
-        logger.info("특화 기능: 쉼표 소수점 가격 파싱, 추천상품 영역 필터링 강화")
-        logger.info("=" * 80)
-
+        logger.info("이탈리아 Amazon 크롤링 시작: %s개 제품", len(urls_data))
         if not self.setup_driver():
             logger.error("이탈리아 드라이버 설정 실패")
+            self.close_driver()
             return None, []
 
         results = []
-        failed_urls = []
-        blocked_page_failures = []  # 차단 페이지로 인한 실패 목록
-
+        blocked_page_failures = []
+        deferred_indices = []
         try:
             for idx, row in enumerate(urls_data):
-                logger.info(f"이탈리아 진행률: {idx + 1}/{len(urls_data)} ({(idx + 1)/len(urls_data)*100:.1f}%)")
-
+                logger.info("이탈리아 진행률: %s/%s", idx + 1, len(urls_data))
                 url = row.get('url')
-
                 result = self.extract_product_info(url, row)
+                results.append(result)
 
-                # 차단 페이지로 인한 실패 감지 (title과 price 모두 없음)
                 if result['retailprice'] is None and result['title'] is None:
+                    # Keep the row index: duplicate URLs may belong to different target rows.
+                    deferred_indices.append(idx)
                     blocked_page_failures.append({
                         'url': url,
                         'row_data': row,
                         'item': row.get('item', ''),
                         'brand': row.get('brand', ''),
-                        'reason': '차단 페이지로 인한 실패 (가격과 제목 모두 없음)'
+                        'reason': self.last_failure_reason or 'missing_product_content',
                     })
-                    logger.warning(f"차단 페이지 실패 - 나중에 재시도 예정: {url}")
-                elif result['retailprice'] is None:
-                    failed_urls.append({
-                        'url': url,
-                        'item': row.get('item', ''),
-                        'brand': row.get('brand', ''),
-                        'reason': '가격 없음'
-                    })
+                    logger.warning("이탈리아 미수집 기록: %s", blocked_page_failures[-1]['reason'])
 
-                results.append(result)
-
-                # 중간 저장 (10개마다)
+                # Like FR, defer failed page rows until their extra attempt is complete.
+                # This avoids inserting a failed row and then appending a duplicate success.
                 if (idx + 1) % 10 == 0:
-                    interim_df = pd.DataFrame(results[-10:])
-                    if self.db_engine:
-                        try:
-                            interim_df.to_sql('amazon_price_crawl_tbl_it_v2', self.db_engine,
-                                            if_exists='append', index=False)
-                            logger.info("이탈리아 중간 저장: 10개 레코드 DB 저장")
-                        except Exception as e:
-                            logger.error(f"이탈리아 중간 저장 실패: {e}")
+                    batch = [r for r in results[-10:]
+                             if r['title'] is not None or r['retailprice'] is not None]
+                    if batch and self.db_engine is not None:
+                        self.save_to_db(pd.DataFrame(batch))
 
-                # 대기 시간
                 if idx < len(urls_data) - 1:
-                    wait_time = random.uniform(5, 10)
-                    logger.info(f"이탈리아 {wait_time:.1f}초 대기 중...")
-                    time.sleep(wait_time)
-
-                    # 20개마다 긴 휴식
+                    time.sleep(random.uniform(5, 10))
                     if (idx + 1) % 20 == 0:
-                        logger.info("이탈리아 20개 처리 완료, 5초 휴식...")
                         time.sleep(5)
 
-            # 마지막으로 저장되지 않은 나머지 데이터 저장 (10의 배수가 아닌 경우)
-            remainder = len(results) % 10
-            if remainder > 0 and self.db_engine:
-                try:
-                    remainder_df = pd.DataFrame(results[-remainder:])
-                    remainder_df.to_sql('amazon_price_crawl_tbl_it_v2', self.db_engine, if_exists='append', index=False)
-                    logger.info(f"이탈리아 마지막 저장: {remainder}개 레코드")
-                except Exception as e:
-                    logger.error(f"이탈리아 마지막 저장 실패: {e}")
-
-            # 차단 페이지로 인한 실패 목록 재시도 (1회)
             if blocked_page_failures:
-                logger.info("=" * 60)
-                logger.info(f"차단 페이지 실패 {len(blocked_page_failures)}개 재시도 시작")
-                logger.info("=" * 60)
-
-                final_blocked_failures = []  # 최종 실패 목록
-
-                for fail_idx, fail_item in enumerate(blocked_page_failures):
-                    url = fail_item['url']
-                    row_data = fail_item['row_data']
-                    logger.info(f"재시도 진행: {fail_idx + 1}/{len(blocked_page_failures)} - {fail_item['item']}")
-
-                    # 1회 재시도
-                    logger.info(f"차단 페이지 재시도: {url}")
-                    result = self.extract_product_info(url, row_data, retry_count=0, max_retries=1)
-
+                logger.info("이탈리아 실패 목록 %s개: 상품별 추가 조회 1회", len(blocked_page_failures))
+                final_failures = []
+                for retry_idx, (result_idx, failure) in enumerate(zip(deferred_indices, blocked_page_failures)):
+                    logger.info("이탈리아 실패 목록 재조회: %s/%s", retry_idx + 1, len(blocked_page_failures))
+                    result = self.extract_product_info(
+                        failure['url'], failure['row_data'], retry_count=0, max_retries=1,
+                    )
                     if result['title'] is not None or result['retailprice'] is not None:
-                        logger.info(f"재시도 성공! title={result['title']}, price={result['retailprice']}")
-                        for i, r in enumerate(results):
-                            if r['producturl'] == url:
-                                results[i] = result
-                                break
+                        results[result_idx] = result
                     else:
-                        logger.error(f"최종 실패 (재시도 후에도 실패): {url}")
-                        final_blocked_failures.append({
-                            'url': url,
-                            'item': fail_item['item'],
-                            'reason': '차단 페이지로 인한 최종 실패'
-                        })
+                        failure['reason'] = self.last_failure_reason or 'missing_product_content'
+                        final_failures.append(failure)
+                blocked_page_failures = final_failures
 
-                if final_blocked_failures:
-                    logger.warning(f"차단 페이지 최종 실패 {len(final_blocked_failures)}개:")
-                    for fail in final_blocked_failures:
-                        logger.warning(f"  - {fail['item']}: {fail['reason']}")
-                else:
-                    logger.info("모든 차단 페이지 실패 항목 재시도 성공!")
-
-                # 최종 실패 목록을 failed_urls에 추가
-                failed_urls.extend(final_blocked_failures)
-                # blocked_page_failures를 final로 업데이트
-                blocked_page_failures = final_blocked_failures
-
-        except Exception as e:
-            logger.error(f"이탈리아 스크래핑 중 오류: {e}")
-
+        except Exception as exc:
+            logger.error("이탈리아 스크래핑 중 오류: %s", type(exc).__name__)
         finally:
-            if failed_urls:
-                logger.warning(f"이탈리아 총 실패 URL {len(failed_urls)}개:")
-                for fail in failed_urls[:5]:
-                    logger.warning(f"  - {fail.get('brand', '')} {fail['item']}: {fail.get('reason', '알 수 없음')}")
-                if len(failed_urls) > 5:
-                    logger.warning(f"  ... 외 {len(failed_urls) - 5}개")
+            # Save the first-pass remainder and each deferred target exactly once.
+            # Even an interrupted retry sweep preserves its original failed records.
+            remainder = len(results) % 10
+            if remainder and self.db_engine is not None:
+                deferred_set = set(deferred_indices)
+                batch = [results[i] for i in range(len(results) - remainder, len(results))
+                         if i not in deferred_set]
+                if batch:
+                    self.save_to_db(pd.DataFrame(batch))
+            if deferred_indices and self.db_engine is not None:
+                retry_results = [results[i] for i in deferred_indices]
+                for offset in range(0, len(retry_results), 10):
+                    self.save_to_db(pd.DataFrame(retry_results[offset:offset + 10]))
 
-            if self.driver:
-                self.driver.quit()
-                logger.info("이탈리아 드라이버 종료")
+            self.close_driver()
+            logger.info("이탈리아 1차 수집 종료: %s개, 상품 페이지 미수집 %s개",
+                        len(results), len(blocked_page_failures))
 
-        # 차단 페이지 최종 실패 개수 반환
         return pd.DataFrame(results), blocked_page_failures
     
     def analyze_results(self, df):
@@ -1617,7 +1346,8 @@ def main():
         upload_server=False
     )
 
-    logger.info("이탈리아 크롤링 완료!")
+
+    logger.info("이탈리아 1차 수집 완료, 자동 복구 진행")
 
     # 자동 복구 + 파일 업로드 + 메일 알림
     from auto_recovery import auto_recovery_run
