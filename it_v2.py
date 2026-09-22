@@ -398,7 +398,10 @@ class AmazonITScraper:
             self.driver, expected_url=self.driver.current_url,
             marketplace_host='amazon.it', locale_code='it',
         )
-        return not snapshot.is_valid
+        return not (
+            snapshot.is_valid
+            or (snapshot.kind == "asin_mismatch" and (snapshot.url_asin or snapshot.dom_asin))
+        )
     
     def wait_for_page_load(self, timeout=10):
         try:
@@ -857,7 +860,18 @@ class AmazonITScraper:
                 locale_code='it', timeout_seconds=self.page_timeout_seconds,
             )
             logger.info("이탈리아 상품 페이지 판정: %s", snapshot.kind)
-            if not snapshot.is_valid:
+            if snapshot.kind == "asin_mismatch":
+                if not (snapshot.url_asin or snapshot.dom_asin):
+                    logger.warning("Destination ASIN unavailable: product extraction skipped")
+                    raise AmazonProductPageError(snapshot)
+                # Collect the destination product, keeping the tracking identity.
+                logger.warning(
+                    "ASIN mismatch accepted: collecting destination product; "
+                    "expected_asin=%s, url_asin=%s, dom_asin=%s; "
+                    "original retailersku/producturl preserved",
+                    snapshot.expected_asin, snapshot.url_asin, snapshot.dom_asin,
+                )
+            elif not snapshot.is_valid:
                 raise AmazonProductPageError(snapshot)
 
             # V2: 타임존 분리

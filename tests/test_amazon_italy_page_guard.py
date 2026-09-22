@@ -182,9 +182,8 @@ class ItalyCrawlerTests(unittest.TestCase):
         self.assertEqual(bad.visits, [URL])
         self.assertEqual(good.visits, [URL])
 
-    def test_identity_or_domain_mismatch_never_relabels_product(self):
-        for driver, reason in [(Driver(dom_asin='B0GJF1GQFX'), 'asin_mismatch'),
-                               (Driver(redirect='https://www.amazon.de/dp/B087DFLF9S'), 'invalid_domain')]:
+    def test_wrong_domain_never_collects_product(self):
+        for driver, reason in [(Driver(redirect='https://www.amazon.de/dp/B087DFLF9S'), 'invalid_domain')]:
             with self.subTest(reason=reason):
                 self.start(driver)
                 result = self.collect()
@@ -221,14 +220,14 @@ class ItalyCrawlerTests(unittest.TestCase):
         self.assertEqual(driver.visits, [URL])
         self.scraper.setup_driver.assert_not_called()
 
-    def test_continue_button_does_not_make_wrong_product_valid(self):
+    def test_continue_button_can_reveal_destination_product(self):
         driver = Driver(False)
         button = Mock()
         button.click.side_effect = lambda: driver.signals.update(productTitle='Other SSD', domAsin='B0GJF1GQFX')
         driver.buttons = [button]
         self.start(driver)
-        self.assertIsNone(self.collect()['retailprice'])
-        self.assertEqual(self.scraper.last_failure_reason, 'asin_mismatch')
+        self.assertEqual(self.collect()['retailprice'], '61.84')
+        self.assertIsNone(self.scraper.last_failure_reason)
 
     def test_113_persistent_blocks_visit_all_targets_then_retry_each_once(self):
         drivers = [Driver(False) for _ in range(113 * 3)]
@@ -253,7 +252,7 @@ class ItalyCrawlerTests(unittest.TestCase):
             driver.quit.assert_called_once()
 
     def test_failed_sweep_runs_once_and_keeps_distinct_rows_with_same_url(self):
-        driver = Driver(dom_asin='B0GJF1GQFX')
+        driver = Driver(redirect='https://www.amazon.de/dp/B087DFLF9S')
         self.browsers(driver)
         rows = [dict(ROW, retailersku=f'sku-{i}') for i in range(3)]
         results, failures = self.scraper.scrape_urls(rows)

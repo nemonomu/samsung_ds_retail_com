@@ -870,9 +870,20 @@ class AmazonFRScraper:
             )
             logger.info(f"현재 페이지 URL: {snapshot.current_url.lower()}")
             logger.info(f"상품 페이지 진단: {snapshot.summary()}")
-            if not snapshot.is_valid:
+            if snapshot.kind == "asin_mismatch":
+                if not (snapshot.url_asin or snapshot.dom_asin):
+                    logger.warning("Destination ASIN unavailable: product extraction skipped")
+                    raise AmazonProductPageError(snapshot)
+                # Collect the destination product, keeping the tracking identity.
+                logger.warning(
+                    "ASIN mismatch accepted: collecting destination product; "
+                    "expected_asin=%s, url_asin=%s, dom_asin=%s; "
+                    "original retailersku/producturl preserved",
+                    snapshot.expected_asin, snapshot.url_asin, snapshot.dom_asin,
+                )
+            elif not snapshot.is_valid:
                 raise AmazonProductPageError(snapshot)
-            logger.info("정상 제품 페이지 확인됨 (제목/ASIN 검증 완료)")
+            logger.info("수집 가능한 상품 페이지 확인됨 (제목/도메인 검증 완료)")
             
             # V2: 타임존 분리
             now_time = datetime.now(self.korea_tz)
