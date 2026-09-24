@@ -39,6 +39,9 @@ from config import FILE_SERVER_CONFIG
 from alert_monitor import monitor_and_alert
 from null_screenshot import FULL_NULL_FIELDS, is_null_result, capture_and_upload
 from cookie_consent import accept_cookies
+from amazon_page_guard import (
+    AmazonProductPageError, capture_product_page_snapshot, wait_for_product_page,
+)
 
 class AmazonScraper:
     def __init__(self, country_code='usa'):
@@ -306,47 +309,14 @@ class AmazonScraper:
             return False
     
     def is_normal_product_page(self):
-        """정상 제품 페이지인지 확인"""
-        try:
-            # 제품 페이지의 주요 요소들 확인
-            product_indicators = [
-                "productTitle",
-                "imageBlock", 
-                "feature-bullets",
-                "priceblock_ourprice",
-                "priceblock_dealprice"
-            ]
-            
-            for indicator in product_indicators:
-                try:
-                    element = self.driver.find_element(By.ID, indicator)
-                    if element.is_displayed():
-                        logger.debug(f"정상 제품 페이지 확인: {indicator}")
-                        return True
-                except:
-                    continue
-            
-            # 가격 관련 클래스 확인
-            price_classes = [
-                "a-price-whole",
-                "a-price",
-                "a-price-current"
-            ]
-            
-            for price_class in price_classes:
-                try:
-                    elements = self.driver.find_elements(By.CLASS_NAME, price_class)
-                    if elements:
-                        logger.debug(f"정상 제품 페이지 확인: {price_class}")
-                        return True
-                except:
-                    continue
-            
-            return False
-            
-        except Exception as e:
-            logger.error(f"정상 페이지 확인 중 예외: {e}")
-            return False
+        """Require a product title and an identifiable product on Amazon Spain."""
+        snapshot = capture_product_page_snapshot(
+            self.driver, expected_url=self.driver.current_url or "",
+            marketplace_host="amazon.es", locale_code="es",
+        )
+        return snapshot.is_valid or (
+            snapshot.kind == "asin_mismatch" and bool(snapshot.url_asin or snapshot.dom_asin)
+        )
     
     def click_blue_link_and_return(self, original_url):
         """파란색 링크 클릭 후 원래 URL로 돌아가기 (추가된 기능)"""
@@ -408,13 +378,13 @@ class AmazonScraper:
             logger.error(f"파란색 링크 클릭 중 오류: {e}")
             return False
     
-    def handle_captcha_or_block_page(self):
+    def handle_captcha_or_block_page(self, original_url=None):
         """차단 페이지나 캡차 처리 - 파란색 링크 우회 통합"""
         try:
             logger.info("차단/캡차 페이지 확인 중...")
             
             # 현재 URL 저장
-            original_url = self.driver.current_url
+            original_url = original_url or self.driver.current_url
             
             # 먼저 파란색 링크 우회 시도
             if self.click_blue_link_and_return(original_url):
@@ -1001,29 +971,34 @@ class AmazonScraper:
             # 쿠키 동의 팝업 자동 수락 (있으면 클릭)
             accept_cookies(self.driver, 'amazon_es')
 
-            # 정상 페이지인지 먼저 확인
-            if self.is_normal_product_page():
-                logger.info("정상 제품 페이지 확인 - 크롤링 진행")
-            else:
-                # 오류 페이지인지 확인하고 우회 시도
-                if self.is_error_page():
-                    logger.info("오류 페이지 감지 - 우회 시도")
-                    if self.handle_captcha_or_block_page():
-                        time.sleep(3)
-                        self.wait_for_page_load()
-                        
-                        # 우회 후 다시 정상 페이지 확인
-                        if not self.is_normal_product_page():
-                            logger.warning("우회 후에도 정상 페이지 아님")
-                    else:
-                        logger.warning("우회 실패")
-                else:
-                    logger.info("오류 페이지는 아니지만 주요 요소 없음 - 진행")
-            
+            # Keep the existing error-screen recovery, then validate its destination.
+            if not self.is_normal_product_page() and self.is_error_page():
+                logger.info("오류 페이지 감지 - 우회 시도")
+                if self.handle_captcha_or_block_page(original_url=url):
+                    time.sleep(3)
+                    self.wait_for_page_load()
+
             if self.is_page_blocked():
-                logger.error("여전히 차단 페이지임")
                 raise Exception("페이지 차단됨")
-            
+
+            snapshot = wait_for_product_page(
+                self.driver, expected_url=url, marketplace_host="amazon.es",
+                locale_code="es", timeout_seconds=12,
+            )
+            logger.info("스페인 상품 페이지 판정: %s", snapshot.kind)
+            if snapshot.kind == "asin_mismatch":
+                if not (snapshot.url_asin or snapshot.dom_asin):
+                    logger.warning("Destination ASIN unavailable: product extraction skipped")
+                    raise AmazonProductPageError(snapshot)
+                logger.warning(
+                    "ASIN mismatch accepted: collecting destination product; "
+                    "expected_asin=%s, url_asin=%s, dom_asin=%s; "
+                    "original retailersku/producturl preserved",
+                    snapshot.expected_asin, snapshot.url_asin, snapshot.dom_asin,
+                )
+            elif not snapshot.is_valid:
+                raise AmazonProductPageError(snapshot)
+
             # V2: 타임존 분리
             now_time = datetime.now(self.korea_tz)
             local_time = datetime.now(self.local_tz)
@@ -1064,7 +1039,7 @@ class AmazonScraper:
             result['title'] = self.extract_element_text(
                 self.selectors[self.country_code].get('title', []),
                 "제목"
-            )
+            ) or snapshot.product_title
 
             has_stock = self.check_stock_availability()
 

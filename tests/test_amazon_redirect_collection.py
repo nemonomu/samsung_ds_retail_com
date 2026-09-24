@@ -16,7 +16,7 @@ from amazon_page_guard import (
 )
 
 MARKETS = {'it': ('it_v2.py', 'it'), 'fr': ('fr_v2.py', 'fr'),
-           'de': ('de_v2.py', 'de'), 'usa': ('usa_v2.py', 'com')}
+           'de': ('de_v2.py', 'de'), 'usa': ('usa_v2.py', 'com'), 'es': ('es_v2.py', 'es')}
 ORIGINAL = 'B087DFLF9S'
 DESTINATION = 'B0GJF1GQFX'
 
@@ -65,7 +65,7 @@ def make_scraper(market, signals, redirect=None):
     obj.browser_needs_restart = False
     obj.last_failure_reason = None
     obj.selectors = {k: [] for k in ('title', 'ships_from', 'sold_by', 'imageurl')}
-    if market == 'usa':
+    if market in ('usa', 'es'):
         obj.selectors = {market: obj.selectors}
     url = f'https://www.amazon.{domain}/dp/{ORIGINAL}'
     obj.driver = Driver(url, signals, redirect)
@@ -183,8 +183,8 @@ class RedirectCollectionTests(unittest.TestCase):
                         self.assertFalse(any('ASIN mismatch accepted' in str(c)
                                              for c in ns['logger'].warning.call_args_list))
                         # Preserve each crawler's existing attempt limits, including recovery.
-                        attempts = (2 if market == 'usa' else 1) if recovery else {
-                            'it': 1, 'fr': 2, 'de': 2, 'usa': 4}[market]
+                        attempts = (2 if market in ('usa', 'es') else 1) if recovery else {
+                            'it': 1, 'fr': 2, 'de': 2, 'usa': 4, 'es': 4}[market]
                         self.assertEqual(obj.driver.visits, [url] * attempts)
 
     def test_one_destination_asin_source_is_sufficient(self):
