@@ -32,14 +32,16 @@ class SpainPageGuardTests(unittest.TestCase):
         self.assertEqual(result['title'], 'Recovered SSD')
         self.assertEqual(result['producturl'], url)
         self.assertEqual(obj.driver.visits, [url, url])
-        obj.driver.refresh.assert_called_once()
+        obj.driver.refresh.assert_not_called()
+        obj.restart_driver.assert_called_once()
         obj.extract_price.assert_called_once()
 
-    def test_persistent_listing_respects_existing_retry_limit(self):
+    def test_persistent_listing_uses_only_one_fresh_browser_retry(self):
         obj, _, url = make_scraper('es', {'hasRecommendations': True})
         result = obj.extract_product_info(url, {'retailersku': 'original-sku'})
-        self.assertEqual(obj.driver.visits, [url] * 4)
-        self.assertEqual(obj.driver.refresh.call_count, 3)
+        self.assertEqual(obj.driver.visits, [url] * 2)
+        obj.driver.refresh.assert_not_called()
+        obj.restart_driver.assert_called_once()
         obj.extract_element_text.assert_not_called()
         obj.extract_price.assert_not_called()
         self.assertIsNone(result['title'])
@@ -120,7 +122,7 @@ class SpainPageGuardTests(unittest.TestCase):
         self.assertTrue(pd.isna(frame.iloc[0]['title']))
         self.assertEqual(frame.iloc[1]['title'], 'Second SSD')
         self.assertEqual([row['retailersku'] for row in saved], ['first', 'second'])
-        self.assertEqual(obj.driver.visits, [url] * 4 + [second_url])
+        self.assertEqual(obj.driver.visits, [url] * 2 + [second_url])
         obj.driver.quit.assert_called_once()
 
 

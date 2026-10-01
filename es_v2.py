@@ -18,6 +18,7 @@ import paramiko
 import time
 import random
 import re
+from urllib.parse import urljoin, urlparse
 from datetime import datetime
 import pytz
 import logging
@@ -226,12 +227,7 @@ class AmazonScraper:
             options.add_argument('--disable-renderer-backgrounding')
             options.add_argument('--js-flags=--max-old-space-size=512')
             
-            user_agents = [
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            ]
-            options.add_argument(f'--user-agent={random.choice(user_agents)}')
+            # Use the browser default User-Agent instead of advertising Chrome 119/120.
             
             language_map = {
                 'usa': 'en-US,en',
@@ -268,6 +264,7 @@ class AmazonScraper:
             self.driver.maximize_window()
 
             self.wait = WebDriverWait(self.driver, 20)
+            self.browser_needs_restart = False
 
             logger.info("드라이버 설정 완료")
             return True
@@ -276,37 +273,41 @@ class AmazonScraper:
             logger.error(f"드라이버 설정 실패: {e}")
             return False
     
-    def is_error_page(self):
-        """오류 페이지 확인 (파란색 링크 감지 포함)"""
+    def _error_page_marker(self):
+        """Read displayed error text, never arbitrary numbers in HTML/scripts."""
+        if self.is_normal_product_page():
+            return None
         try:
-            page_source = self.driver.page_source.lower()
-            page_title = self.driver.title.lower()
-            
-            # 오류 페이지 감지 키워드 확장
-            error_indicators = [
-                'lo sentimos',
-                'se ha producido un error',
-                'error de servicio',
-                '503',
-                'service unavailable',
-                'algo salió mal',
-                'error has occurred',
-                'haz clic aquí para volver',
-                'something went wrong',
-                'robot check',
-                'automated access'
-            ]
-            
+            page_title = (self.driver.title or '').strip().lower()
+            try:
+                body_text = self.driver.execute_script(
+                    "return document.body ? document.body.innerText : '';"
+                )
+            except Exception:
+                body_text = ''
+            visible_text = body_text.lower() if isinstance(body_text, str) else ''
+            error_indicators = (
+                'lo sentimos', 'se ha producido un error', 'error de servicio',
+                'service unavailable', 'algo salió mal', 'error has occurred',
+                'haz clic aquí para volver', 'something went wrong',
+                'robot check', 'automated access', 'access denied',
+                'enter the characters', 'verify you are human', 'suspicious activity',
+            )
             for indicator in error_indicators:
-                if indicator in page_title or indicator in page_source:
-                    logger.info(f"오류 페이지 감지: {indicator}")
-                    return True
-            
-            return False
-            
+                if indicator in page_title or indicator in visible_text:
+                    return indicator
+            # A standalone error title is evidence; a product number containing 503 is not.
+            if re.fullmatch(r'(?:error\s*[:\-]?\s*)?503', page_title):
+                return '503 error title'
         except Exception as e:
-            logger.error(f"오류 페이지 확인 중 예외: {e}")
-            return False
+            logger.debug("표시된 오류 화면 확인 실패: %s", type(e).__name__)
+        return None
+
+    def is_error_page(self):
+        marker = self._error_page_marker()
+        if marker:
+            logger.info("오류 페이지 감지: %s", marker)
+        return bool(marker)
     
     def is_normal_product_page(self):
         """Require a product title and an identifiable product on Amazon Spain."""
@@ -318,245 +319,115 @@ class AmazonScraper:
             snapshot.kind == "asin_mismatch" and bool(snapshot.url_asin or snapshot.dom_asin)
         )
     
+    @staticmethod
+    def _is_spain_url(url):
+        parsed = urlparse(url or '')
+        host = (parsed.hostname or '').lower()
+        return parsed.scheme in ('https', 'http') and (
+            host == 'amazon.es' or host.endswith('.amazon.es')
+        )
+
     def click_blue_link_and_return(self, original_url):
-        """파란색 링크 클릭 후 원래 URL로 돌아가기 (추가된 기능)"""
+        """Use only a displayed return-home link pointing to Amazon Spain's home."""
+        if not self._is_spain_url(original_url):
+            return False
+        return_phrases = (
+            'haz clic aquí para volver', 'volver a la página de inicio',
+            'click here to go back', 'back to amazon',
+            'zurück zu amazon', 'retour à amazon', 'cliquez ici pour retourner',
+        )
         try:
-            logger.info("파란색 링크 찾는 중...")
-            
-            # 파란색 링크 선택자들 (다국어 지원)
-            blue_link_selectors = [
-                # 스페인어
-                "//a[contains(text(), 'Haz clic aquí para volver')]",
-                "//a[contains(text(), 'volver a la página de inicio')]",
-                "//a[contains(text(), 'página de inicio')]",
-                # 영어
-                "//a[contains(text(), 'Click here to go back')]",
-                "//a[contains(text(), 'back to Amazon')]",
-                # 독일어
-                "//a[contains(text(), 'Klicken Sie hier')]",
-                "//a[contains(text(), 'zurück zu Amazon')]",
-                # 프랑스어
-                "//a[contains(text(), 'Cliquez ici pour retourner')]",
-                "//a[contains(text(), 'retour à Amazon')]",
-                # 일반적인 패턴
-                "//a[contains(@href, 'amazon.')]",
-                "//a[contains(@class, 'a-link')]"
-            ]
-            
-            # 파란색 링크 클릭 시도
-            for selector in blue_link_selectors:
+            for link in self.driver.find_elements(By.CSS_SELECTOR, 'a[href]'):
                 try:
-                    link = self.driver.find_element(By.XPATH, selector)
-                    if link.is_displayed():
-                        link_text = link.text.strip()
-                        logger.info(f"파란색 링크 발견: '{link_text}'")
-                        
-                        # 링크 클릭
-                        link.click()
-                        logger.info("파란색 링크 클릭 완료")
-                        
-                        # 잠시 대기
-                        time.sleep(random.uniform(2, 4))
-                        
-                        # 원래 URL로 다시 접속
-                        logger.info(f"원래 URL로 재접속: {original_url}")
-                        self.driver.get(original_url)
-                        
-                        # 페이지 로드 대기
-                        time.sleep(random.uniform(3, 5))
-                        
-                        return True
-                        
-                except Exception as e:
-                    logger.debug(f"선택자 시도 실패: {selector} - {e}")
+                    if not link.is_displayed():
+                        continue
+                    text = ' '.join((link.text or '').lower().split())
+                    if not any(phrase in text for phrase in return_phrases):
+                        continue
+                    href = urljoin(self.driver.current_url, link.get_attribute('href') or '')
+                    path = urlparse(href).path
+                    if not self._is_spain_url(href) or not (
+                        path in ('', '/') or path.startswith('/ref=')
+                    ):
+                        continue
+                    link.click()
+                    time.sleep(random.uniform(2, 4))
+                    self.driver.get(original_url)
+                    logger.info("홈 복귀 링크 실행 완료 - 상품 페이지 확인 필요")
+                    return True
+                except Exception:
                     continue
-            
-            logger.warning("파란색 링크를 찾을 수 없음")
-            return False
-            
         except Exception as e:
-            logger.error(f"파란색 링크 클릭 중 오류: {e}")
-            return False
+            logger.debug("홈 복귀 링크 처리 실패: %s", type(e).__name__)
+        return False
     
     def handle_captcha_or_block_page(self, original_url=None):
-        """차단 페이지나 캡차 처리 - 파란색 링크 우회 통합"""
+        """Click only a clearly labelled recovery action; extraction verifies its result."""
+        original_url = original_url or self.driver.current_url
+        if not self._is_spain_url(original_url) or not self._is_spain_url(self.driver.current_url):
+            return False
+        if self.click_blue_link_and_return(original_url):
+            return True
+        continue_labels = {
+            'seguir comprando', 'continuar comprando',
+            'continue shopping', 'weiter shoppen', 'continuer vos achats',
+        }
         try:
-            logger.info("차단/캡차 페이지 확인 중...")
-            
-            # 현재 URL 저장
-            original_url = original_url or self.driver.current_url
-            
-            # 먼저 파란색 링크 우회 시도
-            if self.click_blue_link_and_return(original_url):
-                logger.info("파란색 링크 우회 성공")
-                return True
-            
-            # 기존 Continue 버튼 방식도 유지
-            spanish_continue_selectors = [
-                "//button[contains(text(), 'Seguir comprando')]",
-                "//input[@value='Seguir comprando']",
-                "//a[contains(text(), 'Seguir comprando')]",
-                "//span[contains(text(), 'Seguir comprando')]/ancestor::button",
-                "//div[contains(text(), 'Seguir comprando')]/ancestor::button",
-                "//button[contains(text(), 'Continuar comprando')]",
-                "//input[@value='Continuar comprando']",
-                "//a[contains(text(), 'Continuar comprando')]",
-                "//span[contains(text(), 'Continuar comprando')]/ancestor::button"
-            ]
-            
-            german_continue_selectors = [
-                "//button[contains(text(), 'Weiter shoppen')]",
-                "//a[contains(text(), 'Weiter shoppen')]",
-                "//span[contains(text(), 'Weiter shoppen')]/ancestor::button",
-                "//input[@value='Weiter shoppen']",
-                "//button[contains(@class, 'a-button') and contains(., 'Weiter')]",
-                "//div[contains(@class, 'a-button') and contains(., 'Weiter')]//button"
-            ]
-            
-            continue_selectors = [
-                "//button[contains(text(), 'Continue shopping')]",
-                "//button[contains(@class, 'a-button-primary')]",
-                "//input[@type='submit' and contains(@value, 'Continue')]",
-                "//a[contains(text(), 'Continue shopping')]",
-                "//span[contains(text(), 'Continue shopping')]/ancestor::button",
-                "button.a-button-primary",
-                "button[type='submit']",
-                "#a-autoid-0",
-                ".a-button-inner"
-            ]
-            
-            # 스페인어를 최우선으로 하고, 독일어, 영어 순으로 시도
-            all_selectors = spanish_continue_selectors + german_continue_selectors + continue_selectors
-            
-            for selector in all_selectors:
+            controls = self.driver.find_elements(
+                By.CSS_SELECTOR, 'button, input[type="submit"], a[href]'
+            )
+            for control in controls:
                 try:
-                    logger.info(f"버튼 찾기 시도: {selector}")
-                    
-                    if selector.startswith('//'):
-                        button = self.driver.find_element(By.XPATH, selector)
-                    elif selector.startswith('#') or selector.startswith('.'):
-                        button = self.driver.find_element(By.CSS_SELECTOR, selector)
-                    else:
-                        button = self.driver.find_element(By.CSS_SELECTOR, selector)
-                    
-                    if button and button.is_displayed():
-                        button_text = button.text
-                        logger.info(f"Continue 버튼 발견: {selector} (텍스트: '{button_text}')")
-                        
-                        self.driver.execute_script("arguments[0].scrollIntoView();", button)
-                        time.sleep(1)
-                        
-                        try:
-                            button.click()
-                            logger.info("일반 클릭 성공")
-                        except:
-                            try:
-                                self.driver.execute_script("arguments[0].click();", button)
-                                logger.info("JavaScript 클릭 성공")
-                            except:
-                                logger.warning("클릭 실패")
-                                continue
-                        
-                        time.sleep(3)
-                        logger.info("Continue 버튼 클릭 완료")
-                        return True
-                        
-                except Exception as e:
-                    logger.debug(f"선택자 오류: {e}")
+                    if not control.is_displayed():
+                        continue
+                    text = control.text or control.get_attribute('value') or ''
+                    if ' '.join(text.lower().split()) not in continue_labels:
+                        continue
+                    if (control.tag_name or '').lower() == 'a':
+                        href = urljoin(self.driver.current_url, control.get_attribute('href') or '')
+                        if not self._is_spain_url(href) or urlparse(href).path.startswith('/ap/'):
+                            continue
+                    try:
+                        control.click()
+                    except Exception:
+                        self.driver.execute_script("arguments[0].click();", control)
+                    time.sleep(random.uniform(2, 4))
+                    self.driver.get(original_url)
+                    logger.info("계속 쇼핑 동작 실행 완료 - 상품 페이지 확인 필요")
+                    return True
+                except Exception:
                     continue
-            
-            logger.debug("모든 우회 방법 실패")
-            return False
-            
         except Exception as e:
-            logger.error(f"차단 페이지 처리 중 오류: {e}")
-            return False
+            logger.debug("계속 쇼핑 동작 처리 실패: %s", type(e).__name__)
+        return False
     
     def is_page_blocked(self):
-        """페이지 차단 감지 (파란색 링크 페이지 포함)"""
-        try:
-            page_title = self.driver.title.lower()
-            page_source = self.driver.page_source.lower()
-            current_url = self.driver.current_url.lower()
-            
-            serious_blocked_indicators = {
-                'title': [
-                    '503',
-                    'access denied',
-                    'error has occurred',
-                    'fehler aufgetreten',
-                    'lo sentimos',
-                    'se ha producido un error'
-                ],
-                'content': [
-                    'enter the characters',
-                    'verify you are human',
-                    'access denied',
-                    'automated access',
-                    'suspicious activity',
-                    'geben sie die zeichen ein',
-                    'beweisen sie dass sie ein mensch sind',
-                    'haz clic aquí para volver',
-                    'robot check'
-                ]
-            }
-            
-            for pattern in serious_blocked_indicators['title']:
-                if pattern in page_title:
-                    logger.warning(f"차단 감지 (제목): {pattern}")
-                    return True
-            
-            # 파란색 링크나 Continue 버튼이 없는 경우에만 본문 검사
-            if ('continue shopping' not in page_source and 
-                'weiter shoppen' not in page_source and
-                'continuar comprando' not in page_source and
-                'seguir comprando' not in page_source and
-                'haz clic aquí para volver' not in page_source):
-                for pattern in serious_blocked_indicators['content']:
-                    if pattern in page_source:
-                        logger.warning(f"차단 감지 (본문): {pattern}")
-                        return True
-            
-            if 'amazon' not in current_url:
-                logger.warning(f"Amazon 페이지가 아님: {current_url}")
-                return True
-            
-            return False
-            
-        except Exception as e:
-            logger.error(f"페이지 차단 확인 중 오류: {e}")
-            return False
-    
-    def wait_for_page_load(self, timeout=10):
-        """페이지 로드 대기"""
-        try:
-            self.wait.until(
-                lambda driver: driver.execute_script("return document.readyState") == "complete"
-            )
-            
-            possible_elements = [
-                (By.ID, "productTitle"),
-                (By.ID, "priceblock_ourprice"),
-                (By.CLASS_NAME, "a-price-whole"),
-                (By.ID, "availability"),
-                (By.ID, "imageBlock")
-            ]
-            
-            for by, value in possible_elements:
-                try:
-                    WebDriverWait(self.driver, 3).until(
-                        EC.presence_of_element_located((by, value))
-                    )
-                    logger.debug(f"요소 발견: {by}={value}")
-                    return True
-                except:
-                    continue
-            
+        snapshot = capture_product_page_snapshot(
+            self.driver, expected_url=self.driver.current_url or '',
+            marketplace_host='amazon.es', locale_code='es',
+        )
+        if snapshot.kind in ('invalid_domain', 'hard_block'):
             return True
-            
+        return bool(self._error_page_marker())
+    
+    def restart_driver(self):
+        """Discard the failed browser; keep the next row recoverable if setup fails."""
+        self.browser_needs_restart = True
+        old_driver = getattr(self, 'driver', None)
+        if old_driver is not None:
+            try:
+                old_driver.quit()
+            except Exception:
+                pass
+        self.driver = None
+        self.wait = None
+        try:
+            if self.setup_driver() and self.driver is not None:
+                self.browser_needs_restart = False
+                return True
         except Exception as e:
-            logger.warning(f"페이지 로드 대기 중 오류: {e}")
-            return False
+            logger.warning("ES 새 브라우저 시작 실패: %s", type(e).__name__)
+        return False
     
     def extract_element_text(self, selectors, element_name="요소"):
         """선택자 목록에서 텍스트 추출"""
@@ -956,9 +827,12 @@ class AmazonScraper:
             logger.warning(f"재고 확인 중 오류: {e}")
             return True
     
-    def extract_product_info(self, url, row_data, retry_count=0, max_retries=3):
-        """제품 정보 추출 - 파란색 링크 우회 + 추천상품 필터링 통합"""
+    def extract_product_info(self, url, row_data, retry_count=0, max_retries=1):
+        """Collect with at most one fresh-browser retry; final auto recovery is preserved."""
+        max_retries = max(0, min(max_retries, 1))
         try:
+            if getattr(self, 'browser_needs_restart', False) and not self.restart_driver():
+                raise RuntimeError("ES 브라우저 준비 실패")
             logger.info("=" * 60)
             logger.info("제품 정보 추출 시작")
             logger.info(f"URL: {url}")
@@ -974,9 +848,8 @@ class AmazonScraper:
             # Keep the existing error-screen recovery, then validate its destination.
             if not self.is_normal_product_page() and self.is_error_page():
                 logger.info("오류 페이지 감지 - 우회 시도")
-                if self.handle_captcha_or_block_page(original_url=url):
-                    time.sleep(3)
-                    self.wait_for_page_load()
+                self.handle_captcha_or_block_page(original_url=url)
+                # One bounded product-page wait below verifies every recovery action.
 
             if self.is_page_blocked():
                 raise Exception("페이지 차단됨")
@@ -1120,19 +993,14 @@ class AmazonScraper:
         except Exception as e:
             logger.error(f"페이지 처리 오류: {e}")
             
+            self.browser_needs_restart = True
             if retry_count < max_retries:
-                wait_time = (retry_count + 1) * 10
-                logger.info(f"{wait_time}초 후 재시도... ({retry_count + 1}/{max_retries})")
-                time.sleep(wait_time)
-                
-                try:
-                    self.driver.refresh()
-                except:
-                    logger.info("드라이버 재시작 중...")
-                    self.driver.quit()
-                    self.setup_driver()
-                
-                return self.extract_product_info(url, row_data, retry_count + 1, max_retries)
+                logger.info("ES 3초 대기 후 새 브라우저로 재시도 (%s/%s)",
+                            retry_count + 1, max_retries)
+                time.sleep(3)
+                if self.restart_driver():
+                    return self.extract_product_info(url, row_data, retry_count + 1, max_retries)
+                logger.warning("ES 재시도 브라우저 준비 실패 - 최종 자동복구 대상으로 유지")
             
             # V2: 타임존 분리
             now_time = datetime.now(self.korea_tz)
@@ -1173,7 +1041,7 @@ class AmazonScraper:
 
             # NULL 필드 발견 시 스크린샷 + S3 업로드 (best-effort)
             try:
-                if is_null_result(fail_result, FULL_NULL_FIELDS):
+                if self.driver is not None and is_null_result(fail_result, FULL_NULL_FIELDS):
                     capture_and_upload(self.driver, 'amazon_es', row_data.get('retailersku', ''), url, fail_result)
             except Exception:
                 pass
