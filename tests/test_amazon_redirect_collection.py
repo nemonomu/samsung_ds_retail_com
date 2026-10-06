@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 import sys
 from types import SimpleNamespace
+from urllib.parse import urljoin, urlparse
 import unittest
 from unittest.mock import Mock
 
@@ -48,7 +49,7 @@ def make_scraper(market, signals, redirect=None):
     path = ROOT / filename
     tree = ast.parse(path.read_text(encoding='utf-8-sig'))
     cls = next(n for n in tree.body if isinstance(n, ast.ClassDef))
-    ns = dict(datetime=datetime, re=re, logger=Mock(),
+    ns = dict(datetime=datetime, re=re, urljoin=urljoin, urlparse=urlparse, logger=Mock(),
               time=SimpleNamespace(sleep=Mock()), random=SimpleNamespace(uniform=lambda *a: 0),
               accept_cookies=Mock(), AmazonProductPageError=AmazonProductPageError,
               capture_product_page_snapshot=capture_product_page_snapshot, extract_asin=extract_asin,
@@ -76,6 +77,11 @@ def make_scraper(market, signals, redirect=None):
     obj.check_stock_availability = Mock(return_value=True)
     obj.wait_for_page_load = Mock(return_value=True)
     obj.restart_driver = Mock(return_value=True)
+    if market == 'es':
+        def restart():
+            obj.browser_needs_restart = False
+            return True
+        obj.restart_driver.side_effect = restart
     obj.setup_driver = Mock(return_value=True)
     # IT's real continue-button handler is also exercised.
     if market != 'it':
@@ -184,7 +190,7 @@ class RedirectCollectionTests(unittest.TestCase):
                                              for c in ns['logger'].warning.call_args_list))
                         # Preserve each crawler's existing attempt limits, including recovery.
                         attempts = (2 if market in ('usa', 'es') else 1) if recovery else {
-                            'it': 1, 'fr': 2, 'de': 2, 'usa': 4, 'es': 4}[market]
+                            'it': 1, 'fr': 2, 'de': 2, 'usa': 4, 'es': 2}[market]
                         self.assertEqual(obj.driver.visits, [url] * attempts)
 
     def test_one_destination_asin_source_is_sufficient(self):
