@@ -1,12 +1,17 @@
 """Human-assisted FNAC recovery, using local Chrome and the v3 decision rules.
 
-No ZenRows requests or stored browser profiles. Proof is captured on the accepted
-tab and registered only after the caller has saved the crawl row successfully.
+No ZenRows requests. Connect to the dedicated recovery Chrome; Chrome manages
+its own profile, which this adapter never reads or copies. Proof is captured on
+the accepted tab and registered only after the caller has saved the crawl row.
 """
 import logging
+import os
 import re
+import socket
+import subprocess
 import time
 from datetime import datetime
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from fnac_v3 import FnacZenRowsScraper, is_confirmed_null_reason, normalize_product_url
@@ -17,9 +22,12 @@ logger = logging.getLogger(__name__)
 
 
 class FnacManualRecoveryScraper(FnacZenRowsScraper):
-    def __init__(self, decision_timeout=10):
+    def __init__(self, decision_timeout=10, chrome_port=9222):
         super().__init__(browser_verify_ambiguous=False, screenshot_timeout=15)
         self.playwright = self.browser = self.context = self.page = None
+        self.chrome_port = int(chrome_port)
+        if not 1024 <= self.chrome_port <= 65535:
+            raise ValueError('FNAC Chrome port must be between 1024 and 65535')
         self.decision_timeout = max(0, float(decision_timeout))
         self._decision_not_ready = False
         self._confirm_missing_price = False
@@ -35,30 +43,125 @@ class FnacManualRecoveryScraper(FnacZenRowsScraper):
 
         try:
             self.playwright = sync_playwright().start()
-            # Use installed Chrome's own version and user agent; no spoofed UA.
-            self.browser = self.playwright.chromium.launch(channel='chrome', headless=False)
-            self.context = self.browser.new_context(
-                viewport={'width': 1920, 'height': 1080},
-                locale='fr-FR', timezone_id='Europe/Paris',
-            )
-            self.page = self.context.new_page()
-            logger.info('FNAC manual recovery: local Chrome, ZenRows requests=0')
+            existing = self._chrome_listening()
+            if not existing:
+                self._launch_recovery_chrome()
+            # Match the successful manual probe: use Chrome's existing default
+            # context. Never create an isolated context or override its identity.
+            deadline = time.monotonic() + 15
+            while True:
+                try:
+                    self.browser = self.playwright.chromium.connect_over_cdp(
+                        f'http://127.0.0.1:{self.chrome_port}',
+                        timeout=15000 if existing else min(2000, max(1, int((deadline - time.monotonic()) * 1000))))
+                    break
+                except Exception:
+                    if existing or time.monotonic() >= deadline:
+                        raise
+                    time.sleep(0.25)
+            if not self.browser.contexts:
+                raise RuntimeError('Recovery Chrome has no default context')
+            self.context = self.browser.contexts[0]
+            logger.info('FNAC manual recovery: dedicated Chrome %s, ZenRows requests=0',
+                        'attached' if existing else 'started')
             return True
         except Exception as exc:
             self.close()
             logger.error('FNAC local Chrome setup failed error=%s', type(exc).__name__)
-            raise RuntimeError('FNAC local Chrome setup failed; check Chrome and Playwright installation') from None
+            raise RuntimeError('FNAC recovery Chrome connection failed; check Chrome and its local debugging port') from None
+
+    def _chrome_listening(self):
+        try:
+            with socket.create_connection(('127.0.0.1', self.chrome_port), timeout=1):
+                return True
+        except OSError:
+            return False
+
+    def _launch_recovery_chrome(self):
+        if os.name != 'nt':
+            raise RuntimeError('FNAC recovery Chrome auto-start requires Windows')
+        candidates = [Path(root) / 'Google' / 'Chrome' / 'Application' / 'chrome.exe'
+                      for name in ('ProgramFiles', 'ProgramFiles(x86)', 'LOCALAPPDATA')
+                      if (root := os.environ.get(name))]
+        chrome = next((path for path in candidates if path.is_file()), None)
+        local_root = os.environ.get('LOCALAPPDATA')
+        if chrome is None or not local_root:
+            raise RuntimeError('Installed Chrome or LOCALAPPDATA is unavailable')
+        # Same directory used in the successful human-operated remote test.
+        # Do not open, export, copy, clear or inspect browser session files.
+        profile = Path(local_root) / 'FnacRecoveryChrome'
+        subprocess.Popen(
+            [str(chrome), '--remote-debugging-address=127.0.0.1',
+             f'--remote-debugging-port={self.chrome_port}', f'--user-data-dir={profile}',
+             '--no-first-run', '--new-window', 'about:blank'],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
 
     def close(self):
-        for name in ('context', 'browser', 'playwright'):
-            resource = getattr(self, name, None)
-            if resource is not None:
-                try:
-                    resource.stop() if name == 'playwright' else resource.close()
-                except Exception:
-                    pass
-                setattr(self, name, None)
-        self.page = None
+        # This Chrome stays open for human interaction and future recovery.
+        # Stopping the client disconnects without closing shared tabs or Chrome.
+        if self.playwright is not None:
+            try:
+                self.playwright.stop()
+            except Exception:
+                pass
+        self.playwright = self.browser = self.context = self.page = None
+
+    @staticmethod
+    def _product_tab_key(url):
+        parts = urlsplit(normalize_product_url(url))
+        if parts.scheme != 'https' or parts.hostname not in ('fnac.com', 'www.fnac.com'):
+            return None
+        match = re.search(r'/a(\d+)(?:/|$)', parts.path)
+        # Query includes offer selection; never silently borrow another offer.
+        return (match.group(1), parts.query) if match else None
+
+    def _select_product_tab(self, url):
+        desired = self._product_tab_key(url)
+        if desired is None:
+            raise ValueError('FNAC recovery requires a valid FNAC product URL')
+        pages = self.context.pages if self.context is not None else [self.page]
+        matching = [page for page in pages if page is not None and not page.is_closed()
+                    and self._product_tab_key(page.url) == desired]
+        if matching:
+            self.page = self.page if self.page in matching else matching[0]
+            self.page.bring_to_front()
+            return True
+        if self.page is None or self.page.is_closed():
+            blank = next((page for page in pages if page is not None and not page.is_closed()
+                          and page.url == 'about:blank'), None)
+            self.page = blank if blank is not None else self.context.new_page()
+        self.page.bring_to_front()
+        return False
+
+    def _maximize_for_capture(self):
+        session = self.page.context.new_cdp_session(self.page)
+        try:
+            info = session.send('Browser.getWindowForTarget')
+            window_id = info['windowId']
+            state = info['bounds']['windowState']
+            if state == 'maximized':
+                return True
+            if state in {'minimized', 'fullscreen'}:
+                session.send('Browser.setWindowBounds',
+                             {'windowId': window_id, 'bounds': {'windowState': 'normal'}})
+            session.send('Browser.setWindowBounds',
+                         {'windowId': window_id, 'bounds': {'windowState': 'maximized'}})
+            deadline = time.monotonic() + 3
+            while True:
+                bounds = session.send('Browser.getWindowBounds', {'windowId': window_id})['bounds']
+                if bounds['windowState'] == 'maximized':
+                    self.page.wait_for_timeout(200)
+                    return True
+                if time.monotonic() >= deadline:
+                    logger.warning('FNAC window maximization incomplete; capture deferred')
+                    return False
+                self.page.wait_for_timeout(100)
+        finally:
+            try:
+                session.detach()
+            except Exception:
+                pass
 
     def _same_product_page(self, url):
         expected = re.search(r'/a(\d+)(?:/|$)', urlsplit(url).path)
@@ -108,7 +211,13 @@ class FnacManualRecoveryScraper(FnacZenRowsScraper):
         self._confirmed_missing_signature = None
         self._pending_missing_signature = None
         try:
-            self.page.goto(normalize_product_url(url), wait_until='domcontentloaded', timeout=30000)
+            already_open = self._select_product_tab(url)
+        except Exception as exc:
+            logger.warning('FNAC recovery tab unavailable sku=%s error=%s', sku, type(exc).__name__)
+            return None
+        try:
+            if not already_open:
+                self.page.goto(normalize_product_url(url), wait_until='domcontentloaded', timeout=30000)
         except Exception as exc:
             # Even after goto times out the browser can display a challenge.
             # Preserve it for the person, rather than navigating away.
@@ -141,6 +250,7 @@ class FnacManualRecoveryScraper(FnacZenRowsScraper):
         self._decision_not_ready = False
         self._pending_missing_signature = None
         deadline = time.monotonic() + self.decision_timeout
+        capture_prepared = False
         while True:
             before = self.browser_product_html(self.page)
             if (not self._same_product_page(url)
@@ -152,12 +262,20 @@ class FnacManualRecoveryScraper(FnacZenRowsScraper):
                 result['retailprice'] = self.screenshot_visible_price(self.page, before)
                 if result['retailprice'] is None:
                     reason = 'SCREENSHOT_PRICE_NOT_VISIBLE'
-            if is_confirmed_null_reason(reason) or result['retailprice'] is not None:
-                break
             confirmed = self._confirmed_missing_signature
-            if (confirmed is not None
+            accepted = (is_confirmed_null_reason(reason) or result['retailprice'] is not None
+                        or (confirmed is not None
                     and confirmed == self.capture_decision_signature(before, row)
-                    and reason in {'PRICE_NOT_FOUND', 'SCREENSHOT_PRICE_NOT_VISIBLE'}):
+                    and reason in {'PRICE_NOT_FOUND', 'SCREENSHOT_PRICE_NOT_VISIBLE'}))
+            if accepted:
+                if result['retailprice'] is None and not capture_prepared:
+                    if not self._maximize_for_capture():
+                        return None
+                    capture_prepared = True
+                    deadline = time.monotonic() + self.decision_timeout
+                    # Resize can change the rendered offer. Re-read and decide
+                    # from the maximized page before capturing its proof.
+                    continue
                 break
             remaining = deadline - time.monotonic()
             if remaining <= 0:

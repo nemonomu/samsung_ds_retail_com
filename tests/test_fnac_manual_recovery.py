@@ -2,9 +2,12 @@
 import ast
 from datetime import datetime, timezone
 import logging
+import os
 from pathlib import Path
 import re
 import sys
+import socket
+import subprocess
 import types
 import unittest
 from unittest.mock import Mock, patch
@@ -28,7 +31,7 @@ def load_manual():
         FnacZenRowsScraper=base.FnacZenRowsScraper,
         normalize_product_url=base.normalize_product_url,
         is_confirmed_null_reason=base.is_confirmed_null_reason,
-        time=fixtures.time,
+        time=fixtures.time, os=os, socket=socket, subprocess=subprocess, Path=Path,
         re=re, urlsplit=urlsplit, datetime=datetime,
         logger=logging.getLogger('fnac.manual.offline'),
         capture_and_upload=Mock(return_value='registered'),
@@ -62,6 +65,12 @@ class ManualRecoveryTests(unittest.TestCase):
         self.p.url = URL
         self.p.goto = Mock()
         self.p.reload = Mock()
+        self.p.is_closed = Mock(return_value=False)
+        self.p.bring_to_front = Mock()
+        self.session = Mock()
+        self.session.send.return_value = {'windowId': 1, 'bounds': {'windowState': 'maximized'}}
+        self.p.context = Mock()
+        self.p.context.new_cdp_session.return_value = self.session
         self.s.page = self.p
         self.clock = 0
         self.m.time = types.SimpleNamespace(monotonic=lambda: self.clock)
@@ -77,30 +86,41 @@ class ManualRecoveryTests(unittest.TestCase):
         self.p.content.return_value = body
         return self.s.extract_product_info(URL, row)
 
-    def test_local_setup_uses_installed_chrome_and_no_spoofed_identity(self):
+    def test_setup_attaches_existing_chrome_without_isolated_context(self):
         pw = Mock()
+        context = Mock()
+        browser = pw.chromium.connect_over_cdp.return_value
+        browser.contexts = [context]
+        self.s._chrome_listening = Mock(return_value=True)
+        self.s._launch_recovery_chrome = Mock()
         factory = Mock(return_value=types.SimpleNamespace(start=Mock(return_value=pw)))
         fake = types.ModuleType('playwright.sync_api')
         fake.sync_playwright = factory
         with patch.dict(sys.modules, {'playwright.sync_api': fake}):
             self.assertTrue(self.s.setup_browser())
-        pw.chromium.launch.assert_called_once_with(channel='chrome', headless=False)
-        options = pw.chromium.launch.return_value.new_context.call_args.kwargs
-        self.assertNotIn('user_agent', options)
-        pw.chromium.connect_over_cdp.assert_not_called()
+        pw.chromium.connect_over_cdp.assert_called_once_with('http://127.0.0.1:9222', timeout=15000)
+        pw.chromium.launch.assert_not_called()
+        browser.new_context.assert_not_called()
+        context.new_page.assert_not_called()
+        self.s._launch_recovery_chrome.assert_not_called()
+        self.assertIs(self.s.context, context)
         self.assertIsNone(self.s.db_engine)
         self.s.close()
         self.assertIsNone(self.s.page)
         pw.stop.assert_called_once()
+        browser.close.assert_not_called()
+        context.close.assert_not_called()
 
     def test_failed_browser_setup_stops_playwright(self):
         pw = Mock()
-        pw.chromium.launch.side_effect = RuntimeError('synthetic setup failure')
+        self.s._chrome_listening = Mock(return_value=True)
+        pw.chromium.connect_over_cdp.side_effect = RuntimeError('synthetic setup failure')
         fake = types.SimpleNamespace(sync_playwright=lambda: types.SimpleNamespace(start=lambda: pw))
         with patch.dict(sys.modules, {'playwright.sync_api': fake}):
             with self.assertRaises(RuntimeError):
                 self.s.setup_browser()
         pw.stop.assert_called_once()
+        pw.chromium.launch.assert_not_called()
 
     def test_normal_price_has_image_url_and_needs_no_capture_or_api(self):
         result = self.extract()
@@ -143,7 +163,7 @@ class ManualRecoveryTests(unittest.TestCase):
             result = self.extract()
         user.assert_called_once()
         self.assertEqual(result['retailprice'], 123.45)
-        self.p.goto.assert_called_once()
+        self.p.goto.assert_not_called()
         self.p.reload.assert_not_called()
 
     def test_enter_does_not_accept_still_blocked_page(self):
@@ -152,11 +172,15 @@ class ManualRecoveryTests(unittest.TestCase):
             result = self.extract()
         self.assertIsNone(result)
         self.assertEqual(user.call_count, 2)
-        self.p.goto.assert_called_once()
+        self.p.goto.assert_not_called()
         self.p.screenshot.assert_not_called()
 
     def test_navigation_timeout_can_be_completed_on_same_tab(self):
-        self.p.goto.side_effect = TimeoutError('synthetic')
+        self.p.url = 'about:blank'
+        def timeout(*args, **kwargs):
+            self.p.url = URL
+            raise TimeoutError('synthetic')
+        self.p.goto.side_effect = timeout
         self.p.state['isRestricted'] = True
         def solve(_):
             self.p.state['isRestricted'] = False
@@ -215,7 +239,7 @@ class ManualRecoveryTests(unittest.TestCase):
             self.assertEqual(call.kwargs['captured_at'], captured_at)
             self.assertTrue(call.kwargs['require_monitoring_link'])
         self.p.screenshot.assert_called_once()
-        self.p.goto.assert_called_once()
+        self.p.goto.assert_not_called()
         self.m.delete_screenshots_for_sku.assert_not_called()
         self.m.sync_saved_fnac_results.assert_called_once()
 
@@ -254,7 +278,7 @@ class ManualRecoveryTests(unittest.TestCase):
             result = self.extract(pending)
         self.assertEqual(result['retailprice'], 123.45)
         self.assertEqual(self.clock, 1)
-        self.p.goto.assert_called_once()
+        self.p.goto.assert_not_called()
         self.p.reload.assert_not_called()
         self.p.screenshot.assert_not_called()
 
@@ -282,7 +306,7 @@ class ManualRecoveryTests(unittest.TestCase):
         with patch('builtins.input', side_effect=['', 's']):
             self.assertIsNone(self.extract(pending))
         self.p.screenshot.assert_not_called()
-        self.p.goto.assert_called_once()
+        self.p.goto.assert_not_called()
 
     def test_human_can_confirm_fully_loaded_product_has_no_price(self):
         pending = '<h1 class="f-productHeader__heading">Samsung SSD</h1>'
@@ -293,7 +317,7 @@ class ManualRecoveryTests(unittest.TestCase):
         self.assertEqual(result['_crawl_reason'], 'PRICE_NOT_FOUND')
         self.assertTrue(result['_manual_recovery_ok'])
         self.p.screenshot.assert_called_once()
-        self.p.goto.assert_called_once()
+        self.p.goto.assert_not_called()
 
     def test_no_price_confirmation_is_invalid_when_decision_changes(self):
         self.s.decision_timeout = 0
