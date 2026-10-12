@@ -263,7 +263,7 @@ def _insert_monitoring_file_and_anomaly(retailer, retailsku, url, file_name, fil
             conn.close()
 
 
-def _delete_monitoring_db_records(retailer, retailsku, date_yyyymmdd):
+def _delete_monitoring_db_records(retailer, retailsku, date_yyyymmdd, *, preserve_anomaly=False):
     sku_for_db = str(retailsku).strip() if retailsku else ''
     file_sku = _file_sku(retailsku)
     file_path = _monitoring_file_path(retailer, date_yyyymmdd)
@@ -292,9 +292,12 @@ def _delete_monitoring_db_records(retailer, retailsku, date_yyyymmdd):
             """, (now, MONITORING_CREATED_ID, file_path, f"{file_prefix}%"))
             file_count = cursor.rowcount
 
-            cursor.execute("""
+            # FNAC manual recovery syncs the committed row separately. Unlink
+            # its old proof without retiring notes for any remaining anomaly.
+            anomaly_retirement = '' if preserve_anomaly else 'is_del = 1,'
+            cursor.execute(f"""
                 UPDATE ssd_crawl_db.ds_monitoring_report_anomaly
-                SET is_del = 1,
+                SET {anomaly_retirement}
                     screenshot_id = NULL,
                     updated_at = %s,
                     updated_id = %s
@@ -650,7 +653,7 @@ def _is_safe_screenshot_delete_prefix(prefix):
     return True
 
 
-def delete_screenshots_for_sku(retailer, retailsku, date_yyyymmdd):
+def delete_screenshots_for_sku(retailer, retailsku, date_yyyymmdd, *, preserve_anomaly=False):
     """특정 (retailer, sku, 날짜) 조합의 S3 스크린샷 모두 삭제.
     auto_recovery에서 1차 수집 스크린샷을 삭제할 때 사용 (날짜 폴더가 다를 수 있음).
 
@@ -658,6 +661,8 @@ def delete_screenshots_for_sku(retailer, retailsku, date_yyyymmdd):
         retailer: 리테일러명 (예: 'amazon_gb')
         retailsku: 제품 SKU
         date_yyyymmdd: 'YYYYMMDD' 형식 (예: '20260507')
+        preserve_anomaly: True면 사진 연결만 제거하고 이상 항목·검수 기록은 보존.
+            호출자가 저장된 최신 결과로 이상 여부를 별도 동기화할 때 사용.
 
     Returns:
         삭제된 객체 수
@@ -678,7 +683,13 @@ def delete_screenshots_for_sku(retailer, retailsku, date_yyyymmdd):
         bucket_name = _get_s3_config()['bucket_name']
         deleted = _delete_existing_screenshots(s3_client, bucket_name, legacy_prefix)
         deleted += _delete_existing_screenshots(s3_client, bucket_name, monitoring_prefix)
-        deleted += _delete_monitoring_db_records(retailer_key, retailsku, date_yyyymmdd)
+        if preserve_anomaly:
+            deleted += _delete_monitoring_db_records(
+                retailer_key, retailsku, date_yyyymmdd, preserve_anomaly=True,
+            )
+        else:
+            # Preserve the existing call contract for all other recovery paths.
+            deleted += _delete_monitoring_db_records(retailer_key, retailsku, date_yyyymmdd)
         return deleted
     except Exception as e:
         logger.warning(f"delete_screenshots_for_sku 실패 (retailer={retailer}, sku={retailsku}): {e}")

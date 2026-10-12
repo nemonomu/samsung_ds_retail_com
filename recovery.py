@@ -250,8 +250,8 @@ TARGET_CONFIG = {
         'country_code': 'fr',
         'file_prefix': 'fr_fnac',
         'local_tz': 'Europe/Paris',
-        'scraper_module': 'fnac_v2',
-        'scraper_class': 'FnacScraperV2',
+        'scraper_module': 'fnac_manual_recovery',
+        'scraper_class': 'FnacManualRecoveryScraper',
         'tracking_country': 'fr',
         'tracking_mall_name': 'fnac',
         'alert_code': 'fr_fnac'
@@ -610,7 +610,9 @@ class RecoveryManager:
             if hasattr(scraper, 'setup_driver'):
                 scraper.setup_driver()
             elif hasattr(scraper, 'setup_browser'):
-                scraper.setup_browser()
+                ready = scraper.setup_browser()
+                if target == 'fnac' and ready is False:
+                    raise RuntimeError('FNAC local browser initialization failed')
             else:
                 raise AttributeError(f"{class_name}에 setup_driver/setup_browser 메서드 없음")
             logger.info("브라우저 초기화 완료")
@@ -643,6 +645,14 @@ class RecoveryManager:
         except Exception as e:
             logger.error(f"재크롤링 실패 ({url}): {e}")
             return None
+
+    def finalize_fnac_recovery(self, scraper, result, original_datetime=None):
+        """Finalize proof/report only after a successful FNAC DB save."""
+        try:
+            scraper.finalize_saved_result(result, original_datetime)
+        except Exception as exc:
+            logger.warning('FNAC row saved but evidence finalization failed error=%s', type(exc).__name__)
+        return {key: value for key, value in result.items() if not key.startswith('_')}
 
     def update_db_record(self, target, original_kr_crawl_datetime, new_data):
         """DB 레코드 UPDATE (9개 컬럼)
@@ -1106,7 +1116,7 @@ class RecoveryManager:
                     original_kr_crawl_datetime = row['kr_crawl_datetime']  # 원본 시간 저장
                     logger.info(f"\n[{i+1}/{len(null_records)}] 재크롤링: {url[:60]}...")
 
-                    if _retailer_name and delete_screenshots_for_sku:
+                    if target != 'fnac' and _retailer_name and delete_screenshots_for_sku:
                         try:
                             sku = row.get('retailersku', '')
                             original_date = str(original_kr_crawl_datetime)[:10].replace('-', '')
@@ -1117,14 +1127,17 @@ class RecoveryManager:
 
                     result = self.recrawl_url(scraper, url, row, target)
 
-                    if result and (result.get('title') is not None or result.get('retailprice') is not None):
+                    if (result and (target != 'fnac' or result.get('_manual_recovery_ok'))
+                            and (result.get('title') is not None or result.get('retailprice') is not None)):
                         # DB UPDATE (원본 kr_crawl_datetime으로 정확히 매칭)
                         result['producturl'] = url
                         if self.update_db_record(target, original_kr_crawl_datetime, result):
+                            if target == 'fnac':
+                                result = self.finalize_fnac_recovery(scraper, result, original_kr_crawl_datetime)
                             logger.info(f"  -> 성공: title={str(result.get('title', ''))[:30]}, price={result.get('retailprice')}")
                             success_count += 1
                             recovered_results[url] = result
-                            if _retailer_name and delete_screenshots_for_sku and is_null_result and not is_null_result(result, null_check_fields):
+                            if target != 'fnac' and _retailer_name and delete_screenshots_for_sku and is_null_result and not is_null_result(result, null_check_fields):
                                 try:
                                     sku = result.get('retailersku') or row.get('retailersku', '')
                                     screenshot_dates = set()
@@ -1168,11 +1181,13 @@ class RecoveryManager:
                         else:
                             logger.warning("  -> 크롤링 실패, NULL placeholder 유지")
                             missing_fail += 1
-                    elif raw_result and (
-                            raw_result.get('title') is not None
-                            or raw_result.get('retailprice') is not None):
+                    elif (raw_result and (target != 'fnac' or raw_result.get('_manual_recovery_ok'))
+                            and (raw_result.get('title') is not None
+                                 or raw_result.get('retailprice') is not None)):
                         raw_result['producturl'] = url
                         if self.insert_missing_record(target, raw_result):
+                            if target == 'fnac':
+                                raw_result = self.finalize_fnac_recovery(scraper, raw_result)
                             logger.info(f"  -> INSERT 성공: title={str(raw_result.get('title', ''))[:30]}, price={raw_result.get('retailprice')}")
                             missing_results.append(raw_result)
                             missing_success += 1
@@ -1198,7 +1213,9 @@ class RecoveryManager:
             # 6. 브라우저 종료 (항상 실행)
             if scraper:
                 try:
-                    if hasattr(scraper, 'driver') and scraper.driver:
+                    if target == 'fnac':
+                        scraper.close()
+                    elif hasattr(scraper, 'driver') and scraper.driver:
                         scraper.driver.quit()
                     elif hasattr(scraper, 'page') and scraper.page:
                         scraper.page.quit()
