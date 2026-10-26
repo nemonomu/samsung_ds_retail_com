@@ -86,6 +86,7 @@ def auto_recovery_run(
     local_output_dir=None,
     local_file_prefix=None,
     audit_context=None,
+    excluded_recovery_urls=None,
 ):
     """
     스크래퍼 크롤링 완료 후 자동 복구 + 파일 업로드 + 메일 알림
@@ -95,6 +96,7 @@ def auto_recovery_run(
         results_df: 1차 크롤링 결과 DataFrame
         target_count: tracking list 개수
         error_logs: 에러 로그 리스트
+        excluded_recovery_urls: 호출자가 확정한 재시도 불가 URL 모음
     """
     config = TARGET_CONFIG.get(target_key)
     if not config:
@@ -123,6 +125,18 @@ def auto_recovery_run(
     results_df_lower = results_df.copy()
     results_df_lower.columns = results_df_lower.columns.str.lower()
 
+    # 호출자가 명시적으로 확정한 비복구 URL만 제외한다. Centrecom 404처럼
+    # 재시도로 바뀌지 않는 상태가 대상이며, 기본값은 기존 동작을 유지한다.
+    excluded_recovery_urls = {
+        str(url).strip() for url in (excluded_recovery_urls or []) if str(url).strip()
+    }
+    recovery_eval_df = results_df_lower
+    if excluded_recovery_urls and 'producturl' in results_df_lower.columns:
+        recovery_eval_df = results_df_lower[
+            ~results_df_lower['producturl'].astype(str).isin(excluded_recovery_urls)
+        ]
+        logger.info(f"자동 복구 제외 URL: {len(excluded_recovery_urls)}개")
+
     # 세션 범위 결정 (kr_crawl_datetime의 min/max)
     session_start = str(results_df_lower['kr_crawl_datetime'].min())
     session_end = str(results_df_lower['kr_crawl_datetime'].max())
@@ -132,19 +146,19 @@ def auto_recovery_run(
     logger.info(f"세션 범위: {session_start} ~ {session_end}")
 
     # === 1. 성공/실패 판정 ===
-    title_null_count = results_df_lower['title'].isna().sum() if 'title' in results_df_lower.columns else 0
-    imageurl_null_count = (results_df_lower['imageurl'].isna() | (results_df_lower['imageurl'] == '')).sum() if 'imageurl' in results_df_lower.columns else 0
+    title_null_count = recovery_eval_df['title'].isna().sum() if 'title' in recovery_eval_df.columns else 0
+    imageurl_null_count = (recovery_eval_df['imageurl'].isna() | (recovery_eval_df['imageurl'] == '')).sum() if 'imageurl' in recovery_eval_df.columns else 0
     thresholds = _load_title_null_thresholds(manager.db_engine)
     threshold = thresholds.get(target_key, 0)
     missing_count = target_count - crawled_count
 
     # 판매자 있는데 가격 없는 경우 카운트 (ships_from/sold_by 컬럼이 있는 target만)
     price_null_with_seller = 0
-    if 'retailprice' in results_df_lower.columns:
-        has_ships = results_df_lower['ships_from'].notna() & (results_df_lower['ships_from'] != '') if 'ships_from' in results_df_lower.columns else pd.Series(False, index=results_df_lower.index)
-        has_sold = results_df_lower['sold_by'].notna() & (results_df_lower['sold_by'] != '') if 'sold_by' in results_df_lower.columns else pd.Series(False, index=results_df_lower.index)
+    if 'retailprice' in recovery_eval_df.columns:
+        has_ships = recovery_eval_df['ships_from'].notna() & (recovery_eval_df['ships_from'] != '') if 'ships_from' in recovery_eval_df.columns else pd.Series(False, index=recovery_eval_df.index)
+        has_sold = recovery_eval_df['sold_by'].notna() & (recovery_eval_df['sold_by'] != '') if 'sold_by' in recovery_eval_df.columns else pd.Series(False, index=recovery_eval_df.index)
         has_seller = has_ships | has_sold
-        price_null = results_df_lower['retailprice'].isna()
+        price_null = recovery_eval_df['retailprice'].isna()
         price_null_with_seller = (has_seller & price_null).sum()
 
     if target_key == 'bestbuy':
@@ -189,6 +203,16 @@ def auto_recovery_run(
 
     # title NULL 레코드 조회 (BETWEEN 방식)
     null_records = _get_null_records_between(manager, target_key, session_start, session_end)
+
+    if excluded_recovery_urls:
+        if missing_urls is not None and not missing_urls.empty and 'url' in missing_urls.columns:
+            missing_urls = missing_urls[
+                ~missing_urls['url'].astype(str).isin(excluded_recovery_urls)
+            ]
+        if null_records is not None and not null_records.empty and 'producturl' in null_records.columns:
+            null_records = null_records[
+                ~null_records['producturl'].astype(str).isin(excluded_recovery_urls)
+            ]
 
     has_missing = missing_urls is not None and not missing_urls.empty
     has_null = null_records is not None and not null_records.empty

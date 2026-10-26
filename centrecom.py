@@ -41,6 +41,26 @@ from cookie_consent import accept_cookies
 CENTRECOM_NULL_SCREENSHOT_FIELDS = ('title', 'retailprice', 'ships_from', 'sold_by', 'imageurl')
 
 
+def is_confirmed_centrecom_404(page_title, body_text, has_product_details=False):
+    """Return True only for Centrecom's explicit 404 page signature.
+
+    A normal product page can contain unrelated numbers or generic error text,
+    so a single marker is intentionally insufficient. False negatives fall
+    back to the existing title/block handling; false positives would suppress
+    recovery for a valid product and therefore must be avoided.
+    """
+    normalized_title = ' '.join(str(page_title or '').split()).casefold()
+    normalized_body = ' '.join(str(body_text or '').split()).casefold()
+
+    return (
+        normalized_title == 'page not found'
+        and '404' in normalized_body
+        and 'oops! this page went missing' in normalized_body
+        and 'back to homepage' in normalized_body
+        and not has_product_details
+    )
+
+
 def should_capture_centrecom_null_screenshot(result):
     """Return True when Centrecom result has fields that need evidence screenshots."""
     if is_null_result(result):
@@ -123,6 +143,10 @@ class CentrecomScraper:
 
         # 크롤링 대상 URL 목록 저장 (차단 페이지 복구용)
         self.urls_data = []
+
+        # 확정된 404 URL은 DB 결과 컬럼과 분리해 실행 중에만 관리한다.
+        # 결과 dict에 상태 컬럼을 추가하면 기존 to_sql 스키마와 충돌할 수 있다.
+        self.not_found_urls = set()
 
         # DB 연결 설정
         self.setup_db_connection()
@@ -420,6 +444,21 @@ class CentrecomScraper:
             logger.error(f"홈페이지 접속 실패: {e}")
             return True
 
+    def is_current_page_confirmed_404(self):
+        """Inspect the current browser page using Centrecom's strict 404 signature."""
+        try:
+            page_title = self.driver.title
+            body_text = self.driver.find_element(By.TAG_NAME, 'body').text
+            has_product_details = bool(self.driver.find_elements(By.ID, 'product-details-form'))
+            return is_confirmed_centrecom_404(
+                page_title,
+                body_text,
+                has_product_details=has_product_details
+            )
+        except Exception as e:
+            logger.debug(f"404 판정 중 오류 - 기존 title/차단 흐름 유지: {e}")
+            return False
+
     def extract_product_info(self, url, row_data, retry_count=0, max_retries=4, title_retry_done=False):
         """제품 정보 추출"""
         try:
@@ -472,6 +511,19 @@ class CentrecomScraper:
                 'title': None,
                 'vat': row_data.get('vat', 'x')
             }
+
+            # 정상 상품을 404로 오인하지 않도록 Centrecom 고유 신호 3개가
+            # 동시에 확인된 경우에만 재시도 불가 URL로 확정한다.
+            if self.is_current_page_confirmed_404():
+                self.not_found_urls.add(url)
+                logger.warning(f"Centrecom 404 상품 URL 확정 - 차단 복구 제외: {url}")
+                capture_centrecom_null_screenshot(
+                    self.driver,
+                    row_data.get('retailersku', ''),
+                    url,
+                    result
+                )
+                return result
 
             # title 추출
             result['title'] = self.extract_element_text(
@@ -804,11 +856,12 @@ class CentrecomScraper:
                 result = self.extract_product_info(url, row)
 
                 if result['retailprice'] is None and result['title'] is None:
+                    reason = '404 상품 URL' if url in self.not_found_urls else '가격과 제목 모두 없음'
                     failed_urls.append({
                         'url': url,
                         'item': row.get('item', ''),
                         'brand': row.get('brand', ''),
-                        'reason': '가격과 제목 모두 없음'
+                        'reason': reason
                     })
                 elif result['retailprice'] is None:
                     failed_urls.append({
@@ -839,6 +892,11 @@ class CentrecomScraper:
                     logger.warning(f"  - {fail['brand']} {fail['item']}: {fail.get('reason', '알 수 없음')}")
                 if len(failed_urls) > 5:
                     logger.warning(f"  ... 외 {len(failed_urls) - 5}개")
+
+            if self.not_found_urls:
+                logger.warning(f"확정 404 상품 URL {len(self.not_found_urls)}개 (자동 복구 제외):")
+                for not_found_url in sorted(self.not_found_urls):
+                    logger.warning(f"  - {not_found_url}")
 
             if self.driver:
                 self.driver.quit()
@@ -980,7 +1038,8 @@ def main():
             target_key='au',
             results_df=results_df,
             target_count=len(urls_data),
-            error_logs=None
+            error_logs=None,
+            excluded_recovery_urls=scraper.not_found_urls
         )
         if 'crawl_datetime' in results_df.columns:
             crawl_datetimes = pd.to_datetime(results_df['crawl_datetime'], errors='coerce').dropna()
