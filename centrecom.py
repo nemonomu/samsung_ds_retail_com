@@ -1075,7 +1075,8 @@ def main():
             results_df=results_df,
             target_count=len(urls_data),
             error_logs=None,
-            excluded_recovery_urls=scraper.not_found_urls
+            excluded_recovery_urls=scraper.not_found_urls,
+            initial_results_published=save_results['server_uploaded']
         )
         if 'crawl_datetime' in results_df.columns:
             crawl_datetimes = pd.to_datetime(results_df['crawl_datetime'], errors='coerce').dropna()

@@ -87,6 +87,7 @@ def auto_recovery_run(
     local_file_prefix=None,
     audit_context=None,
     excluded_recovery_urls=None,
+    initial_results_published=False,
 ):
     """
     스크래퍼 크롤링 완료 후 자동 복구 + 파일 업로드 + 메일 알림
@@ -97,6 +98,7 @@ def auto_recovery_run(
         target_count: tracking list 개수
         error_logs: 에러 로그 리스트
         excluded_recovery_urls: 호출자가 확정한 재시도 불가 URL 모음
+        initial_results_published: 1차 결과가 이미 파일서버에 업로드되었는지 여부
     """
     config = TARGET_CONFIG.get(target_key)
     if not config:
@@ -176,13 +178,17 @@ def auto_recovery_run(
 
     # === 2-A. 성공 시: 파일 업로드 + 일반 메일 ===
     if not needs_recovery:
-        logger.info("1차 수집 성공 → 파일서버 업로드")
+        if initial_results_published:
+            logger.info("1차 수집 성공 + 선업로드 완료 → 중복 파일 업로드 생략")
+        else:
+            logger.info("1차 수집 성공 → 파일서버 업로드")
         _upload_and_alert(manager, config, target_key, results_df, target_count,
                          session_start, error_logs=error_logs,
                          out_of_stock_urls=out_of_stock_urls,
                          local_output_dir=local_output_dir,
                          local_file_prefix=local_file_prefix,
-                         audit_context=audit_context)
+                         audit_context=audit_context,
+                         skip_upload=initial_results_published)
         return
 
     # === 2-B. 실패 시: 자동 recovery ===
@@ -238,7 +244,8 @@ def auto_recovery_run(
                          out_of_stock_urls=out_of_stock_urls,
                          local_output_dir=local_output_dir,
                          local_file_prefix=local_file_prefix,
-                         audit_context=audit_context)
+                         audit_context=audit_context,
+                         skip_upload=initial_results_published)
         return
 
     # 모든 누락 URL을 먼저 placeholder로 준비한다. 재수집 중단/예외가 발생해도
@@ -269,7 +276,8 @@ def auto_recovery_run(
                          out_of_stock_urls=out_of_stock_urls,
                          local_output_dir=local_output_dir,
                          local_file_prefix=local_file_prefix,
-                         audit_context=audit_context)
+                         audit_context=audit_context,
+                         skip_upload=initial_results_published)
         return
 
     # recovery 크롤링 (메모리에만 보관, DB 미반영)
@@ -426,7 +434,8 @@ def auto_recovery_run(
                          out_of_stock_urls=out_of_stock_urls,
                          local_output_dir=local_output_dir,
                          local_file_prefix=local_file_prefix,
-                         audit_context=audit_context)
+                         audit_context=audit_context,
+                         skip_upload=initial_results_published)
     else:
         # === 3-B. update complete: DB 반영 + 복구 데이터로 업로드 ===
         logger.info("복구 전후 다름 → DB 반영 + 복구 데이터 업로드")
@@ -698,7 +707,7 @@ def _upload_and_alert(manager, config, target_key, results_df, target_count,
                       recovery_prefix='', recovery_suffix='',
                       skip_price_anomaly=False, out_of_stock_urls=None,
                       local_output_dir=None, local_file_prefix=None,
-                      audit_context=None):
+                      audit_context=None, skip_upload=False):
     """파일서버 업로드 + 메일 알림"""
     alert_code = config.get('alert_code', target_key)
 
@@ -766,16 +775,20 @@ def _upload_and_alert(manager, config, target_key, results_df, target_count,
 
     local_final_csv_path = _save_local_final_results(results_df, local_output_dir, local_file_prefix or custom_filename)
 
-    # 파일서버 업로드
-    logger.info(f"파일서버 업로드 대상: {len(results_df)}개 레코드")
-    upload_success = manager.generate_and_upload_file(
-        target_key, results_df, local_session_start, custom_filename,
-        local_copy_dir=local_output_dir
-    )
-    if upload_success:
-        logger.info("파일서버 업로드 완료")
+    # Centrecom처럼 1차 결과를 이미 게시한 경우, 데이터가 그대로라면 중복 업로드하지 않는다.
+    if skip_upload:
+        upload_success = True
+        logger.info("1차 결과가 이미 파일서버에 업로드되어 중복 업로드 생략")
     else:
-        logger.error("파일서버 업로드 실패")
+        logger.info(f"파일서버 업로드 대상: {len(results_df)}개 레코드")
+        upload_success = manager.generate_and_upload_file(
+            target_key, results_df, local_session_start, custom_filename,
+            local_copy_dir=local_output_dir
+        )
+        if upload_success:
+            logger.info("파일서버 업로드 완료")
+        else:
+            logger.error("파일서버 업로드 실패")
 
     # 메일 알림 (skip_price_anomaly=True이면 가격 이상 감지 건너뜀)
     audit_errors = []
