@@ -41,6 +41,20 @@ from cookie_consent import accept_cookies
 CENTRECOM_NULL_SCREENSHOT_FIELDS = ('title', 'retailprice', 'ships_from', 'sold_by', 'imageurl')
 
 
+def get_centrecom_404_signals(page_title, body_text, has_product_details=False):
+    """Return each strict Centrecom 404 signal for diagnosis and classification."""
+    normalized_title = ' '.join(str(page_title or '').split()).casefold()
+    normalized_body = ' '.join(str(body_text or '').split()).casefold()
+
+    return {
+        'title_match': normalized_title == 'page not found',
+        'has_404': '404' in normalized_body,
+        'has_missing_message': 'oops! this page went missing' in normalized_body,
+        'has_home_button': 'back to homepage' in normalized_body,
+        'has_product_details': bool(has_product_details),
+    }
+
+
 def is_confirmed_centrecom_404(page_title, body_text, has_product_details=False):
     """Return True only for Centrecom's explicit 404 page signature.
 
@@ -49,15 +63,18 @@ def is_confirmed_centrecom_404(page_title, body_text, has_product_details=False)
     back to the existing title/block handling; false positives would suppress
     recovery for a valid product and therefore must be avoided.
     """
-    normalized_title = ' '.join(str(page_title or '').split()).casefold()
-    normalized_body = ' '.join(str(body_text or '').split()).casefold()
+    signals = get_centrecom_404_signals(
+        page_title,
+        body_text,
+        has_product_details=has_product_details
+    )
 
     return (
-        normalized_title == 'page not found'
-        and '404' in normalized_body
-        and 'oops! this page went missing' in normalized_body
-        and 'back to homepage' in normalized_body
-        and not has_product_details
+        signals['title_match']
+        and signals['has_404']
+        and signals['has_missing_message']
+        and signals['has_home_button']
+        and not signals['has_product_details']
     )
 
 
@@ -450,13 +467,32 @@ class CentrecomScraper:
             page_title = self.driver.title
             body_text = self.driver.find_element(By.TAG_NAME, 'body').text
             has_product_details = bool(self.driver.find_elements(By.ID, 'product-details-form'))
-            return is_confirmed_centrecom_404(
+            signals = get_centrecom_404_signals(
                 page_title,
                 body_text,
                 has_product_details=has_product_details
             )
+            logger.info(
+                "Centrecom 404 판정 신호 - title=%r, title_match=%s, "
+                "has_404=%s, has_missing_message=%s, has_home_button=%s, "
+                "has_product_details=%s, body_length=%s",
+                page_title,
+                signals['title_match'],
+                signals['has_404'],
+                signals['has_missing_message'],
+                signals['has_home_button'],
+                signals['has_product_details'],
+                len(body_text or '')
+            )
+            return (
+                signals['title_match']
+                and signals['has_404']
+                and signals['has_missing_message']
+                and signals['has_home_button']
+                and not signals['has_product_details']
+            )
         except Exception as e:
-            logger.debug(f"404 판정 중 오류 - 기존 title/차단 흐름 유지: {e}")
+            logger.warning(f"Centrecom 404 판정 신호 수집 실패 - 기존 title/차단 흐름 유지: {e}")
             return False
 
     def extract_product_info(self, url, row_data, retry_count=0, max_retries=4, title_retry_done=False):
@@ -770,9 +806,10 @@ class CentrecomScraper:
             try:
                 # 1. CSV 파일 생성
                 csv_filename = f'{base_filename}.csv'
-                # Header를 대문자로 변환
-                df.columns = df.columns.str.upper()
-                df.to_csv(csv_filename, index=False, encoding='utf-8', lineterminator='\r\n')
+                # Header를 대문자로 변환하되 recovery에 전달할 원본 DataFrame은 변경하지 않는다.
+                upload_df = df.copy()
+                upload_df.columns = upload_df.columns.str.upper()
+                upload_df.to_csv(csv_filename, index=False, encoding='utf-8', lineterminator='\r\n')
 
                 # 2. CSV를 ZIP으로 압축
                 zip_filename = f'{base_filename}.zip'
@@ -1026,10 +1063,11 @@ def main():
         save_results = scraper.save_results(
             results_df,
             save_db=True,
-            upload_server=False  # auto_recovery에서 처리
+            upload_server=True  # 1차 결과를 먼저 게시한 뒤 auto_recovery 수행
         )
 
         logger.info(f"DB 저장: {'성공' if save_results['db_saved'] else '실패'}")
+        logger.info(f"1차 파일서버 업로드: {'성공' if save_results['server_uploaded'] else '실패'}")
         logger.info("Centrecom 크롤링 완료!")
 
         # 자동 복구 + 파일 업로드 + 메일 알림
