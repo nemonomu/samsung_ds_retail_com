@@ -48,6 +48,7 @@ def get_centrecom_404_signals(page_title, body_text, has_product_details=False):
 
     return {
         'title_match': normalized_title == 'page not found',
+        'has_meaningful_body': len(normalized_body) >= 100,
         'has_404': '404' in normalized_body,
         'has_missing_message': 'oops! this page went missing' in normalized_body,
         'has_home_button': 'back to homepage' in normalized_body,
@@ -58,10 +59,10 @@ def get_centrecom_404_signals(page_title, body_text, has_product_details=False):
 def is_confirmed_centrecom_404(page_title, body_text, has_product_details=False):
     """Return True only for Centrecom's explicit 404 page signature.
 
-    A normal product page can contain unrelated numbers or generic error text,
-    so a single marker is intentionally insufficient. False negatives fall
-    back to the existing title/block handling; false positives would suppress
-    recovery for a valid product and therefore must be avoided.
+    Centrecom renders the visible 404 artwork without exposing its wording in
+    Selenium's body.text. Require its exact browser title, a meaningfully loaded
+    body, and the absence of the product form. The visible-text markers remain
+    diagnostic only because live evidence showed all three missing on real 404s.
     """
     signals = get_centrecom_404_signals(
         page_title,
@@ -71,9 +72,7 @@ def is_confirmed_centrecom_404(page_title, body_text, has_product_details=False)
 
     return (
         signals['title_match']
-        and signals['has_404']
-        and signals['has_missing_message']
-        and signals['has_home_button']
+        and signals['has_meaningful_body']
         and not signals['has_product_details']
     )
 
@@ -474,22 +473,21 @@ class CentrecomScraper:
             )
             logger.info(
                 "Centrecom 404 판정 신호 - title=%r, title_match=%s, "
-                "has_404=%s, has_missing_message=%s, has_home_button=%s, "
-                "has_product_details=%s, body_length=%s",
+                "has_meaningful_body=%s, has_404=%s, has_missing_message=%s, "
+                "has_home_button=%s, has_product_details=%s, body_length=%s",
                 page_title,
                 signals['title_match'],
+                signals['has_meaningful_body'],
                 signals['has_404'],
                 signals['has_missing_message'],
                 signals['has_home_button'],
                 signals['has_product_details'],
                 len(body_text or '')
             )
-            return (
-                signals['title_match']
-                and signals['has_404']
-                and signals['has_missing_message']
-                and signals['has_home_button']
-                and not signals['has_product_details']
+            return is_confirmed_centrecom_404(
+                page_title,
+                body_text,
+                has_product_details=has_product_details
             )
         except Exception as e:
             logger.warning(f"Centrecom 404 판정 신호 수집 실패 - 기존 title/차단 흐름 유지: {e}")
