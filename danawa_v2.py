@@ -10,10 +10,10 @@ Amazon 다나와 한국 가격 추출 시스템 V2 (타임존 분리 버전)
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException
 import pandas as pd
 import pymysql
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 import paramiko
 import time
 import random
@@ -45,6 +45,7 @@ class DanawaScraper:
         self.db_engine = None
         self.sftp_client = None
         self.country_code = 'kr'
+        self.out_of_stock_urls = set()
 
         # V2: 타임존 설정 (다나와는 한국 사이트이므로 둘 다 Asia/Seoul)
         self.korea_tz = pytz.timezone('Asia/Seoul')
@@ -79,6 +80,7 @@ class DanawaScraper:
             FROM mall_selectors
             WHERE mall_name = 'danawa' 
               AND country_code = 'kr'
+              AND selector_type = 'xpath'
               AND is_active = TRUE
             ORDER BY element_type, priority DESC
             """
@@ -164,6 +166,7 @@ class DanawaScraper:
         
         try:
             options = uc.ChromeOptions()
+            options.page_load_strategy = 'eager'
             options.add_argument('--accept-lang=ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7')
             options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36')
             # 메모리 최적화 옵션
@@ -192,6 +195,7 @@ class DanawaScraper:
                 logger.warning(f"Chrome 버전 감지 실패, 자동 매칭 시도: {e}")
 
             self.driver = uc.Chrome(options=options, version_main=chrome_version)
+            self.driver.set_page_load_timeout(10)
             self.driver.maximize_window()
             logger.info("✅ 드라이버 설정 완료")
             return True
@@ -234,7 +238,7 @@ class DanawaScraper:
             logger.error(f"페이지 상태 확인 중 오류: {e}")
             return False
     
-    def retry_page(self, url, max_retry=5, initial_wait=1, backoff=1.5):
+    def retry_page(self, url, max_retry=1, initial_wait=1, backoff=1.5):
         """재시도 로직: 지수 백오프 및 차단 감지"""
         wait = initial_wait
         
@@ -251,6 +255,25 @@ class DanawaScraper:
                 wait = wait * backoff + random.uniform(0, 1)
                 logger.warning(f"재시도 대기: {wait:.1f}초")
                 
+            except TimeoutException as e:
+                try:
+                    current_url = self.driver.current_url
+                    page_title = self.driver.title
+                except Exception:
+                    current_url = ''
+                    page_title = ''
+
+                if current_url.startswith('https://prod.danawa.com/info/') and page_title:
+                    logger.warning(
+                        "페이지 전체 로딩 timeout, 상품 DOM 대기 계속: "
+                        f"current_url={current_url}, title={page_title}"
+                    )
+                    return True
+
+                logger.error(
+                    f"페이지 접속 timeout (시도 {i + 1}): {e}"
+                )
+                wait = wait * backoff
             except Exception as e:
                 logger.error(f"페이지 접속 오류 (시도 {i + 1}): {e}")
                 wait = wait * backoff
@@ -258,30 +281,161 @@ class DanawaScraper:
         logger.error(f"최대 재시도 횟수 초과: {url}")
         return False
     
-    def check_stock_status(self):
-        """재고 상태 확인"""
+    def wait_for_price_or_stock(self, timeout=10):
+        """DB 선택자로 가격 또는 품절 상태가 확인될 때까지 한 번만 대기한다."""
+        price_xpaths = self.XPATHS.get('price', [])
+        stock_xpaths = self.XPATHS.get('stock', [])
+
+        if not price_xpaths:
+            raise RuntimeError("활성화된 가격 XPath가 없습니다.")
+        if not stock_xpaths:
+            logger.warning("활성화된 품절 XPath가 없습니다.")
+
+        def detect_state(driver):
+            # 가격과 품절이 동시에 보이면 실제 판매 가격을 우선한다.
+            for xpath in price_xpaths:
+                try:
+                    for element in driver.find_elements(By.XPATH, xpath):
+                        is_displayed = element.is_displayed()
+                        visible_text = (element.text or '').strip()
+                        price_text = visible_text if is_displayed else ''
+                        price_source = 'text'
+
+                        if not price_text:
+                            for attribute in ('value', 'data-base-price', 'content'):
+                                attribute_value = (
+                                    element.get_attribute(attribute) or ''
+                                ).strip()
+                                if attribute_value:
+                                    price_text = attribute_value
+                                    price_source = attribute
+                                    break
+
+                        if price_text:
+                            parsed_price = self.parse_price_by_country(price_text, 'kr')
+                            if parsed_price > 0:
+                                return {
+                                    'status': 'price',
+                                    'price': parsed_price,
+                                    'text': price_text,
+                                    'xpath': xpath,
+                                    'source': price_source,
+                                    'displayed': is_displayed
+                                }
+                except Exception:
+                    # 다른 DB 선택자를 계속 확인한다.
+                    continue
+
+            for xpath in stock_xpaths:
+                try:
+                    for element in driver.find_elements(By.XPATH, xpath):
+                        if element.is_displayed():
+                            return {
+                                'status': 'out_of_stock',
+                                'text': element.text.strip(),
+                                'xpath': xpath
+                            }
+                except Exception:
+                    # 다른 DB 선택자를 계속 확인한다.
+                    continue
+
+            return False
+
         try:
-            # 재고 없음을 나타내는 텍스트 패턴
-            stock_flag_patterns = [
-                'No featured offers available',
-                '^Currently unavailable',
-                '일시품절',
-                '품절',
-                '재고없음'
+            return WebDriverWait(self.driver, timeout).until(detect_state)
+        except TimeoutException as e:
+            logger.warning(
+                f"{timeout}초 내 가격/품절 DOM 없음, 동일 페이지에서 3초 추가 확인"
+            )
+            try:
+                state = WebDriverWait(
+                    self.driver, 3, poll_frequency=0.25
+                ).until(detect_state)
+                logger.info("추가 확인 구간에서 가격/품절 DOM 감지")
+                return state
+            except TimeoutException as grace_timeout:
+                final_timeout = grace_timeout
+
+            def element_snapshot(xpath, element_type):
+                snapshots = []
+                try:
+                    elements = self.driver.find_elements(By.XPATH, xpath)
+                    for element in elements[:3]:
+                        snapshots.append({
+                            'tag': element.tag_name,
+                            'displayed': element.is_displayed(),
+                            'text': (element.text or '').strip(),
+                            'value': (element.get_attribute('value') or '').strip(),
+                            'data-base-price': (
+                                element.get_attribute('data-base-price') or ''
+                            ).strip(),
+                            'content': (
+                                element.get_attribute('content') or ''
+                            ).strip()
+                        })
+                    return {
+                        'type': element_type,
+                        'xpath': xpath,
+                        'count': len(elements),
+                        'elements': snapshots
+                    }
+                except Exception as diagnostic_error:
+                    return {
+                        'type': element_type,
+                        'xpath': xpath,
+                        'error': str(diagnostic_error)
+                    }
+
+            price_diagnostics = [
+                element_snapshot(xpath, 'price') for xpath in price_xpaths
             ]
-            
-            page_source = self.driver.page_source
-            
-            for pattern in stock_flag_patterns:
-                if re.search(pattern, page_source, re.IGNORECASE):
-                    logger.info("재고 없음 감지")
+            stock_diagnostics = [
+                element_snapshot(xpath, 'stock') for xpath in stock_xpaths
+            ]
+            try:
+                current_url = self.driver.current_url
+            except Exception:
+                current_url = ''
+            try:
+                page_title = self.driver.title
+            except Exception:
+                page_title = ''
+
+            logger.error(
+                "가격/판매상태 확인 실패: "
+                f"price_diagnostics={price_diagnostics}, "
+                f"stock_diagnostics={stock_diagnostics}, "
+                f"current_url={current_url}, title={page_title}"
+            )
+            raise RuntimeError(
+                f"{timeout + 3}초 내 가격 또는 품절 상태를 확인하지 못했습니다. "
+                f"price XPath {len(price_xpaths)}개, stock XPath {len(stock_xpaths)}개"
+            ) from final_timeout
+
+    def is_expected_unavailable_result(self, result):
+        """품절/단종이 확인되고 제목과 이미지가 수집된 정상 가격 NULL인지 확인한다."""
+        if result is None:
+            return False
+
+        url = str(result.get('producturl') or '').strip()
+        if not url or url not in self.out_of_stock_urls:
+            return False
+
+        def has_text(value):
+            if value is None:
+                return False
+            try:
+                if pd.isna(value):
                     return False
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"재고 확인 중 오류: {e}")
-            return True  # 기본적으로 재고 있는 것으로 간주
+            except (TypeError, ValueError):
+                return False
+            return bool(str(value).strip())
+
+        return (
+            pd.isna(result.get('retailprice'))
+            and has_text(result.get('title'))
+            and has_text(result.get('imageurl'))
+        )
     
     def parse_price_by_country(self, price_str, country_code='kr'):
         """국가별 가격 형식 처리"""
@@ -317,17 +471,18 @@ class DanawaScraper:
             logger.error(f"가격 파싱 오류: {price_str} -> {e}")
             return 0
     
-    def extract_product_info(self, url, row_data, retry_count=0, max_retries=3):
-        """제품 정보 추출 (재시도 로직 포함)"""
+    def extract_product_info(self, url, row_data, retry_count=0, max_retries=0):
+        """제품 정보를 한 번의 페이지 접속에서 추출한다.
+
+        retry_count와 max_retries는 공통 RecoveryManager 호출 호환용이며,
+        이 함수 안에서 재귀 재시도를 실행하지 않는다.
+        """
         try:
-            logger.info(f"🔍 페이지 접속: {url} (시도: {retry_count + 1}/{max_retries + 1})")
+            logger.info(f"🔍 페이지 접속: {url}")
             
             # 페이지 로드 및 유효성 체크
             if not self.retry_page(url):
                 raise Exception("페이지 로드 실패")
-
-            # 페이지 로드 대기
-            time.sleep(random.uniform(2, 4))
 
             # 쿠키 동의 팝업 자동 수락 (있으면 클릭)
             accept_cookies(self.driver, 'danawa')
@@ -376,37 +531,41 @@ class DanawaScraper:
                 'title': None,
                 'vat': 'o'  # 한국은 VAT 포함
             }
-            
-            # 가격 추출 (먼저 시도)
+
+            # DB의 가격/품절 XPath를 동시에 확인한다.
+            price_state = None
             try:
-                price_found = False
-                for xpath in self.XPATHS.get('price', []):
-                    try:
-                        price_element = self.driver.find_element(By.XPATH, xpath)
-                        price_text = price_element.text.strip()
+                price_state = self.wait_for_price_or_stock(timeout=20)
+            except RuntimeError as price_error:
+                result['retailprice'] = None
+                self.out_of_stock_urls.discard(url)
+                logger.error(
+                    f"가격/판매상태 추출 실패, 제목/이미지 수집 계속: {price_error}"
+                )
 
-                        if price_text:
-                            parsed_price = self.parse_price_by_country(price_text, 'kr')
-                            if parsed_price > 0:
-                                result['retailprice'] = parsed_price
-                                logger.info(f"✅ 가격 추출 성공: {result['retailprice']}")
-                                price_found = True
-                                break
-                    except Exception as e:
-                        logger.debug(f"가격 추출 실패 (XPath: {xpath}): {e}")
-                        continue
+            if price_state is not None:
+                try:
+                    self.driver.execute_script('window.stop();')
+                except Exception as stop_error:
+                    logger.debug(f"잔여 페이지 로딩 중단 실패 (무시): {stop_error}")
 
-                if not price_found:
-                    # 가격을 못 찾았을 때만 재고 상태 확인
-                    if not self.check_stock_status():
-                        result['retailprice'] = None
-                        logger.info("재고 없음으로 가격 NULL 설정")
-                    else:
-                        logger.warning("모든 가격 XPath에서 추출 실패")
+                if price_state['status'] == 'price':
+                    result['retailprice'] = price_state['price']
+                    self.out_of_stock_urls.discard(url)
+                    logger.info(
+                        f"✅ 가격 추출 성공: {result['retailprice']} "
+                        f"(source: {price_state['source']}, "
+                        f"displayed: {price_state['displayed']}, "
+                        f"XPath: {price_state['xpath']})"
+                    )
+                else:
+                    result['retailprice'] = None
+                    self.out_of_stock_urls.add(url)
+                    logger.info(
+                        f"일시 품절 감지: 가격 NULL 설정 "
+                        f"(텍스트: {price_state['text']}, XPath: {price_state['xpath']})"
+                    )
 
-            except Exception as e:
-                logger.warning(f"가격 추출 실패: {e}")
-            
             # 제목 추출
             try:
                 for xpath in self.XPATHS.get('title', []):
@@ -419,6 +578,22 @@ class DanawaScraper:
                         continue
             except Exception as e:
                 logger.warning(f"제목 추출 실패: {e}")
+
+            if not result['title']:
+                try:
+                    page_title = (self.driver.title or '').strip()
+                    suffix = ' : 다나와 가격비교'
+                    if page_title.endswith(suffix):
+                        fallback_title = page_title[:-len(suffix)].strip()
+                        if fallback_title:
+                            result['title'] = fallback_title
+                            logger.info(
+                                f"제목 fallback(document.title): {result['title']}"
+                            )
+                except Exception as title_fallback_error:
+                    logger.warning(
+                        f"document.title fallback 실패: {title_fallback_error}"
+                    )
             
             # 이미지 URL 추출
             try:
@@ -461,7 +636,7 @@ class DanawaScraper:
             except Exception as e:
                 logger.warning(f"판매자 정보 추출 실패: {e}")
 
-            # NULL 필드 발견 시 스크린샷 + S3 업로드
+            # 가격 NULL은 품절/단종 여부와 관계없이 증빙 스크린샷을 업로드한다.
             if is_null_result(result):
                 capture_and_upload(self.driver, 'danawa', row_data.get('retailersku', ''), url, result)
 
@@ -469,27 +644,8 @@ class DanawaScraper:
 
         except Exception as e:
             logger.error(f"❌ 페이지 처리 오류: {e}")
-            
-            # 재시도 로직
-            if retry_count < max_retries:
-                wait_time = (retry_count + 1) * 10  # 재시도마다 대기 시간 증가
-                logger.info(f"🔄 {wait_time}초 후 재시도합니다... (재시도 {retry_count + 1}/{max_retries})")
-                time.sleep(wait_time)
-                
-                # 드라이버 새로고침
-                try:
-                    self.driver.refresh()
-                except:
-                    # 드라이버가 죽었으면 재시작
-                    logger.info("🔧 드라이버 재시작 중...")
-                    self.driver.quit()
-                    self.setup_driver()
-                
-                # 재귀 호출로 재시도
-                return self.extract_product_info(url, row_data, retry_count + 1, max_retries)
-            
-            # 최대 재시도 횟수 초과 시 기본값 반환
-            logger.error(f"❌ 최대 재시도 횟수 초과: {url}")
+
+            logger.error(f"❌ 가격/판매상태 최종 확인 실패: {url}")
             # V2: 타임존 분리
             now_time = datetime.now(self.korea_tz)
             local_time = datetime.now(self.local_tz)
@@ -717,7 +873,10 @@ class DanawaScraper:
                     result = self.extract_product_info(url, row)
 
                     # 실패 여부 확인
-                    if result['retailprice'] is None:
+                    if (
+                        result['retailprice'] is None
+                        and url not in self.out_of_stock_urls
+                    ):
                         failed_urls.append({
                             'url': url,
                             'item': row.get('item', ''),
@@ -729,12 +888,16 @@ class DanawaScraper:
                     # 10개마다 DB에 중간 저장 (재시도가 아닐 때만, title null 제외)
                     if not is_retry and (idx + 1) % 10 == 0:
                         interim_df = pd.DataFrame(results[-10:])
-                        valid_df = interim_df[interim_df['title'].notna()]
+                        valid_df = interim_df
                         if len(valid_df) > 0 and self.db_engine:
                             try:
                                 valid_df.to_sql('danawa_price_crawl_tbl_kr_v2', self.db_engine,
                                                 if_exists='append', index=False)
-                                logger.info(f"💾 중간 저장: {len(valid_df)}개 레코드 (title null 제외: {10 - len(valid_df)}개)")
+                                title_null_in_batch = valid_df['title'].isna().sum()
+                                logger.info(
+                                    f"💾 중간 저장: {len(valid_df)}개 레코드 "
+                                    f"(title null 포함: {title_null_in_batch}개)"
+                                )
                             except Exception as e:
                                 logger.error(f"중간 저장 실패: {e}")
 
@@ -759,11 +922,15 @@ class DanawaScraper:
                 if remainder > 0 and self.db_engine:
                     try:
                         remainder_df = pd.DataFrame(results[-remainder:])
-                        valid_df = remainder_df[remainder_df['title'].notna()]
+                        valid_df = remainder_df
                         if len(valid_df) > 0:
                             valid_df.to_sql('danawa_price_crawl_tbl_kr_v2', self.db_engine,
                                           if_exists='append', index=False)
-                            logger.info(f"💾 마지막 저장: {len(valid_df)}개 레코드 (title null 제외: {remainder - len(valid_df)}개)")
+                            title_null_in_batch = valid_df['title'].isna().sum()
+                            logger.info(
+                                f"💾 마지막 저장: {len(valid_df)}개 레코드 "
+                                f"(title null 포함: {title_null_in_batch}개)"
+                            )
                     except Exception as e:
                         logger.error(f"마지막 배치 저장 실패: {e}")
 
@@ -933,30 +1100,64 @@ def main():
                         # title 성공한 경우 기존 데이터 업데이트
                         mask = final_results_df['producturl'] == retry_row['producturl']
                         if mask.any():
+                            original_kr_crawl_datetime = final_results_df.loc[
+                                mask, 'kr_crawl_datetime'
+                            ].iloc[-1]
                             final_results_df.loc[mask, 'retailprice'] = retry_row['retailprice']
                             final_results_df.loc[mask, 'title'] = retry_row['title']
                             final_results_df.loc[mask, 'imageurl'] = retry_row['imageurl']
                             final_results_df.loc[mask, 'crawl_datetime'] = retry_row['crawl_datetime']
                             final_results_df.loc[mask, 'crawl_strdatetime'] = retry_row['crawl_strdatetime']
-                            retry_success_data.append(retry_row)
+                            final_results_df.loc[mask, 'kr_crawl_datetime'] = retry_row['kr_crawl_datetime']
+                            final_results_df.loc[mask, 'kr_crawl_strdatetime'] = retry_row['kr_crawl_strdatetime']
+                            retry_success_data.append({
+                                'original_kr_crawl_datetime': original_kr_crawl_datetime,
+                                'result': retry_row.to_dict()
+                            })
 
                 # 재시도 성공 데이터 DB 저장
                 if retry_success_data and scraper.db_engine:
                     try:
-                        retry_df = pd.DataFrame(retry_success_data)
-                        retry_df.to_sql('danawa_price_crawl_tbl_kr_v2', scraper.db_engine, if_exists='append', index=False)
-                        logger.info(f"💾 재시도 성공 데이터 DB 저장: {len(retry_success_data)}개")
+                        update_query = text("""
+                            UPDATE danawa_price_crawl_tbl_kr_v2
+                            SET retailprice = :retailprice,
+                                title = :title,
+                                imageurl = :imageurl,
+                                crawl_datetime = :crawl_datetime,
+                                crawl_strdatetime = :crawl_strdatetime,
+                                kr_crawl_datetime = :kr_crawl_datetime,
+                                kr_crawl_strdatetime = :kr_crawl_strdatetime
+                            WHERE producturl = :producturl
+                              AND kr_crawl_datetime = :original_kr_crawl_datetime
+                        """)
+                        updated_count = 0
+                        with scraper.db_engine.begin() as conn:
+                            for retry_item in retry_success_data:
+                                params = retry_item['result'].copy()
+                                params['original_kr_crawl_datetime'] = retry_item[
+                                    'original_kr_crawl_datetime'
+                                ]
+                                update_result = conn.execute(update_query, params)
+                                updated_count += update_result.rowcount
+                        logger.info(
+                            f"💾 재시도 성공 데이터 DB UPDATE: "
+                            f"{updated_count}/{len(retry_success_data)}개"
+                        )
+                        if updated_count != len(retry_success_data):
+                            logger.warning(
+                                "재시도 DB UPDATE 일부 불일치: "
+                                f"요청 {len(retry_success_data)}개, 반영 {updated_count}개"
+                            )
                     except Exception as e:
-                        logger.error(f"재시도 성공 데이터 DB 저장 실패: {e}")
+                        logger.error(f"재시도 성공 데이터 DB UPDATE 실패: {e}")
 
-                # 재시도 후에도 title NULL인 데이터 DB 저장
+                # 재시도 후에도 title NULL이면 최초 저장 행을 유지한다.
                 retry_still_null = retry_results_df[retry_results_df['title'].isna()]
-                if len(retry_still_null) > 0 and scraper.db_engine:
-                    try:
-                        retry_still_null.to_sql('danawa_price_crawl_tbl_kr_v2', scraper.db_engine, if_exists='append', index=False)
-                        logger.info(f"💾 재시도 후에도 title null 데이터 DB 저장: {len(retry_still_null)}개")
-                    except Exception as e:
-                        logger.error(f"재시도 후 title null 데이터 DB 저장 실패: {e}")
+                if len(retry_still_null) > 0:
+                    logger.info(
+                        f"재시도 후에도 title null: {len(retry_still_null)}개 "
+                        "(최초 저장 행 유지, 중복 INSERT 없음)"
+                    )
 
     # 3단계: 최종 결과 저장
     logger.info("\n💾 3단계: 최종 결과 저장")
@@ -990,13 +1191,25 @@ def main():
     scraper.analyze_results(final_results_df)
     logger.info("다나와 크롤링 완료!")
 
+    # 품절/단종 XPath가 확인되고 제목/이미지가 정상인 가격 NULL만 복구에서 제외한다.
+    expected_unavailable_urls = {
+        str(row.get('producturl')).strip()
+        for _, row in final_results_df.iterrows()
+        if scraper.is_expected_unavailable_result(row)
+    }
+    logger.info(
+        f"정상 품절/단종 NULL 자동 복구 제외: {len(expected_unavailable_urls)}개"
+    )
+
     # 자동 복구 + 파일 업로드 + 메일 알림
     from auto_recovery import auto_recovery_run
     auto_recovery_run(
         target_key='danawa',
         results_df=final_results_df,
         target_count=len(urls_data),
-        error_logs=None
+        error_logs=None,
+        out_of_stock_urls=expected_unavailable_urls,
+        excluded_recovery_urls=expected_unavailable_urls
     )
 
     save_log('kr_danawa')
