@@ -76,6 +76,59 @@ def _load_title_null_thresholds(db_engine):
         return {}
 
 
+def _is_blank_recovery_value(value):
+    """Return True for None, pandas NA, or an empty/whitespace string."""
+    if value is None:
+        return True
+    try:
+        if bool(pd.isna(value)):
+            return True
+    except (TypeError, ValueError):
+        pass
+    return isinstance(value, str) and not value.strip()
+
+
+def _recrawl_null_record(manager, scraper, url, row, target_key):
+    """Recrawl one NULL row, retrying Danawa identity fields up to 10 times."""
+    row_values = row.to_dict() if isinstance(row, pd.Series) else dict(row or {})
+    required_fields = [
+        field for field in ('title', 'imageurl')
+        if _is_blank_recovery_value(row_values.get(field))
+    ]
+    max_attempts = 10 if target_key == 'danawa' and required_fields else 1
+    best_result = {
+        field: value for field, value in row_values.items()
+        if not _is_blank_recovery_value(value)
+    }
+    received_result = False
+
+    for attempt in range(1, max_attempts + 1):
+        current = manager.recrawl_url(scraper, url, row, target_key)
+        if isinstance(current, dict):
+            received_result = True
+            # Keep valid values collected by earlier attempts when a later
+            # response is incomplete.
+            for field, value in current.items():
+                if not _is_blank_recovery_value(value):
+                    best_result[field] = value
+
+        unresolved = [
+            field for field in required_fields
+            if _is_blank_recovery_value(best_result.get(field))
+        ]
+        if not unresolved:
+            break
+
+        logger.warning(
+            "  -> Danawa %s NULL, retry %s/%s",
+            ', '.join(unresolved), attempt, max_attempts,
+        )
+        if attempt < max_attempts:
+            time.sleep(1)
+
+    return ((best_result or None) if received_result else None), attempt
+
+
 def auto_recovery_run(
     target_key,
     results_df,
@@ -318,20 +371,30 @@ def auto_recovery_run(
                     except Exception as e:
                         logger.debug(f"1차 스크린샷 삭제 시도 중 무시된 오류: {e}")
 
-                result = manager.recrawl_url(scraper, url, row, target_key)
+                result, recrawl_attempts = _recrawl_null_record(
+                    manager, scraper, url, row, target_key
+                )
 
                 # seller有/price無 URL은 일시적 throttle 가능성 높으므로 추가 재시도 1회
                 old_has_seller = (pd.notna(row.get('ships_from')) and row.get('ships_from') != '') or \
                                  (pd.notna(row.get('sold_by')) and row.get('sold_by') != '')
                 old_price_null = pd.isna(row.get('retailprice'))
-                if old_has_seller and old_price_null:
+                if old_has_seller and old_price_null and recrawl_attempts < 10:
                     new_price_null = result is None or pd.isna(result.get('retailprice'))
                     if new_price_null:
                         logger.info(f"  -> seller有/price無 → 5초 대기 후 추가 재시도 1회")
                         time.sleep(5)
                         result = manager.recrawl_url(scraper, url, row, target_key)
 
-                if result and (result.get('title') is not None or result.get('retailprice') is not None):
+                has_recovered_content = result and (
+                    not _is_blank_recovery_value(result.get('title'))
+                    or not _is_blank_recovery_value(result.get('retailprice'))
+                    or (
+                        target_key == 'danawa'
+                        and not _is_blank_recovery_value(result.get('imageurl'))
+                    )
+                )
+                if has_recovered_content:
                     result['producturl'] = url
                     recovered_results[url] = result
                     consecutive_fails = 0
