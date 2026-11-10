@@ -88,6 +88,16 @@ def _is_blank_recovery_value(value):
     return isinstance(value, str) and not value.strip()
 
 
+def _merge_nonblank_recovery_result(base_result, new_result):
+    """Merge a retry response without erasing values recovered earlier."""
+    merged = dict(base_result) if isinstance(base_result, dict) else {}
+    if isinstance(new_result, dict):
+        for field, value in new_result.items():
+            if not _is_blank_recovery_value(value):
+                merged[field] = value
+    return merged or None
+
+
 def _recrawl_null_record(manager, scraper, url, row, target_key):
     """Recrawl one NULL row, retrying Danawa identity fields up to 10 times."""
     row_values = row.to_dict() if isinstance(row, pd.Series) else dict(row or {})
@@ -108,9 +118,9 @@ def _recrawl_null_record(manager, scraper, url, row, target_key):
             received_result = True
             # Keep valid values collected by earlier attempts when a later
             # response is incomplete.
-            for field, value in current.items():
-                if not _is_blank_recovery_value(value):
-                    best_result[field] = value
+            best_result = _merge_nonblank_recovery_result(
+                best_result, current
+            ) or {}
 
         unresolved = [
             field for field in required_fields
@@ -384,7 +394,12 @@ def auto_recovery_run(
                     if new_price_null:
                         logger.info(f"  -> seller有/price無 → 5초 대기 후 추가 재시도 1회")
                         time.sleep(5)
-                        result = manager.recrawl_url(scraper, url, row, target_key)
+                        price_retry_result = manager.recrawl_url(
+                            scraper, url, row, target_key
+                        )
+                        result = _merge_nonblank_recovery_result(
+                            result, price_retry_result
+                        )
 
                 has_recovered_content = result and (
                     not _is_blank_recovery_value(result.get('title'))
@@ -506,8 +521,11 @@ def auto_recovery_run(
         # DB UPDATE (NULL 복구)
         for url, result in recovered_results.items():
             original_kr = null_records[null_records['producturl'] == url]['kr_crawl_datetime'].iloc[0]
-            if not manager.update_db_record(target_key, original_kr, result) and target_key == 'in':
-                logger.error(f"DB UPDATE 실패, 기존 행 유지: {url}")
+            if not manager.update_db_record(target_key, original_kr, result):
+                logger.error(
+                    f"DB UPDATE 실패, 기존 행 유지: target={target_key}, "
+                    f"url={url}, original_kr={original_kr}"
+                )
 
         if target_key == 'in':
             # India 누락 URL은 성공행과 NULL placeholder를 한 번에 저장한다.

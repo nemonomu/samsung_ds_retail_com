@@ -10,7 +10,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_retry_functions():
     tree = ast.parse((ROOT / 'auto_recovery.py').read_text(encoding='utf-8-sig'))
-    names = {'_is_blank_recovery_value', '_recrawl_null_record'}
+    names = {
+        '_is_blank_recovery_value',
+        '_merge_nonblank_recovery_result',
+        '_recrawl_null_record',
+    }
     nodes = [node for node in tree.body
              if isinstance(node, ast.FunctionDef) and node.name in names]
     module = ast.Module(body=nodes, type_ignores=[])
@@ -114,3 +118,23 @@ def test_danawa_preserves_existing_title_when_only_image_is_recovered():
     assert attempts == 1
     assert result['title'] == 'Existing title'
     assert result['imageurl'] == 'https://img.example/item.jpg'
+
+
+def test_price_retry_cannot_erase_recovered_title_or_image():
+    ns = _load_retry_functions()
+    recovered = {
+        'title': 'Recovered title',
+        'imageurl': 'https://img.example/recovered.jpg',
+        'retailprice': None,
+    }
+    price_retry = {
+        'title': None,
+        'imageurl': None,
+        'retailprice': 123000,
+    }
+
+    merged = ns['_merge_nonblank_recovery_result'](recovered, price_retry)
+
+    assert merged['title'] == 'Recovered title'
+    assert merged['imageurl'] == 'https://img.example/recovered.jpg'
+    assert merged['retailprice'] == 123000

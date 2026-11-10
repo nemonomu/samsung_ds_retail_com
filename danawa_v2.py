@@ -39,6 +39,23 @@ from alert_monitor import monitor_and_alert
 from null_screenshot import is_null_result, capture_and_upload
 from cookie_consent import accept_cookies
 
+
+def _get_element_image_url(element):
+    """Return the first usable image URL exposed by a DOM element."""
+    for attribute in ('src', 'data-src', 'data-original', 'content'):
+        value = (element.get_attribute(attribute) or '').strip()
+        if value:
+            return value, attribute
+
+    srcset = (element.get_attribute('srcset') or '').strip()
+    if srcset:
+        first_candidate = srcset.split(',', 1)[0].strip().split(' ', 1)[0]
+        if first_candidate:
+            return first_candidate, 'srcset'
+
+    return None, None
+
+
 class DanawaScraper:
     def __init__(self):
         self.driver = None
@@ -544,11 +561,6 @@ class DanawaScraper:
                 )
 
             if price_state is not None:
-                try:
-                    self.driver.execute_script('window.stop();')
-                except Exception as stop_error:
-                    logger.debug(f"잔여 페이지 로딩 중단 실패 (무시): {stop_error}")
-
                 if price_state['status'] == 'price':
                     result['retailprice'] = price_state['price']
                     self.out_of_stock_urls.discard(url)
@@ -596,17 +608,39 @@ class DanawaScraper:
                     )
             
             # 이미지 URL 추출
+            image_xpaths = self.XPATHS.get('imageurl', [])
             try:
-                for xpath in self.XPATHS.get('imageurl', []):
-                    try:
-                        image_element = self.driver.find_element(By.XPATH, xpath)
-                        result['imageurl'] = image_element.get_attribute('src')
-                        logger.info(f"이미지 URL: {result['imageurl']}")
-                        break
-                    except:
-                        continue
+                def find_image_with_url(driver):
+                    for xpath in image_xpaths:
+                        for image_element in driver.find_elements(By.XPATH, xpath):
+                            image_url, source_attribute = _get_element_image_url(
+                                image_element
+                            )
+                            if image_url:
+                                return image_url, xpath, source_attribute
+                    return False
+
+                image_url, image_xpath, source_attribute = WebDriverWait(
+                    self.driver, 7, poll_frequency=0.25
+                ).until(find_image_with_url)
+                result['imageurl'] = image_url
+                logger.info(
+                    f"이미지 URL: {image_url} "
+                    f"(attribute: {source_attribute}, XPath: {image_xpath})"
+                )
+            except TimeoutException:
+                logger.warning(
+                    f"이미지 URL 추출 실패: 7초 내 URL이 있는 요소 없음 "
+                    f"(XPath {len(image_xpaths)}개: {image_xpaths})"
+                )
             except Exception as e:
                 logger.warning(f"이미지 URL 추출 실패: {e}")
+
+            # 제목과 이미지 DOM 확인을 마친 뒤 남은 네트워크 로딩을 중단한다.
+            try:
+                self.driver.execute_script('window.stop();')
+            except Exception as stop_error:
+                logger.debug(f"잔여 페이지 로딩 중단 실패 (무시): {stop_error}")
             
             # 배송지 정보 추출
             try:
